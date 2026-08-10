@@ -547,11 +547,11 @@ backend/
     protocol.h            — Message types, JSON serialization
   lib/
     PawnIOLib.lib         — PawnIO static lib (Windows)
-    RyzenSMU.bin          — Signed SMU blob (CC BY-NC-SA 4.0, from HC)
-    LpcIO.bin             — Signed Super I/O blob for EC RAM writes (CC BY-NC-SA 4.0, from HC)
-    ADLX_Wrapper.dll      — AMD ADLX telemetry (from HC, Windows)
+    RyzenSMU.bin          — Signed SMU blob (LGPL-2.1, from PawnIO.Modules)
+    LpcIO.bin             — Signed Super I/O blob for EC RAM writes (LGPL-2.1, from PawnIO.Modules)
   deps/
     nlohmann/json.hpp     — JSON parsing (header-only)
+    ADLX/                 — AMD ADLX SDK headers (AMD SDK License, royalty-free)
   CMakeLists.txt          — Output: xmaxsvc.exe (Windows) or xmaxd (Linux)
 ```
 
@@ -582,7 +582,7 @@ backend/
 | CPU utilization | `Platform` | `driverfree_test.cpp` — `GetSystemTimes` | `/proc/stat` delta |
 | CPU clock/name | `Platform` | `driverfree_test.cpp` — WMI `Win32_Processor` | `/proc/cpuinfo`, `cpufreq` sysfs |
 | CPU temperature | `Platform` | `driverfree_test.cpp` — WMI EC `0x0470` | `hwmon` sysfs or EC via `ec_sys` |
-| GPU metrics | `Platform` | `adlx_test.cs` — ADLX `GetAdlxTelemetry` | `amdgpu` sysfs (`/sys/class/drm/`) |
+| GPU metrics | `Platform` | Official AMD ADLX SDK (COM interfaces, no DLL) | `amdgpu` sysfs (`/sys/class/drm/`) |
 | CPU package power | `TdpController` | `tdp_test.cpp` — PawnIO + SMU mailbox | `/dev/cpu/0/msr` or `amd_pstate` sysfs |
 | TDP control | `TdpController` | `tdp_test.cpp` — PawnIO + SMU mailbox | `/dev/cpu/0/msr` or `amd_pstate` sysfs |
 | Fan control | `FanController` | `fan_status.ps1` — EC `0x044A/0x044B/0x0476/0x0477` | EC via `ec_sys` or `/dev/port` |

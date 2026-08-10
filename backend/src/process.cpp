@@ -25,10 +25,10 @@ auto ProcessManager::spawn(const std::filesystem::path& exe_path) -> Result<void
 
 auto ProcessManager::show_window(bool visible) -> Result<void> {
     std::lock_guard lock(mutex_);
-    if (!has_child_) {
-        return {};  // No child to show/hide
-    }
-    return platform_.show_window(child_, visible);
+    // Even without a child process, try to find window by title (platform fallback)
+    ChildProcess dummy{};
+    auto& target = has_child_ ? child_ : dummy;
+    return platform_.show_window(target, visible);
 }
 
 void ProcessManager::start_monitor() {

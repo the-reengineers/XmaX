@@ -175,6 +175,7 @@ public:
         tray_remove_count++;
     }
     auto data_dir() -> std::filesystem::path override { return ""; }
+    auto self_exe_path() -> std::filesystem::path override { return ""; }
     auto single_instance_lock() -> Result<InstanceLock> override { return std::unexpected(ErrorCode::HardwareBusy); }
     void release_instance_lock(InstanceLock&) override {}
     auto set_auto_start(bool, const std::filesystem::path&) -> Result<void> override { return std::unexpected(ErrorCode::HardwareBusy); }
@@ -2021,11 +2022,11 @@ TEST_F(ProcessManagerTest, ShowWindowCallsPlatform) {
     EXPECT_FALSE(platform_.show_window_calls[1].visible);
 }
 
-TEST_F(ProcessManagerTest, ShowWindowNoChildIsNoOp) {
-    // No spawn -- show_window should return OK without calling platform
+TEST_F(ProcessManagerTest, ShowWindowNoChildCallsPlatformFallback) {
+    // No spawn -- show_window still calls platform (FindWindow fallback by title)
     auto result = manager_->show_window(true);
     ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(platform_.show_window_calls.size(), 0u);
+    EXPECT_EQ(platform_.show_window_calls.size(), 1u);
 }
 
 TEST_F(ProcessManagerTest, StartAndStopMonitor) {

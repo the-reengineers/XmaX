@@ -875,16 +875,17 @@ public:
         PeerInfo info;
         info.executable_path = std::filesystem::path(path_buffer).string();
 
-        // Verify it's xmax.exe in the same directory as xmaxsvc.exe
+        // Verify it's XmaX.exe
         std::filesystem::path client_path(path_buffer);
         std::string filename = client_path.filename().string();
 
+        // Verify client is XmaX.exe in the same directory
         wchar_t self_buffer[MAX_PATH];
         DWORD self_size = MAX_PATH;
         if (QueryFullProcessImageNameW(GetCurrentProcess(), 0, self_buffer, &self_size)) {
             std::filesystem::path self_dir = std::filesystem::path(self_buffer).parent_path();
             std::filesystem::path client_dir = client_path.parent_path();
-            info.verified = (filename == "xmax.exe" && client_dir == self_dir);
+            info.verified = (filename == "XmaX.exe" && client_dir == self_dir);
         } else {
             info.verified = false;
         }
@@ -1128,27 +1129,44 @@ public:
     }
 
     auto show_window(ChildProcess& process, bool visible) -> Result<void> override {
-        // Find window by process ID
-        struct EnumData {
-            DWORD pid;
-            HWND hwnd;
-        };
+        HWND target_hwnd = nullptr;
 
-        EnumData data{static_cast<DWORD>(process.pid), nullptr};
+        // If we have a valid process handle, find window by PID
+        if (process.process_handle != nullptr) {
+            struct EnumData {
+                DWORD pid;
+                HWND hwnd;
+            };
 
-        EnumWindows([](HWND hwnd, LPARAM lParam) -> BOOL {
-            EnumData* data = reinterpret_cast<EnumData*>(lParam);
-            DWORD window_pid = 0;
-            GetWindowThreadProcessId(hwnd, &window_pid);
-            if (window_pid == data->pid && IsWindowVisible(hwnd) == FALSE) {
-                data->hwnd = hwnd;
-                return FALSE;  // Stop enumeration
+            EnumData data{static_cast<DWORD>(process.pid), nullptr};
+
+            EnumWindows([](HWND hwnd, LPARAM lParam) -> BOOL {
+                EnumData* data = reinterpret_cast<EnumData*>(lParam);
+                DWORD window_pid = 0;
+                GetWindowThreadProcessId(hwnd, &window_pid);
+                // Match top-level windows only (no owner)
+                if (window_pid == data->pid && GetWindow(hwnd, GW_OWNER) == nullptr) {
+                    data->hwnd = hwnd;
+                    return FALSE;
+                }
+                return TRUE;
+            }, reinterpret_cast<LPARAM>(&data));
+
+            target_hwnd = data.hwnd;
+        }
+
+        // Fallback: find window by title "XmaX"
+        if (!target_hwnd) {
+            target_hwnd = FindWindowW(nullptr, L"XmaX");
+        }
+
+        if (target_hwnd) {
+            if (visible) {
+                ShowWindow(target_hwnd, SW_SHOW);
+                SetForegroundWindow(target_hwnd);
+            } else {
+                ShowWindow(target_hwnd, SW_HIDE);
             }
-            return TRUE;
-        }, reinterpret_cast<LPARAM>(&data));
-
-        if (data.hwnd) {
-            ShowWindow(data.hwnd, visible ? SW_SHOW : SW_HIDE);
         }
 
         return {};
@@ -1296,6 +1314,15 @@ public:
 
         // Fallback
         return std::filesystem::path(std::getenv("LOCALAPPDATA")) / "xmax";
+    }
+
+    auto self_exe_path() -> std::filesystem::path override {
+        wchar_t buffer[MAX_PATH];
+        DWORD size = MAX_PATH;
+        if (QueryFullProcessImageNameW(GetCurrentProcess(), 0, buffer, &size)) {
+            return std::filesystem::path(buffer);
+        }
+        return {};
     }
 
     auto single_instance_lock() -> Result<InstanceLock> override {

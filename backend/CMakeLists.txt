@@ -122,10 +122,18 @@ if(WIN32)
         message(STATUS "ADLX: Using downloaded SDK from ${ADLX_SDK_DIR}")
     endif()
 
+    # Generate .rc file with absolute path to icon (resource compiler runs from build dir)
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/xmaxsvc.rc.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/xmaxsvc.rc"
+        @ONLY
+    )
+
     target_sources(${BACKEND_TARGET} PRIVATE
         src/platform/platform_win32.cpp
         ${ADLX_SDK_DIR}/ADLXHelper/Windows/Cpp/ADLXHelper.cpp
         ${ADLX_SDK_DIR}/Platform/Windows/WinAPIs.cpp
+        "${CMAKE_CURRENT_BINARY_DIR}/xmaxsvc.rc"
     )
     target_include_directories(${BACKEND_TARGET} PRIVATE
         ${ADLX_SDK_DIR}/Include
@@ -162,7 +170,7 @@ if(WIN32)
     add_custom_command(TARGET ${BACKEND_TARGET} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${BACKEND_TARGET}>/assets"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${CMAKE_SOURCE_DIR}/../assets/logo.png"
+            "${CMAKE_SOURCE_DIR}/../shared/assets/logo.png"
             "$<TARGET_FILE_DIR:${BACKEND_TARGET}>/assets/logo.png"
         COMMENT "Copying shared assets to output directory"
     )

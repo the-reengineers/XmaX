@@ -164,6 +164,9 @@ public:
     // Linux: $XDG_DATA_HOME/xmax/
     virtual auto data_dir() -> std::filesystem::path = 0;
 
+    // Get path to the current executable (xmaxsvc/xmaxd)
+    virtual auto self_exe_path() -> std::filesystem::path = 0;
+
     // Create single instance lock
     // Returns error if another instance is already running
     virtual auto single_instance_lock() -> Result<InstanceLock> = 0;

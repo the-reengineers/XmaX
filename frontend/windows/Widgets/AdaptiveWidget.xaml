@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl x:Class="XmaX.Widgets.AdaptiveWidget"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d">
+
+    <Grid Padding="12" RowSpacing="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock x:Name="TitleText" Style="{StaticResource BodyStrongTextBlockStyle}" />
+
+        <!-- 3-button tuning preset selector -->
+        <Grid Grid.Row="1" ColumnSpacing="4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Button x:Name="BtnSilent" Grid.Column="0"
+                    HorizontalAlignment="Stretch" Click="OnTuningClick" Tag="silent" />
+            <Button x:Name="BtnDefault" Grid.Column="1"
+                    HorizontalAlignment="Stretch" Click="OnTuningClick" Tag="default" />
+            <Button x:Name="BtnPerformance" Grid.Column="2"
+                    HorizontalAlignment="Stretch" Click="OnTuningClick" Tag="performance" />
+        </Grid>
+
+        <!-- TDP ceiling slider -->
+        <StackPanel Grid.Row="2" Spacing="4">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="TdpCeilingLabel" VerticalAlignment="Center" />
+                <TextBlock x:Name="TdpValue" Grid.Column="1" VerticalAlignment="Center"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Grid>
+            <Slider x:Name="TdpSlider" StepFrequency="1"
+                    ValueChanged="OnTdpSliderChanged" />
+        </StackPanel>
+    </Grid>
+</UserControl>

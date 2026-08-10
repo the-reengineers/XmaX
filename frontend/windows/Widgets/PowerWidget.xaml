@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl x:Class="XmaX.Widgets.PowerWidget"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d">
+
+    <Grid Padding="12" RowSpacing="8" ColumnSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Header: power source label + battery -->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="TitleText" Style="{StaticResource BodyStrongTextBlockStyle}" />
+            <TextBlock x:Name="BatteryText" Grid.Column="1" VerticalAlignment="Center"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        </Grid>
+
+        <!-- Power source label -->
+        <TextBlock x:Name="PowerSourceLabel" Grid.Row="1"
+                   Style="{StaticResource SubtitleTextBlockStyle}" />
+
+        <!-- TDP ceiling slider -->
+        <StackPanel Grid.Row="2" Spacing="4">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="TdpCeilingLabel" VerticalAlignment="Center" />
+                <TextBlock x:Name="TdpCeilingValue" Grid.Column="1" VerticalAlignment="Center"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Grid>
+            <Slider x:Name="TdpCeilingSlider" StepFrequency="1"
+                    ValueChanged="OnTdpCeilingChanged" />
+        </StackPanel>
+    </Grid>
+</UserControl>

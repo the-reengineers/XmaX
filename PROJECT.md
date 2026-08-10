@@ -11,7 +11,7 @@ A two-process architecture replacing the current OneXConsole (Electron) + Compat
 | | Windows | Linux |
 |--|---------|-------|
 | Backend | `xmaxsvc.exe` | `xmaxd` |
-| Frontend | `xmax.exe` | `xmax` |
+| Frontend | `XmaX.exe` | `xmax` |
 
 Each platform follows its own naming convention — `-svc` suffix for Windows services, `-d` suffix for Unix daemons. The frontend is simply `xmax` on both.
 
@@ -66,7 +66,7 @@ The backend C++ core (protocol, state, profiles) is ~80% shareable. Platform-spe
 └────────────────────┼─────────────────────────────────────────┘
                      │
 ┌────────────────────┼─────────────────────────────────────────┐
-│  xmax.exe          │ (WinUI 3 / C# frontend)                 │
+│  XmaX.exe          │ (WinUI 3 / C# frontend)                 │
 │                    ▼                                         │
 │  ┌─────────────┐  ┌─────────────┐  ┌──────────────────────┐ │
 │  │ TDP sliders  │  │ Fan control  │  │ Metrics dashboard   │ │
@@ -185,7 +185,7 @@ The backend is the parent. It spawns the frontend as a child process.
 
 ### Windows (current)
 
-`xmaxsvc.exe` spawns `xmax.exe`.
+`xmaxsvc.exe` spawns `XmaX.exe`.
 
 - Backend creates a **Job Object** with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`
 - Both processes are assigned to the job
@@ -229,8 +229,8 @@ The protocol (commands, events, metrics JSON) is **platform-agnostic** — ident
 On each new connection:
 
 1. Backend calls `GetNamedPipeClientProcessId` → gets client PID
-2. Backend calls `QueryFullProcessImageNameW` → verifies executable is `xmax.exe`
-3. Backend verifies the executable path is under the expected install directory
+2. Backend calls `QueryFullProcessImageNameW` → verifies executable is `XmaX.exe`
+3. Backend verifies the executable path is under the expected install directory (same directory as `xmaxsvc.exe`)
 4. If verification fails: pipe closed immediately, no response sent
 5. If verification passes: normal command processing begins
 
@@ -810,7 +810,7 @@ xmaxsvc starts
   ├── Detect power state (EC 0x04FE)
   ├── If "persist" enabled: apply charge limit, apply power-state profile, restore global auto_tune (all from config.json, clamped by power state)
   ├── If "persist" disabled: do nothing (hardware at BIOS defaults)
-  ├── Spawn xmax.exe hidden, assign to job
+  ├── Spawn XmaX.exe hidden, assign to job
   ├── Store frontend PID + process handle
   └── Enter main loop
 
@@ -891,11 +891,11 @@ The frontend is a **Quick Settings-style popup** — frameless, translucent back
 | **Hardware button** | EC register 0x0230 state change → button monitor thread | Edge detect only — register value discarded |
 | **Tray icon left-click** | `Shell_NotifyIcon` / `AppIndicator` callback | Same toggle function |
 
-Both triggers go through the same code path — a single toggle function in the backend. The backend tracks visibility state internally (`bool fe_visible`) because two independent triggers can change it; the EC register's toggle value (0x00↔0x06) is **not** the source of truth for visibility.
+Both triggers send a `show_toggle` pipe event to the frontend. The **frontend owns visibility state** — it toggles itself on receiving the event. The backend does not track whether the frontend is visible or hidden.
 
 The button monitor polls register 0x0230 at 100ms. Any state change (0x00→0x06 or 0x06→0x00) means "a press happened" — the new value is discarded. This is pure edge detection.
 
-**Windows (current):** Backend uses `ShowWindow(hwnd, SW_SHOW/SW_HIDE)`. Frontend HWND found via `CreateProcess` + `EnumWindows` (match by PID). Window is `OverlappedPresenter` — frameless, always-on-top, non-resizable.
+**Windows (current):** Frontend uses `ShowWindow(hwnd, SW_SHOW/SW_HIDE)` + `SetForegroundWindow` on show, with a deactivation suppression flag to prevent the `Window.Activated` handler from immediately re-hiding. On hide, the `Activated` event (Deactivated state) triggers `HideWindow`. Window is `OverlappedPresenter` — frameless, always-on-top, non-resizable.
 
 **Linux (future):** Backend sends a D-Bus signal or X11/Wayland event to the frontend process. Mechanism TBD based on display server.
 
@@ -912,46 +912,36 @@ The Linux frontend will be a separate project — likely **GTK4/libadwaita** in 
 
 ## Build & Run
 
+Build orchestration uses [`just`](https://github.com/casey/just) — a cross-platform task runner. All commands work from the repo root on both Windows (PowerShell) and Linux (bash).
+
 ### Windows (current)
 
-**Backend:**
 ```bash
-cd backend
-cmake -B build -G "Visual Studio 17 2022" -A x64
-cmake --build build --config Release
+just build            # Build both backend and frontend
+just test             # Run all tests
+just dev              # Build, copy to out/, start backend (spawns frontend)
+just run-be           # Start backend only
+just run-fe           # Start frontend only (requires backend running)
+just clean            # Clean build artifacts
+just release          # Release build + test
 ```
-Output: `xmaxsvc.exe` (standalone, no runtime dependency)
 
-**Frontend:**
-```bash
-cd frontend/windows
-dotnet build -c Release -f net10.0-windows10.0.19041.0
-dotnet publish -c Release -r win-x64 --self-contained
-```
-Output: `xmax.exe` (self-contained, includes WinUI 3 runtime)
+**Build output:**
+- Backend: `backend/build/<config>/xmaxsvc.exe` (standalone, no runtime dependency)
+- Frontend: `frontend/windows/bin/<config>/.../publish/XmaX.exe` (self-contained, includes WinUI 3 runtime)
+- Unified: `out/<config>/` — copy of both for testing/running (via `just copy` or `just dev`)
 
-**Running:**
-```bash
-xmaxsvc.exe          # Starts backend + spawns frontend automatically
-```
 Kill `xmaxsvc.exe` → frontend is killed automatically (Job Object).
 
 ### Linux (future)
 
-**Backend:**
-```bash
-cd backend
-cmake -B build -G Ninja
-cmake --build build --config Release
-```
-Output: `xmaxd` (standalone binary)
+Same `just` commands as Windows — the justfile handles platform detection automatically.
 
-**Frontend:** TBD (depends on framework choice — GTK4/Qt).
+**Build output:**
+- Backend: `backend/build/xmaxd` (standalone binary)
+- Frontend: TBD (depends on framework choice — GTK4/Qt)
+- Unified: `out/<config>/` — copy of both for testing/running
 
-**Running:**
-```bash
-./xmaxd              # Starts backend + spawns frontend automatically
-```
 Kill `xmaxd` → frontend receives `SIGTERM` via process group.
 
 ## Testing
@@ -971,10 +961,9 @@ Backend tests are designed to run on the target device. Devs testing the backend
 
 **Running tests:**
 ```bash
-cd backend
-cmake -B build -G "Visual Studio 17 2022" -A x64
-cmake --build build --config Release
-./build/tests/Release/xmaxsvc_tests.exe
+just test-be          # Build and run backend tests (155 tests)
+just test-fe          # Run frontend tests
+just test             # Run both
 ```
 
 ### Frontend (C# / xUnit)
@@ -1019,7 +1008,7 @@ APP/
       zh.json              ← all UI strings in Chinese
     errors.json            ← error codes (separate from translations)
     generate_errors.py     ← generates error enums
-    generate_locales.py    ← generates platform-native translation files
+    generate_locales.py    ← generates platform-native translation files (scripts/)
 ```
 
 **`en.json`:**
@@ -1162,6 +1151,8 @@ Per-user data stored in the platform-standard local app data directory (device-s
 ```
 config.json           — App settings, global preferences, charge limit, adaptive controller config, power-state profiles
 profiles.json         — Saved profiles and fan curves (see Profiles & Fan Curves section)
+backend_crash.log     — Backend crash log (overwritten on each startup, appended within session)
+frontend_crash.log    — Frontend crash log (overwritten on each startup, appended within session)
 ```
 
 **Config validation & error handling:**

@@ -24,13 +24,27 @@ public sealed partial class MainWindow : Window
 
     // Win32 constants
     private const int GWL_EXSTYLE = -20;
+    private const int GWL_STYLE = -16;
     private const int WS_EX_APPWINDOW = 0x00040000;
     private const int WS_EX_TOOLWINDOW = 0x00000080;
+    private const int WS_BORDER = 0x00800000;
+    private const int WS_DLGFRAME = 0x00400000;
+    private const int WS_CAPTION = 0x00C00000;
+    private const int WS_THICKFRAME = 0x00040000;
     private const int SW_HIDE = 0;
     private const int SW_SHOW = 5;
 
     // Suppress deactivation handler briefly when showing window
     private bool _suppressDeactivation;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MARGINS
+    {
+        public int cxLeftWidth;
+        public int cxRightWidth;
+        public int cyTopHeight;
+        public int cyBottomHeight;
+    }
 
     [DllImport("user32.dll")]
     private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
@@ -49,6 +63,9 @@ public sealed partial class MainWindow : Window
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmExtendFrameIntoClientArea(IntPtr hwnd, ref MARGINS margins);
 
     public MainWindow()
     {
@@ -88,7 +105,7 @@ public sealed partial class MainWindow : Window
         // Use OverlappedPresenter for frameless window
         if (appWindow.Presenter is OverlappedPresenter presenter)
         {
-            // Remove title bar (frameless)
+            // Remove title bar and border (frameless)
             presenter.SetBorderAndTitleBar(false, false);
 
             // Always on top
@@ -114,6 +131,19 @@ public sealed partial class MainWindow : Window
         exStyle &= ~WS_EX_APPWINDOW;  // Remove from taskbar
         exStyle |= WS_EX_TOOLWINDOW;  // Tool window (no taskbar)
         SetWindowLong(hwnd, GWL_EXSTYLE, exStyle);
+
+        // Remove window frame/border styles
+        var style = GetWindowLong(hwnd, GWL_STYLE);
+        style &= ~(WS_BORDER | WS_DLGFRAME | WS_CAPTION | WS_THICKFRAME);
+        SetWindowLong(hwnd, GWL_STYLE, style);
+
+        // Extend DWM frame completely to eliminate any remaining border
+        var margins = new MARGINS { cxLeftWidth = -1, cxRightWidth = -1, cyTopHeight = -1, cyBottomHeight = -1 };
+        DwmExtendFrameIntoClientArea(hwnd, ref margins);
+
+        // Extend content into title bar area to remove default chrome
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(null); // No custom title bar
 
         // Set Mica backdrop for translucent effect
         SystemBackdrop = new MicaBackdrop();

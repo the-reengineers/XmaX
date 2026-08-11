@@ -7,7 +7,7 @@
         mc:Ignorable="d"
         Title="XmaX">
 
-    <Grid>
+    <Grid Background="Transparent">
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
@@ -17,16 +17,18 @@
         <Frame x:Name="RootFrame" Grid.Row="0" />
 
         <!-- Bottom tab navigation -->
-        <NavigationView x:Name="NavView" Grid.Row="1"
-                        PaneDisplayMode="Top"
-                        IsBackButtonVisible="Collapsed"
-                        IsSettingsVisible="False"
-                        SelectionChanged="OnNavSelectionChanged">
-            <NavigationView.MenuItems>
-                <NavigationViewItem Tag="home" />
-                <NavigationViewItem Tag="profiles" />
-                <NavigationViewItem Tag="settings" />
-            </NavigationView.MenuItems>
-        </NavigationView>
+        <Grid Grid.Row="1" Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}">
+            <NavigationView x:Name="NavView"
+                            PaneDisplayMode="Top"
+                            IsBackButtonVisible="Collapsed"
+                            IsSettingsVisible="False"
+                            SelectionChanged="OnNavSelectionChanged">
+                <NavigationView.MenuItems>
+                    <NavigationViewItem Tag="home" />
+                    <NavigationViewItem Tag="profiles" />
+                    <NavigationViewItem Tag="settings" />
+                </NavigationView.MenuItems>
+            </NavigationView>
+        </Grid>
     </Grid>
 </Window>

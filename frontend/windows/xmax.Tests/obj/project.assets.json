@@ -490,7 +490,7 @@
           "build/net6.0/xunit.runner.visualstudio.props": {}
         }
       },
-      "xmax/1.0.0": {
+      "XmaX/0.1.0": {
         "type": "project",
         "framework": ".NETCoreApp,Version=v10.0",
         "dependencies": {
@@ -498,7 +498,7 @@
           "Microsoft.WindowsAppSDK": "1.7.250909003"
         },
         "compile": {
-          "bin/placeholder/xmax.dll": {}
+          "bin/placeholder/XmaX.dll": {}
         },
         "runtime": {
           "bin/placeholder/_._": {}
@@ -1857,7 +1857,7 @@
         "xunit.runner.visualstudio.nuspec"
       ]
     },
-    "xmax/1.0.0": {
+    "XmaX/0.1.0": {
       "type": "project",
       "path": "../xmax.csproj",
       "msbuildProject": "../xmax.csproj"
@@ -1866,8 +1866,8 @@
   "projectFileDependencyGroups": {
     "net10.0-windows10.0.19041.0": [
       "Microsoft.NET.Test.Sdk >= 17.10.0",
+      "XmaX >= 0.1.0",
       "coverlet.collector >= 6.0.0",
-      "xmax >= 1.0.0",
       "xunit >= 2.9.0",
       "xunit.runner.visualstudio >= 2.8.2"
     ]

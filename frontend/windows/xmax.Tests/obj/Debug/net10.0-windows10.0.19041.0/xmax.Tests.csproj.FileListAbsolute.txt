@@ -380,3 +380,4 @@ D:\Dev\Misc\XmaX\frontend\windows\xmax.Tests\obj\Debug\net10.0-windows10.0.19041
 D:\Dev\Misc\XmaX\frontend\windows\xmax.Tests\obj\Debug\net10.0-windows10.0.19041.0\xmax.Tests.pdb
 D:\Dev\Misc\XmaX\frontend\windows\xmax.Tests\obj\Debug\net10.0-windows10.0.19041.0\xmax.Tests.genruntimeconfig.cache
 D:\Dev\Misc\XmaX\frontend\windows\xmax.Tests\obj\Debug\net10.0-windows10.0.19041.0\ref\xmax.Tests.dll
+D:\Dev\Misc\XmaX\frontend\windows\xmax.Tests\bin\Debug\net10.0-windows10.0.19041.0\Assets\logo.ico

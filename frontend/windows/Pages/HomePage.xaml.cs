@@ -24,7 +24,7 @@ public sealed partial class HomePage : Page
     private readonly PowerWidget _powerWidget;
 
     /// <summary>Widgets that span the full row (all columns).</summary>
-    private static readonly HashSet<string> FullRowWidgets = new() { "power" };
+    private static readonly HashSet<string> FullRowWidgets = new() { "profiles", "metrics", "adaptive", "power" };
 
     public HomePage()
     {

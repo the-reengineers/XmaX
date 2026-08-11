@@ -7,7 +7,7 @@
   "targets": {
     ".NETCoreApp,Version=v10.0": {},
     ".NETCoreApp,Version=v10.0/win-x64": {
-      "xmax/1.0.0": {
+      "XmaX/0.1.0": {
         "dependencies": {
           "Microsoft.WindowsAppSDK": "1.7.250909003",
           "Microsoft.Web.WebView2.Core.Projection": "1.0.2903.40",
@@ -15,7 +15,7 @@
           "runtimepack.Microsoft.Windows.SDK.NET.Ref": "10.0.19041.57"
         },
         "runtime": {
-          "xmax.dll": {}
+          "XmaX.dll": {}
         }
       },
       "runtimepack.Microsoft.NETCore.App.Runtime.win-x64/10.0.10": {
@@ -902,7 +902,7 @@
     }
   },
   "libraries": {
-    "xmax/1.0.0": {
+    "XmaX/0.1.0": {
       "type": "project",
       "serviceable": false,
       "sha512": ""

@@ -9,7 +9,7 @@
       "xmax.Tests/1.0.0": {
         "dependencies": {
           "Microsoft.NET.Test.Sdk": "17.10.0",
-          "xmax": "1.0.0",
+          "XmaX": "0.1.0",
           "xunit": "2.9.0",
           "runtimepack.Microsoft.Windows.SDK.NET.Ref": "10.0.19041.57"
         },
@@ -344,11 +344,10 @@
           }
         }
       },
-      "xmax/1.0.0": {
+      "XmaX/0.1.0": {
         "runtime": {
-          "xmax.dll": {
-            "assemblyVersion": "1.0.0.0",
-            "fileVersion": "1.0.0.0"
+          "XmaX.dll": {
+            "fileVersion": "0.0.0.0"
           }
         }
       }
@@ -442,7 +441,7 @@
       "path": "xunit.extensibility.execution/2.9.0",
       "hashPath": "xunit.extensibility.execution.2.9.0.nupkg.sha512"
     },
-    "xmax/1.0.0": {
+    "XmaX/0.1.0": {
       "type": "project",
       "serviceable": false,
       "sha512": ""

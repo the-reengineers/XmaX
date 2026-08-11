@@ -5,10 +5,10 @@
   },
   "projects": {
     "D:\\Dev\\Misc\\XmaX\\frontend\\windows\\xmax.csproj": {
-      "version": "1.0.0",
+      "version": "0.1.0",
       "restore": {
         "projectUniqueName": "D:\\Dev\\Misc\\XmaX\\frontend\\windows\\xmax.csproj",
-        "projectName": "xmax",
+        "projectName": "XmaX",
         "projectPath": "D:\\Dev\\Misc\\XmaX\\frontend\\windows\\xmax.csproj",
         "packagesPath": "C:\\Users\\alex\\.nuget\\packages\\",
         "outputPath": "D:\\Dev\\Misc\\XmaX\\frontend\\windows\\obj\\",

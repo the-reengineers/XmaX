@@ -420,12 +420,14 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 
         switch (LOWORD(lParam)) {
             case WM_LBUTTONUP:
+                std::cout << "[tray] Left click received" << std::endl;
                 if (callbacks->on_left_click) {
                     callbacks->on_left_click();
                 }
                 return 0;
 
             case WM_RBUTTONUP:
+                std::cout << "[tray] Right click received" << std::endl;
                 if (callbacks->on_right_click) {
                     callbacks->on_right_click();
                 }
@@ -835,14 +837,17 @@ public:
         sa.lpSecurityDescriptor = &sd;
         sa.bInheritHandle = FALSE;
 
-        // Create named pipe
+        // Create named pipe (byte-stream mode, overlapped for immediate data delivery).
+        // FILE_FLAG_OVERLAPPED ensures WriteFile pushes data to the pipe buffer
+        // immediately — without it, data sits in the server's output buffer until
+        // the client initiates a read/write cycle, causing multi-second latency.
         HANDLE pipe = CreateNamedPipeW(
             L"\\\\.\\pipe\\xmaxsvc",
             PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
-            PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
+            PIPE_WAIT,
             1,  // Max instances
-            4096,  // Output buffer size
-            4096,  // Input buffer size
+            65536,  // Output buffer size (64KB)
+            65536,  // Input buffer size (64KB)
             0,  // Default timeout
             &sa
         );
@@ -886,8 +891,14 @@ public:
             std::filesystem::path self_dir = std::filesystem::path(self_buffer).parent_path();
             std::filesystem::path client_dir = client_path.parent_path();
             info.verified = (filename == "XmaX.exe" && client_dir == self_dir);
+            std::cout << "[verify_peer] client: " << client_path.string()
+                      << " (filename=" << filename << ")" << std::endl;
+            std::cout << "[verify_peer] self_dir: " << self_dir.string() << std::endl;
+            std::cout << "[verify_peer] client_dir: " << client_dir.string() << std::endl;
+            std::cout << "[verify_peer] verified: " << (info.verified ? "true" : "false") << std::endl;
         } else {
             info.verified = false;
+            std::cerr << "[verify_peer] QueryFullProcessImageNameW(self) failed" << std::endl;
         }
 
         return info;
@@ -899,28 +910,49 @@ public:
             return std::unexpected(ErrorCode::HardwareBusy);
         }
 
-        OVERLAPPED overlapped{};
-        overlapped.hEvent = CreateEvent(nullptr, TRUE, FALSE, nullptr);
-        if (!overlapped.hEvent) {
+        // Overlapped ConnectNamedPipe with a timed wait.
+        // The 1-second timeout lets the caller re-check its running flag between
+        // attempts, preventing a shutdown hang if close_server() races with the
+        // creation of a new pipe handle (CancelIoEx would target the old handle).
+        OVERLAPPED ov{};
+        ov.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        if (!ov.hEvent) {
             return std::unexpected(ErrorCode::HardwareBusy);
         }
 
-        BOOL connected = ConnectNamedPipe(pipe, &overlapped);
+        BOOL connected = ConnectNamedPipe(pipe, &ov);
         if (!connected) {
             DWORD error = GetLastError();
-            if (error != ERROR_IO_PENDING) {
-                CloseHandle(overlapped.hEvent);
+            if (error == ERROR_PIPE_CONNECTED) {
+                // Client already connected — success
+                CloseHandle(ov.hEvent);
+            } else if (error == ERROR_IO_PENDING) {
+                // Wait for connection or cancellation (close_server calls CancelIoEx).
+                // Timed wait: on timeout, cancel the pending operation and return
+                // an error so the caller can check its running flag and retry.
+                DWORD wait = WaitForSingleObject(ov.hEvent, 1000);
+                if (wait == WAIT_TIMEOUT) {
+                    CancelIoEx(pipe, &ov);
+                    DWORD discard = 0;
+                    GetOverlappedResult(pipe, &ov, &discard, FALSE);  // reap the cancelled op
+                    CloseHandle(ov.hEvent);
+                    return std::unexpected(ErrorCode::HardwareBusy);
+                }
+                CloseHandle(ov.hEvent);
+                if (wait != WAIT_OBJECT_0) {
+                    return std::unexpected(ErrorCode::HardwareBusy);
+                }
+                DWORD bytes = 0;
+                if (!GetOverlappedResult(pipe, &ov, &bytes, FALSE)) {
+                    return std::unexpected(ErrorCode::HardwareBusy);
+                }
+            } else {
+                CloseHandle(ov.hEvent);
                 return std::unexpected(ErrorCode::HardwareBusy);
             }
-
-            // Wait for connection
-            DWORD wait_result = WaitForSingleObject(overlapped.hEvent, INFINITE);
-            if (wait_result != WAIT_OBJECT_0) {
-                CloseHandle(overlapped.hEvent);
-                return std::unexpected(ErrorCode::HardwareBusy);
-            }
+        } else {
+            CloseHandle(ov.hEvent);
         }
-        CloseHandle(overlapped.hEvent);
 
         // Get client process ID
         DWORD client_pid = 0;
@@ -953,6 +985,9 @@ public:
     void close_server(TransportServer& server) override {
         HANDLE pipe = static_cast<HANDLE>(server.handle);
         if (pipe && pipe != INVALID_HANDLE_VALUE) {
+            // Cancel any pending overlapped operations (ConnectNamedPipe, ReadFile)
+            // so blocked threads unblock promptly.
+            CancelIoEx(pipe, nullptr);
             DisconnectNamedPipe(pipe);
             CloseHandle(pipe);
             server.handle = nullptr;
@@ -967,16 +1002,41 @@ public:
             return std::unexpected(ErrorCode::HardwareBusy);
         }
 
+        OVERLAPPED ov{};
+        ov.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        if (!ov.hEvent) {
+            return std::unexpected(ErrorCode::HardwareBusy);
+        }
+
         DWORD bytes_read = 0;
-        BOOL success = ReadFile(pipe, buffer, static_cast<DWORD>(size), &bytes_read, nullptr);
-        if (!success) {
-            DWORD err = GetLastError();
-            if (err == ERROR_BROKEN_PIPE || err == ERROR_PIPE_NOT_CONNECTED) {
-                return std::unexpected(ErrorCode::SensorUnavailable);  // Client disconnected
+        BOOL success = ReadFile(pipe, buffer, static_cast<DWORD>(size), &bytes_read, &ov);
+        if (success) {
+            CloseHandle(ov.hEvent);
+            return static_cast<size_t>(bytes_read);
+        }
+
+        DWORD err = GetLastError();
+        if (err == ERROR_BROKEN_PIPE || err == ERROR_PIPE_NOT_CONNECTED) {
+            CloseHandle(ov.hEvent);
+            return std::unexpected(ErrorCode::SensorUnavailable);  // Client disconnected
+        }
+        if (err != ERROR_IO_PENDING) {
+            CloseHandle(ov.hEvent);
+            return std::unexpected(ErrorCode::HardwareBusy);
+        }
+
+        // Wait for read to complete (unblocked by close_server's CancelIoEx)
+        if (!GetOverlappedResult(pipe, &ov, &bytes_read, TRUE)) {
+            DWORD read_err = GetLastError();
+            CloseHandle(ov.hEvent);
+            if (read_err == ERROR_BROKEN_PIPE || read_err == ERROR_PIPE_NOT_CONNECTED
+                || read_err == ERROR_OPERATION_ABORTED) {
+                return std::unexpected(ErrorCode::SensorUnavailable);
             }
             return std::unexpected(ErrorCode::HardwareBusy);
         }
 
+        CloseHandle(ov.hEvent);
         return static_cast<size_t>(bytes_read);
     }
 
@@ -986,13 +1046,45 @@ public:
             return std::unexpected(ErrorCode::HardwareBusy);
         }
 
-        DWORD bytes_written = 0;
-        BOOL success = WriteFile(pipe, data, static_cast<DWORD>(size), &bytes_written, nullptr);
-        if (!success || bytes_written != static_cast<DWORD>(size)) {
+        OVERLAPPED ov{};
+        ov.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        if (!ov.hEvent) {
             return std::unexpected(ErrorCode::HardwareBusy);
         }
 
+        DWORD bytes_written = 0;
+        BOOL success = WriteFile(pipe, data, static_cast<DWORD>(size), &bytes_written, &ov);
+        if (success) {
+            CloseHandle(ov.hEvent);
+            if (bytes_written != static_cast<DWORD>(size)) {
+                return std::unexpected(ErrorCode::HardwareBusy);
+            }
+            return {};
+        }
+
+        DWORD err = GetLastError();
+        if (err != ERROR_IO_PENDING) {
+            CloseHandle(ov.hEvent);
+            return std::unexpected(ErrorCode::HardwareBusy);
+        }
+
+        // Wait for write to complete — overlapped WriteFile delivers data to the
+        // pipe buffer immediately, no FlushFileBuffers needed.
+        if (!GetOverlappedResult(pipe, &ov, &bytes_written, TRUE)) {
+            CloseHandle(ov.hEvent);
+            return std::unexpected(ErrorCode::HardwareBusy);
+        }
+
+        CloseHandle(ov.hEvent);
+        if (bytes_written != static_cast<DWORD>(size)) {
+            return std::unexpected(ErrorCode::HardwareBusy);
+        }
         return {};
+    }
+
+    void pipe_flush(TransportServer& server) override {
+        // No-op: overlapped WriteFile delivers data to the pipe buffer immediately.
+        // FlushFileBuffers is not needed (and blocks indefinitely on named pipes).
     }
 
     void pipe_disconnect(TransportServer& server) override {

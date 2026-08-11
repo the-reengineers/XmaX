@@ -148,6 +148,7 @@ private:
     // Threading
     std::thread connection_thread_;
     std::thread metrics_push_thread_;
+    std::thread writer_thread_;
     std::atomic<bool> running_{false};
 
     // Pipe state (uses ::TransportServer struct from platform.h)
@@ -167,8 +168,13 @@ private:
     std::mutex event_mutex_;
     std::condition_variable event_cv_;
 
-    // Write mutex (protects pipe writes from multiple threads)
-    std::mutex write_mutex_;
+    // Write queue -- dedicated writer thread drains this so callers never block on pipe I/O
+    std::queue<std::string> write_queue_;
+    std::mutex write_queue_mutex_;
+    std::condition_variable write_queue_cv_;
+
+    // Write loop (runs in writer_thread_)
+    void write_loop();
 
     // Config/profiles mutex
     mutable std::mutex state_mutex_;

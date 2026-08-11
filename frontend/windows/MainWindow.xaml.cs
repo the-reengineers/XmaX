@@ -36,6 +36,7 @@ public sealed partial class MainWindow : Window
 
     // Suppress deactivation handler briefly when showing window
     private bool _suppressDeactivation;
+    private DateTime _lastShowTime;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct MARGINS
@@ -180,8 +181,12 @@ public sealed partial class MainWindow : Window
 
     private void OnWindowActivated(object sender, WindowActivatedEventArgs e)
     {
-        // If window is being deactivated, hide it (unless suppressed during show)
-        if (e.WindowActivationState == WindowActivationState.Deactivated && !_suppressDeactivation)
+        // If window is being deactivated, hide it (unless suppressed during show
+        // or the window was shown less than 500ms ago — prevents focus-stealing
+        // from immediately hiding the window after a tray/button toggle).
+        if (e.WindowActivationState == WindowActivationState.Deactivated
+            && !_suppressDeactivation
+            && (DateTime.Now - _lastShowTime).TotalMilliseconds > 500)
         {
             HideWindow();
         }
@@ -237,9 +242,14 @@ public sealed partial class MainWindow : Window
 
         // Suppress deactivation handler briefly while showing
         _suppressDeactivation = true;
+        _lastShowTime = DateTime.Now;
         ShowWindow(hwnd, SW_SHOW);
         SetForegroundWindow(hwnd);
         PositionBottomRight(); // Re-position in case display changed
+
+        // Resume metrics UI updates and refresh widgets with latest data
+        App.MetricsService.SuppressNotifications = false;
+        App.MetricsService.NotifyRefresh();
 
         // Re-enable deactivation handler after a short delay
         DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
@@ -255,6 +265,9 @@ public sealed partial class MainWindow : Window
     {
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         ShowWindow(hwnd, SW_HIDE);
+
+        // Suppress metrics UI updates while hidden (data still collected)
+        App.MetricsService.SuppressNotifications = true;
     }
 
     /// <summary>

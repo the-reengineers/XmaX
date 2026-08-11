@@ -21,6 +21,9 @@ public sealed class FanCurveEditorDialog : ContentDialog
     /// <summary>The resulting fan curve after OK, or null if cancelled.</summary>
     public FanCurve? ResultCurve { get; private set; }
 
+    /// <summary>Validation error message to show after dialog closes, or null if no error.</summary>
+    public string? ValidationError { get; private set; }
+
     public FanCurveEditorDialog(FanCurve? existingCurve)
     {
         _isEdit = existingCurve != null;
@@ -84,15 +87,10 @@ public sealed class FanCurveEditorDialog : ContentDialog
         var sortedPoints = _points.OrderBy(p => p.TempC).ToList();
         if (!XmaX.ViewModels.CoolingViewModel.ValidateFanCurvePoints(sortedPoints, out var error))
         {
+            // Store error for the caller to show after this dialog closes
+            // (WinUI 3 only allows one ContentDialog open at a time)
+            ValidationError = error;
             args.Cancel = true;
-            var errDialog = new ContentDialog
-            {
-                Title = Loc.Dialog_InvalidFanCurve,
-                Content = error,
-                CloseButtonText = Loc.Button_Ok,
-                XamlRoot = this.XamlRoot,
-            };
-            _ = errDialog.ShowAsync();
             return;
         }
 

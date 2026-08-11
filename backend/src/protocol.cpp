@@ -43,13 +43,9 @@ std::optional<Command> parse_command(const std::string& json_line) {
         cmd.method = j["method"].get<std::string>();
         cmd.id = j["id"].get<std::string>();
 
-        // Store the entire JSON except type, method, id as payload
-        if (j.size() > 3) {
-            json payload_json = j;
-            payload_json.erase("type");
-            payload_json.erase("method");
-            payload_json.erase("id");
-            cmd.payload = payload_json.dump();
+        // Extract payload from "params" field (JSON-RPC style)
+        if (j.contains("params") && j["params"].is_object()) {
+            cmd.payload = j["params"].dump();
         } else {
             cmd.payload = "{}";
         }

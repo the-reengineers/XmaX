@@ -24,7 +24,8 @@ public sealed partial class CoolingPage : Page
         _viewModel = new CoolingViewModel(App.ProfileService);
         _viewModel.PropertyChanged += (s, e) =>
         {
-            if (e.PropertyName == nameof(CoolingViewModel.FanCurves)) RebuildFanCurvesList();
+            if (e.PropertyName == nameof(CoolingViewModel.FanCurves))
+                DispatcherQueue.TryEnqueue(() => RebuildFanCurvesList());
         };
 
         RebuildFanCurvesList();
@@ -102,6 +103,12 @@ public sealed partial class CoolingPage : Page
         var dialog = new FanCurveEditorDialog(null) { XamlRoot = this.XamlRoot };
         var result = await dialog.ShowAsync();
 
+        if (dialog.ValidationError != null)
+        {
+            await ShowErrorAsync(Loc.Dialog_InvalidFanCurve, dialog.ValidationError);
+            return;
+        }
+
         if (result == ContentDialogResult.Primary && dialog.ResultCurve != null)
         {
             try
@@ -119,6 +126,12 @@ public sealed partial class CoolingPage : Page
         {
             var dialog = new FanCurveEditorDialog(curve) { XamlRoot = this.XamlRoot };
             var result = await dialog.ShowAsync();
+
+            if (dialog.ValidationError != null)
+            {
+                await ShowErrorAsync(Loc.Dialog_InvalidFanCurve, dialog.ValidationError);
+                return;
+            }
 
             if (result == ContentDialogResult.Primary && dialog.ResultCurve != null)
             {

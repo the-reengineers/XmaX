@@ -19,6 +19,12 @@ public sealed class MetricsService : INotifyPropertyChanged, IDisposable
     private bool _subscribed;
     private bool _disposed;
 
+    /// <summary>
+    /// When true, metrics are still collected but PropertyChanged is suppressed.
+    /// Set by MainWindow when the window is hidden to avoid unnecessary UI dispatch.
+    /// </summary>
+    public bool SuppressNotifications { get; set; }
+
     /// <summary>Default metrics push interval in milliseconds (matches backend default).</summary>
     public const int DefaultIntervalMs = 2000;
 
@@ -38,12 +44,25 @@ public sealed class MetricsService : INotifyPropertyChanged, IDisposable
         {
             if (ReferenceEquals(_metrics, value)) return;
             _metrics = value;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Metrics)));
+            if (!SuppressNotifications)
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Metrics)));
+            }
         }
     }
 
     /// <summary>Whether currently subscribed to metrics push.</summary>
     public bool IsSubscribed => _subscribed;
+
+    /// <summary>
+    /// Fire a PropertyChanged for Metrics to refresh all UI consumers.
+    /// Called when the window becomes visible after a hidden period,
+    /// so widgets display the latest collected data immediately.
+    /// </summary>
+    public void NotifyRefresh()
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Metrics)));
+    }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -86,8 +105,9 @@ public sealed class MetricsService : INotifyPropertyChanged, IDisposable
 
     private void OnConnected()
     {
-        // On reconnect, subscription state is lost -- reset and re-subscribe if needed
+        // On reconnect, subscription state is lost -- reset and auto-resubscribe
         _subscribed = false;
+        _ = SubscribeAsync();
     }
 
     private void OnDisconnected()

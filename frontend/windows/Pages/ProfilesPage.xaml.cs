@@ -27,8 +27,10 @@ public sealed partial class ProfilesPage : Page
         _viewModel = new ProfilesViewModel(App.ProfileService, App.Pipe);
         _viewModel.PropertyChanged += (s, e) =>
         {
-            if (e.PropertyName == nameof(ProfilesViewModel.Profiles)) RebuildProfilesList();
-            if (e.PropertyName == nameof(ProfilesViewModel.Config)) RebuildPowerStateUI();
+            if (e.PropertyName == nameof(ProfilesViewModel.Profiles))
+                DispatcherQueue.TryEnqueue(() => RebuildProfilesList());
+            if (e.PropertyName == nameof(ProfilesViewModel.Config))
+                DispatcherQueue.TryEnqueue(() => RebuildPowerStateUI());
         };
 
         RebuildProfilesList();

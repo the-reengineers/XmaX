@@ -106,6 +106,9 @@ public:
     // Write data to the transport server pipe handle.
     virtual auto pipe_write(TransportServer& server, const char* data, size_t size) -> Result<void> = 0;
 
+    // Flush the pipe output buffer to ensure data reaches the client.
+    virtual void pipe_flush(TransportServer& server) = 0;
+
     // Disconnect the current client from the pipe (prepare for next connection).
     virtual void pipe_disconnect(TransportServer& server) = 0;
 

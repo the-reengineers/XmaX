@@ -126,13 +126,11 @@ public sealed class PipeClient : IDisposable
             ["id"] = requestId
         };
 
-        // Merge payload fields into command
+        // Attach payload as a nested "params" object to avoid key collisions
+        // (e.g., payload "id" would overwrite the correlation "id")
         if (payload != null)
         {
-            foreach (var kvp in payload)
-            {
-                cmd[kvp.Key] = kvp.Value?.DeepClone();
-            }
+            cmd["params"] = payload.DeepClone();
         }
 
         // Register pending request before sending
@@ -181,7 +179,7 @@ public sealed class PipeClient : IDisposable
                 await pipe.ConnectAsync(ct).ConfigureAwait(false);
 
                 var reader = new StreamReader(pipe, Encoding.UTF8);
-                var writer = new StreamWriter(pipe, Encoding.UTF8) { AutoFlush = true };
+                var writer = new StreamWriter(pipe, new UTF8Encoding(false)) { AutoFlush = true };
 
                 lock (_connectLock)
                 {
@@ -196,7 +194,8 @@ public sealed class PipeClient : IDisposable
 
                 Connected?.Invoke();
 
-                // Run the read loop -- blocks until disconnect or error
+                // Run the read loop — server uses overlapped I/O so data is
+                // delivered immediately without client-initiated pings.
                 await ReadLoop(ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -260,7 +259,6 @@ public sealed class PipeClient : IDisposable
 
             if (line == null)
             {
-                // End of stream -- server disconnected
                 break;
             }
 
@@ -279,13 +277,13 @@ public sealed class PipeClient : IDisposable
         }
         catch
         {
-            // Malformed JSON from server -- ignore
             return;
         }
 
         if (msg == null) return;
 
         var type = msg["type"]?.GetValue<string>();
+
         switch (type)
         {
             case "response":
@@ -297,8 +295,6 @@ public sealed class PipeClient : IDisposable
                 break;
 
             case "error":
-                // Protocol-level error (e.g., parse_error) -- no id to correlate
-                // Could be logged; nothing to do for now
                 break;
         }
     }

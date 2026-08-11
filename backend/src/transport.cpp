@@ -3,6 +3,8 @@
 
 #include <algorithm>
 #include <chrono>
+#include <iostream>
+#include <vector>
 
 using json = nlohmann::json;
 
@@ -47,6 +49,7 @@ void TransportService::start() {
     }
 
     running_.store(true);
+    writer_thread_ = std::thread(&TransportService::write_loop, this);
     connection_thread_ = std::thread(&TransportService::connection_loop, this);
     metrics_push_thread_ = std::thread(&TransportService::metrics_push_loop, this);
 }
@@ -58,6 +61,7 @@ void TransportService::stop() {
 
     running_.store(false);
     event_cv_.notify_all();
+    write_queue_cv_.notify_all();
 
     // Close the server to unblock accept_connection
     platform_.close_server(server_);
@@ -68,6 +72,9 @@ void TransportService::stop() {
     if (metrics_push_thread_.joinable()) {
         metrics_push_thread_.join();
     }
+    if (writer_thread_.joinable()) {
+        writer_thread_.join();
+    }
 }
 
 auto TransportService::is_running() const -> bool {
@@ -77,11 +84,12 @@ auto TransportService::is_running() const -> bool {
 // ===== Event sending =====
 
 void TransportService::send_event(const Event& event) {
-    {
-        std::lock_guard lock(event_mutex_);
-        event_queue_.push(event);
+    // write_line enqueues for the writer thread — never blocks the caller.
+    std::cout << "[transport] Sending event: " << event.event
+              << " (connected=" << client_connected_ << ")" << std::endl;
+    if (client_connected_) {
+        send_event_immediate(event);
     }
-    event_cv_.notify_one();
 }
 
 void TransportService::send_event_immediate(const Event& event) {
@@ -107,6 +115,10 @@ auto TransportService::read_line() -> std::optional<std::string> {
     if (newline_pos != std::string::npos) {
         std::string line = read_buffer_.substr(0, newline_pos);
         read_buffer_.erase(0, newline_pos + 1);
+        // Strip trailing \r (FE StreamWriter uses \r\n line endings)
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
         return line;
     }
 
@@ -129,6 +141,10 @@ auto TransportService::read_line() -> std::optional<std::string> {
     if (newline_pos != std::string::npos) {
         std::string line = read_buffer_.substr(0, newline_pos);
         read_buffer_.erase(0, newline_pos + 1);
+        // Strip trailing \r (FE StreamWriter uses \r\n line endings)
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
         return line;
     }
 
@@ -137,12 +153,56 @@ auto TransportService::read_line() -> std::optional<std::string> {
 }
 
 auto TransportService::write_line(const std::string& line) -> bool {
-    std::lock_guard lock(write_mutex_);
+    // Enqueue for the dedicated writer thread — never blocks the caller.
+    // The writer thread handles the actual pipe I/O (which may block on
+    // WriteFile/FlushFileBuffers if the client's read buffer is full).
     if (!client_connected_) {
         return false;
     }
-    auto result = platform_.pipe_write(server_, line.data(), line.size());
-    return result.has_value();
+    {
+        std::lock_guard lock(write_queue_mutex_);
+        write_queue_.push(line);
+    }
+    write_queue_cv_.notify_one();
+    return true;
+}
+
+void TransportService::write_loop() {
+    std::cout << "[write_loop] Writer thread started" << std::endl;
+    while (running_.load()) {
+        // Collect all pending writes
+        std::vector<std::string> batch;
+        {
+            std::unique_lock lock(write_queue_mutex_);
+            write_queue_cv_.wait(lock, [this]() {
+                return !write_queue_.empty() || !running_.load();
+            });
+
+            if (!running_.load() && write_queue_.empty()) break;
+
+            while (!write_queue_.empty()) {
+                batch.push_back(std::move(write_queue_.front()));
+                write_queue_.pop();
+            }
+        }
+
+        if (batch.empty()) continue;
+        if (!client_connected_) continue;
+
+        // Write all items in the batch.
+        // Overlapped WriteFile delivers data to the pipe buffer immediately —
+        // no FlushFileBuffers needed.
+        for (const auto& line : batch) {
+            auto result = platform_.pipe_write(server_, line.data(), line.size());
+            if (!result.has_value()) {
+                std::cerr << "[write_loop] pipe_write FAILED (" << line.size() << " bytes)" << std::endl;
+                break;
+            } else {
+                std::cout << "[write_loop] Wrote " << line.size() << " bytes (first 80: "
+                          << line.substr(0, std::min<size_t>(80, line.size())) << ")" << std::endl;
+            }
+        }
+    }
 }
 
 // ===== Persist gate =====
@@ -171,16 +231,24 @@ void TransportService::connection_loop() {
         // Create pipe
         auto listen_result = platform_.listen();
         if (!listen_result) {
+            std::cerr << "[transport] listen() failed, retrying in 1s" << std::endl;
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
             continue;
         }
         server_ = listen_result.value();
 
-        // Accept connection (blocking)
+        // Accept connection (1s timed wait — loops back to check running_ on timeout)
         auto accept_result = platform_.accept_connection(server_);
         if (!accept_result) {
             platform_.close_server(server_);
             continue;
+        }
+        std::cout << "[transport] Client connected (pid=" << accept_result.value().process_id << ")" << std::endl;
+
+        // Bail out if shutdown was requested while waiting for a connection
+        if (!running_.load()) {
+            platform_.close_server(server_);
+            break;
         }
 
         current_peer_ = accept_result.value();
@@ -188,9 +256,11 @@ void TransportService::connection_loop() {
         // Verify peer
         auto verify_result = platform_.verify_peer(current_peer_);
         if (!verify_result || !verify_result.value().verified) {
+            std::cerr << "[transport] Peer verification FAILED — rejecting connection" << std::endl;
             platform_.close_server(server_);
             continue;
         }
+        std::cout << "[transport] Peer verified, entering read loop" << std::endl;
 
         client_connected_ = true;
         read_buffer_.clear();
@@ -200,6 +270,7 @@ void TransportService::connection_loop() {
             std::lock_guard lock(state_mutex_);
             metrics_subscribed_ = false;
         }
+        std::cout << "[metrics] Subscription reset (new connection)" << std::endl;
 
         // Read loop
         while (running_.load() && client_connected_) {
@@ -209,6 +280,7 @@ void TransportService::connection_loop() {
                 if (!running_.load()) break;
                 // Could be partial read -- try again, or disconnected
                 if (read_buffer_.empty()) {
+                    std::cout << "[transport] Client disconnected (empty buffer)" << std::endl;
                     break;  // Client disconnected
                 }
                 continue;
@@ -218,9 +290,12 @@ void TransportService::connection_loop() {
                 continue;  // Skip empty lines
             }
 
+            std::cout << "[transport] Received: " << *line << std::endl;
+
             // Parse command
             auto cmd = parse_command(*line);
             if (!cmd.has_value()) {
+                std::cerr << "[transport] Parse failed for: " << *line << std::endl;
                 // Malformed JSON
                 ErrorMessage err;
                 err.error = ErrorCode::ParseError;
@@ -230,17 +305,28 @@ void TransportService::connection_loop() {
 
             // Dispatch and send response
             Response resp = dispatch(cmd.value());
+            std::cout << "[transport] Sending response for " << cmd.value().method
+                      << " (ok=" << resp.ok << ")" << std::endl;
             send_response(resp);
         }
 
-        // Client disconnected
-        client_connected_ = false;
+        // Client disconnected - prevent new writes during cleanup
         {
-            std::lock_guard lock(state_mutex_);
-            metrics_subscribed_ = false;
+            client_connected_ = false;
+            {
+                std::lock_guard state_lock(state_mutex_);
+                metrics_subscribed_ = false;
+            }
+            std::cout << "[metrics] Subscription reset (client disconnected)" << std::endl;
+            // Drain pending writes — they'll fail since client is gone
+            {
+                std::lock_guard wq_lock(write_queue_mutex_);
+                std::queue<std::string> empty;
+                write_queue_.swap(empty);
+            }
+            platform_.pipe_disconnect(server_);
+            platform_.close_server(server_);
         }
-        platform_.pipe_disconnect(server_);
-        platform_.close_server(server_);
     }
 }
 
@@ -248,23 +334,27 @@ void TransportService::connection_loop() {
 
 void TransportService::metrics_push_loop() {
     while (running_.load()) {
-        std::unique_lock lock(event_mutex_);
-
-        // Wait for event or timeout
         bool subscribed;
         int interval_ms;
-        {
-            std::lock_guard state_lock(state_mutex_);
-            subscribed = metrics_subscribed_;
-            interval_ms = metrics_interval_ms_;
-        }
 
-        if (subscribed) {
-            event_cv_.wait_for(lock, std::chrono::milliseconds(interval_ms));
-        } else {
-            // No subscription -- just wait for events (button press, etc.)
-            event_cv_.wait_for(lock, std::chrono::milliseconds(1000));
+        // Wait for event or timeout (event_mutex_ held only during wait)
+        {
+            std::unique_lock lock(event_mutex_);
+
+            {
+                std::lock_guard state_lock(state_mutex_);
+                subscribed = metrics_subscribed_;
+                interval_ms = metrics_interval_ms_;
+            }
+
+            if (subscribed) {
+                event_cv_.wait_for(lock, std::chrono::milliseconds(interval_ms));
+            } else {
+                // No subscription -- just wait for events (button press, etc.)
+                event_cv_.wait_for(lock, std::chrono::milliseconds(1000));
+            }
         }
+        // event_mutex_ released — safe to do I/O and acquire other locks
 
         if (!running_.load()) break;
 
@@ -273,7 +363,6 @@ void TransportService::metrics_push_loop() {
             Metrics m = metrics_.get_metrics();
             Event evt;
             evt.event = "metrics";
-            // Use serialize_metrics but strip the trailing newline for the data field
             std::string metrics_json = serialize_metrics(m);
             if (!metrics_json.empty() && metrics_json.back() == '\n') {
                 metrics_json.pop_back();
@@ -283,14 +372,17 @@ void TransportService::metrics_push_loop() {
         }
 
         // Drain event queue
-        while (!event_queue_.empty()) {
-            Event evt = event_queue_.front();
-            event_queue_.pop();
+        std::vector<Event> events;
+        {
+            std::lock_guard lock(event_mutex_);
+            while (!event_queue_.empty()) {
+                events.push_back(event_queue_.front());
+                event_queue_.pop();
+            }
+        }
+        for (const auto& evt : events) {
             if (client_connected_) {
-                // Release event lock before writing to pipe
-                lock.unlock();
                 send_event_immediate(evt);
-                lock.lock();
             }
         }
     }
@@ -358,9 +450,10 @@ auto TransportService::handle_get_metrics(const Command& cmd) -> Response {
 }
 
 auto TransportService::handle_subscribe_metrics(const Command& cmd) -> Response {
+    int interval_ms = 2000;
     try {
         auto payload = json::parse(cmd.payload);
-        int interval_ms = payload.value("interval_ms", 2000);
+        interval_ms = payload.value("interval_ms", 2000);
 
         std::lock_guard lock(state_mutex_);
         metrics_subscribed_ = true;
@@ -372,6 +465,7 @@ auto TransportService::handle_subscribe_metrics(const Command& cmd) -> Response 
         metrics_interval_ms_ = 2000;
     }
 
+    std::cout << "[metrics] Subscribed (interval=" << interval_ms << "ms)" << std::endl;
     event_cv_.notify_one();
 
     Response resp;
@@ -386,6 +480,8 @@ auto TransportService::handle_unsubscribe_metrics(const Command& cmd) -> Respons
         std::lock_guard lock(state_mutex_);
         metrics_subscribed_ = false;
     }
+
+    std::cout << "[metrics] Unsubscribed" << std::endl;
 
     Response resp;
     resp.id = cmd.id;

@@ -219,19 +219,6 @@ int main() {
             std::cout << "Persist disabled -- hardware at BIOS defaults" << std::endl;
         }
 
-        // Spawn frontend (look for XmaX.exe next to xmaxsvc.exe)
-        auto exe_path = fs::path(platform->self_exe_path()).parent_path() / "XmaX.exe";
-        if (fs::exists(exe_path)) {
-            auto spawn_result = process_mgr->spawn(exe_path);
-            if (!spawn_result) {
-                std::cerr << "Failed to spawn frontend" << std::endl;
-            } else {
-                std::cout << "Frontend spawned (hidden)" << std::endl;
-            }
-        } else {
-            std::cerr << "Frontend executable not found: " << exe_path.string() << std::endl;
-        }
-
         // Start background threads
         poller->start();
         std::cout << "Metrics poller started" << std::endl;
@@ -246,7 +233,8 @@ int main() {
         process_mgr->start_monitor();
         std::cout << "Process monitor started" << std::endl;
 
-        // Create transport service
+        // Create transport service and start listening BEFORE spawning frontend,
+        // so the pipe is ready when the frontend tries to connect.
         auto transport = std::make_unique<TransportService>(
             *platform, *poller, *fan, *tdp, *power, *adaptive, *button,
             config, profiles, config_path, profiles_path
@@ -254,9 +242,23 @@ int main() {
         transport->start();
         std::cout << "Transport server started" << std::endl;
 
+        // Spawn frontend (look for XmaX.exe next to xmaxsvc.exe)
+        auto exe_path = fs::path(platform->self_exe_path()).parent_path() / "XmaX.exe";
+        if (fs::exists(exe_path)) {
+            auto spawn_result = process_mgr->spawn(exe_path);
+            if (!spawn_result) {
+                std::cerr << "Failed to spawn frontend" << std::endl;
+            } else {
+                std::cout << "Frontend spawned (hidden)" << std::endl;
+            }
+        } else {
+            std::cerr << "Frontend executable not found: " << exe_path.string() << std::endl;
+        }
+
         // Wire up callbacks
         // Button press → send toggle event to frontend (frontend manages its own visibility)
         button->on_visibility_change([&](bool /*visible*/) {
+            std::cout << "[button] Visibility change callback" << std::endl;
             Event evt;
             evt.event = "show_toggle";
             evt.data = "{}";
@@ -265,6 +267,7 @@ int main() {
 
         // Tray left-click → send toggle event to frontend (frontend manages its own visibility)
         tray->on_toggle([&]() {
+            std::cout << "[tray] Toggle callback fired" << std::endl;
             Event evt;
             evt.event = "show_toggle";
             evt.data = "{}";

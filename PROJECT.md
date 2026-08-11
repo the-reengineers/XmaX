@@ -213,7 +213,7 @@ The protocol (commands, events, metrics JSON) is **platform-agnostic** — ident
 
 | | Windows (current) | Linux (future) |
 |--|-------------------|----------------|
-| Mechanism | Named Pipe (`\\.\pipe\xmaxsvc`) | Unix domain socket (`$XDG_RUNTIME_DIR/xmaxd.sock`) |
+| Mechanism | Named Pipe (`\\.\pipe\xmaxsvc`, overlapped I/O) | Unix domain socket (`$XDG_RUNTIME_DIR/xmaxd.sock`) |
 | Security | Pipe ACL (current user SID) | Socket file permissions (`0700`) |
 | Peer ID | `GetNamedPipeClientProcessId` | `SO_PEERCRED` (PID, UID, GID) |
 
@@ -221,8 +221,10 @@ The protocol (commands, events, metrics JSON) is **platform-agnostic** — ident
 
 - Pipe name: `\\.\pipe\xmaxsvc`
 - Direction: bidirectional (duplex)
+- Mode: overlapped I/O (`FILE_FLAG_OVERLAPPED`) — `WriteFile` delivers data to the pipe buffer immediately without `FlushFileBuffers`. Synchronous (blocking) pipes buffer writes until the client initiates a read/write cycle, causing multi-second latency for server-pushed events
 - Format: newline-delimited JSON (`\n` terminated)
 - Security: Level 1 (process path verification) + Level 2 (pipe ACL restricted to current user SID)
+- Write architecture: dedicated writer thread drains a write queue so callers (main thread, metrics push thread) never block on pipe I/O. `close_server` calls `CancelIoEx` to unblock any pending overlapped operations during shutdown
 
 ### Security handshake (Windows)
 
@@ -446,7 +448,9 @@ Fields marked `null` when unavailable (e.g., `battery_pct` on devices without a 
 | Thread | Responsibility | Poll rate |
 |--------|---------------|-----------|
 | **Main** | Event loop, tray icon, frontend process management | Event-driven |
-| **Transport server** | Accept connections, read commands, dispatch to handlers, write responses | Blocking I/O |
+| **Transport server** | Accept connections, read commands, dispatch to handlers, write responses | Overlapped I/O (blocking on `GetOverlappedResult`) |
+| **Writer** | Drain write queue, batch-write to pipe via overlapped `WriteFile` | Event-driven (wakes on queue) |
+| **Metrics push** | Send metrics events at subscribed interval, drain event queue | Subscription interval (default 2000ms) |
 | **Metrics poller** | Poll all sensors, update shared metrics struct (mutex-protected) | 2000ms |
 | **Fan/auto-tune controller** | Fan curve interpolation OR adaptive PID (mutually exclusive — auto-tune overrides curve). Reads temp from shared metrics, writes fan speed | 1s |
 | **Power state monitor** | Poll EC `0x04FE` + `0x04A3`, detect power source changes, auto-apply profiles (persist=true only), read charge limit for metrics | 2000ms (in metrics poller) |
@@ -560,7 +564,7 @@ backend/
 | Module | Owns | Depends on |
 |--------|------|-----------|
 | `main.cpp` | Startup sequence, thread creation, shutdown coordination | Everything |
-| `transport.cpp` | Accept connections, read/write JSON lines, security handshake | `protocol.h`, `Platform` (peer verification) |
+| `transport.cpp` | Accept connections, read/write JSON lines, security handshake, dedicated writer thread for non-blocking pipe writes | `protocol.h`, `Platform` (peer verification) |
 | `protocol.cpp` | JSON parse/serialize, command dispatch to handlers, request ID matching | `shared.h`, nlohmann/json |
 | `metrics.cpp` | Polling loop, composing domain controllers + platform into unified `Metrics` struct | `FanController`, `TdpController`, `Platform` (RAM, CPU, GPU) |
 | `tdp.cpp` | `TdpController`: SMU opcodes, dual-dispatch write sequences, TDP limits | `Platform` (`smu_send`) |
@@ -872,13 +876,15 @@ frontend/windows/
 `PipeClient.cs` is the single point of communication:
 
 ```
-Connect to \\.\pipe\xmaxsvc
+Connect to \\.\pipe\xmaxsvc (PipeOptions.Asynchronous)
   ├── Send JSON commands, await JSON responses (5s timeout)
   ├── Receive unsolicited events (button_press, metrics push)
-  ├── Auto-reconnect on disconnect (with backoff)
-  │     └── On reconnect: get_metrics snapshot → subscribe_metrics → raise connected event
+  ├── Auto-reconnect on disconnect (exponential backoff)
+  │     └── On reconnect: subscribe_metrics → raise connected event
   └── Raise C# events for UI binding
 ```
+
+The server pipe uses overlapped I/O (`FILE_FLAG_OVERLAPPED`), so data is delivered to the client immediately on write — no client-side ping or keepalive is needed.
 
 ### Frontend visibility
 

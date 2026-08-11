@@ -106,6 +106,7 @@ public:
     void close_server(TransportServer&) override {}
     auto pipe_read(TransportServer&, char*, size_t) -> Result<size_t> override { return std::unexpected(ErrorCode::HardwareBusy); }
     auto pipe_write(TransportServer&, const char*, size_t) -> Result<void> override { return std::unexpected(ErrorCode::HardwareBusy); }
+    void pipe_flush(TransportServer&) override {}
     void pipe_disconnect(TransportServer&) override {}
     auto charge_limit_write(uint8_t percent) -> Result<void> override {
         if (charge_limit_should_fail) {
@@ -198,7 +199,7 @@ TEST(ProtocolTest, ParseValidCommand) {
 }
 
 TEST(ProtocolTest, ParseCommandWithPayload) {
-    std::string json = R"({"type": "command", "method": "set_fan", "id": "req_002", "mode": "auto"})";
+    std::string json = R"({"type": "command", "method": "set_fan", "id": "req_002", "params": {"mode": "auto"}})";
     auto cmd = parse_command(json);
 
     ASSERT_TRUE(cmd.has_value());

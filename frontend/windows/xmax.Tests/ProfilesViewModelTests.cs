@@ -4,7 +4,7 @@ using XmaX.ViewModels;
 namespace XmaX.Tests;
 
 /// <summary>
-/// Tests for ProfilesViewModel validation and constraint checking.
+/// Tests for CoolingViewModel validation and constraint checking.
 /// These test the static validation methods and constraint logic without requiring a backend.
 /// </summary>
 public class ProfilesViewModelTests
@@ -21,7 +21,7 @@ public class ProfilesViewModelTests
             new() { TempC = 80, SpeedPercent = 100 },
         };
 
-        var valid = ProfilesViewModel.ValidateFanCurvePoints(points, out var error);
+        var valid = CoolingViewModel.ValidateFanCurvePoints(points, out var error);
 
         Assert.True(valid);
         Assert.Null(error);
@@ -35,7 +35,7 @@ public class ProfilesViewModelTests
             new() { TempC = 40, SpeedPercent = 20 },
         };
 
-        var valid = ProfilesViewModel.ValidateFanCurvePoints(points, out var error);
+        var valid = CoolingViewModel.ValidateFanCurvePoints(points, out var error);
 
         Assert.False(valid);
         Assert.NotNull(error);
@@ -49,7 +49,7 @@ public class ProfilesViewModelTests
             .Select(i => new FanCurvePoint { TempC = 30 + i * 5, SpeedPercent = 10 + i * 5 })
             .ToList();
 
-        var valid = ProfilesViewModel.ValidateFanCurvePoints(points, out var error);
+        var valid = CoolingViewModel.ValidateFanCurvePoints(points, out var error);
 
         Assert.False(valid);
         Assert.NotNull(error);
@@ -66,7 +66,7 @@ public class ProfilesViewModelTests
             new() { TempC = 80, SpeedPercent = 100 },
         };
 
-        var valid = ProfilesViewModel.ValidateFanCurvePoints(points, out var error);
+        var valid = CoolingViewModel.ValidateFanCurvePoints(points, out var error);
 
         Assert.False(valid);
         Assert.NotNull(error);
@@ -83,7 +83,7 @@ public class ProfilesViewModelTests
             new() { TempC = 60, SpeedPercent = 50 },
         };
 
-        var valid = ProfilesViewModel.ValidateFanCurvePoints(points, out var error);
+        var valid = CoolingViewModel.ValidateFanCurvePoints(points, out var error);
 
         Assert.False(valid);
         Assert.NotNull(error);
@@ -99,7 +99,7 @@ public class ProfilesViewModelTests
             new() { TempC = 60, SpeedPercent = 150 }, // Over 100
         };
 
-        var valid = ProfilesViewModel.ValidateFanCurvePoints(points, out var error);
+        var valid = CoolingViewModel.ValidateFanCurvePoints(points, out var error);
 
         Assert.False(valid);
         Assert.NotNull(error);
@@ -115,7 +115,7 @@ public class ProfilesViewModelTests
             new() { TempC = 60, SpeedPercent = -10 }, // Negative
         };
 
-        var valid = ProfilesViewModel.ValidateFanCurvePoints(points, out var error);
+        var valid = CoolingViewModel.ValidateFanCurvePoints(points, out var error);
 
         Assert.False(valid);
         Assert.NotNull(error);
@@ -132,7 +132,7 @@ public class ProfilesViewModelTests
             new() { TempC = 100, SpeedPercent = 100 },
         };
 
-        var valid = ProfilesViewModel.ValidateFanCurvePoints(points, out var error);
+        var valid = CoolingViewModel.ValidateFanCurvePoints(points, out var error);
 
         Assert.True(valid);
         Assert.Null(error);
@@ -145,7 +145,7 @@ public class ProfilesViewModelTests
             .Select(i => new FanCurvePoint { TempC = 30 + i * 5, SpeedPercent = 10 + i * 5 })
             .ToList();
 
-        var valid = ProfilesViewModel.ValidateFanCurvePoints(points, out var error);
+        var valid = CoolingViewModel.ValidateFanCurvePoints(points, out var error);
 
         Assert.True(valid);
         Assert.Null(error);

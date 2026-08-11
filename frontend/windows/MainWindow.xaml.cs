@@ -88,11 +88,12 @@ public sealed partial class MainWindow : Window
     {
         // Set tab labels from Loc
         var items = NavView.MenuItems;
-        if (items.Count >= 3)
+        if (items.Count >= 4)
         {
             ((NavigationViewItem)items[0]).Content = Loc.Nav_Home;
             ((NavigationViewItem)items[1]).Content = Loc.Nav_Profiles;
-            ((NavigationViewItem)items[2]).Content = Loc.Nav_Settings;
+            ((NavigationViewItem)items[2]).Content = Loc.Nav_Cooling;
+            ((NavigationViewItem)items[3]).Content = Loc.Nav_Settings;
         }
     }
 
@@ -212,6 +213,7 @@ public sealed partial class MainWindow : Window
             {
                 "home" => typeof(HomePage),
                 "profiles" => typeof(ProfilesPage),
+                "cooling" => typeof(CoolingPage),
                 "settings" => typeof(SettingsPage),
                 _ => typeof(HomePage),
             };

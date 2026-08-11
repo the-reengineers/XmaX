@@ -26,6 +26,7 @@
                 <NavigationView.MenuItems>
                     <NavigationViewItem Tag="home" />
                     <NavigationViewItem Tag="profiles" />
+                    <NavigationViewItem Tag="cooling" />
                     <NavigationViewItem Tag="settings" />
                 </NavigationView.MenuItems>
             </NavigationView>

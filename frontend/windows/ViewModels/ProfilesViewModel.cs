@@ -20,10 +20,6 @@ public sealed class ProfilesViewModel : INotifyPropertyChanged
 
     // Selected items for editing
     private Profile? _selectedProfile;
-    private FanCurve? _selectedFanCurve;
-
-    // Fan curve editor state
-    private ObservableCollection<FanCurvePoint> _editingPoints = new();
 
     public ProfilesViewModel(ProfileService profileService, PipeClient pipe)
     {
@@ -65,40 +61,6 @@ public sealed class ProfilesViewModel : INotifyPropertyChanged
             if (_selectedProfile == value) return;
             _selectedProfile = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedProfile)));
-        }
-    }
-
-    /// <summary>Currently selected fan curve for editing.</summary>
-    public FanCurve? SelectedFanCurve
-    {
-        get => _selectedFanCurve;
-        set
-        {
-            if (_selectedFanCurve == value) return;
-            _selectedFanCurve = value;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedFanCurve)));
-
-            // Load points into editor
-            if (value != null)
-            {
-                EditingPoints = new ObservableCollection<FanCurvePoint>(value.Points);
-            }
-            else
-            {
-                EditingPoints.Clear();
-            }
-        }
-    }
-
-    /// <summary>Fan curve points being edited (for the fan curve editor UI).</summary>
-    public ObservableCollection<FanCurvePoint> EditingPoints
-    {
-        get => _editingPoints;
-        private set
-        {
-            if (ReferenceEquals(_editingPoints, value)) return;
-            _editingPoints = value;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(EditingPoints)));
         }
     }
 
@@ -164,146 +126,6 @@ public sealed class ProfilesViewModel : INotifyPropertyChanged
         if (psp.DcIn.Profile == profileId) { stateName = Loc.Power_DcIn; return true; }
 
         return false;
-    }
-
-    // ===== Fan Curve CRUD =====
-
-    /// <summary>
-    /// Create a new fan curve with the given name and points.
-    /// </summary>
-    public async Task CreateFanCurveAsync(string name, List<FanCurvePoint> points)
-    {
-        if (!ValidateFanCurvePoints(points, out var error))
-        {
-            throw new ArgumentException(error);
-        }
-
-        var slug = GenerateSlug(name);
-        var curve = new FanCurve
-        {
-            Id = slug,
-            Name = name,
-            Points = points,
-        };
-
-        await _profileService.SaveFanCurveAsync(curve).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Update an existing fan curve.
-    /// </summary>
-    public async Task UpdateFanCurveAsync(FanCurve curve)
-    {
-        if (!ValidateFanCurvePoints(curve.Points, out var error))
-        {
-            throw new ArgumentException(error);
-        }
-
-        await _profileService.SaveFanCurveAsync(curve).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Delete a fan curve by ID. Fails if referenced by any profile.
-    /// </summary>
-    public async Task DeleteFanCurveAsync(string curveId)
-    {
-        // Check if curve is referenced by any profile
-        if (IsFanCurveInUse(curveId, out var profileName))
-        {
-            throw new InvalidOperationException(Loc.F("error.fan_curve_in_use", profileName));
-        }
-
-        await _profileService.DeleteFanCurveAsync(curveId).ConfigureAwait(false);
-
-        if (SelectedFanCurve?.Id == curveId)
-        {
-            SelectedFanCurve = null;
-        }
-    }
-
-    /// <summary>
-    /// Check if a fan curve is referenced by any profile.
-    /// </summary>
-    public bool IsFanCurveInUse(string curveId, out string? profileName)
-    {
-        profileName = null;
-        foreach (var profile in Profiles)
-        {
-            if (profile.FanCurve == curveId)
-            {
-                profileName = profile.Name;
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /// <summary>
-    /// Validate fan curve points (2-10 points, sorted by temp, speed 0-100).
-    /// </summary>
-    public static bool ValidateFanCurvePoints(List<FanCurvePoint> points, out string? error)
-    {
-        error = null;
-
-        if (points.Count < 2)
-        {
-            error = Loc.Error_FanCurveMinPoints;
-            return false;
-        }
-
-        if (points.Count > 10)
-        {
-            error = Loc.Error_FanCurveMaxPoints;
-            return false;
-        }
-
-        // Check sorted by temp
-        for (int i = 1; i < points.Count; i++)
-        {
-            if (points[i].TempC <= points[i - 1].TempC)
-            {
-                error = Loc.Error_FanCurveSorted;
-                return false;
-            }
-        }
-
-        // Check speed range
-        foreach (var point in points)
-        {
-            if (point.SpeedPercent < 0 || point.SpeedPercent > 100)
-            {
-                error = Loc.Error_FanCurveSpeedRange;
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    // ===== Fan Curve Editor =====
-
-    /// <summary>Add a point to the editing list.</summary>
-    public void AddPoint(int tempC, int speedPercent)
-    {
-        EditingPoints.Add(new FanCurvePoint { TempC = tempC, SpeedPercent = speedPercent });
-        // Sort by temp
-        var sorted = EditingPoints.OrderBy(p => p.TempC).ToList();
-        EditingPoints = new ObservableCollection<FanCurvePoint>(sorted);
-    }
-
-    /// <summary>Remove a point from the editing list.</summary>
-    public void RemovePoint(FanCurvePoint point)
-    {
-        EditingPoints.Remove(point);
-    }
-
-    /// <summary>Save the current editing points to the selected fan curve.</summary>
-    public async Task SaveEditingPointsToCurveAsync()
-    {
-        if (SelectedFanCurve == null) return;
-
-        SelectedFanCurve.Points = new List<FanCurvePoint>(EditingPoints);
-        await UpdateFanCurveAsync(SelectedFanCurve).ConfigureAwait(false);
     }
 
     // ===== Power State Assignments =====
@@ -406,26 +228,13 @@ public sealed class ProfilesViewModel : INotifyPropertyChanged
         var baseSlug = slug;
         var counter = 2;
 
-        // Check profiles
-        while (Profiles.Any(p => p.Id == slug) || FanCurves.Any(f => f.Id == slug))
+        // Check profiles only
+        while (Profiles.Any(p => p.Id == slug))
         {
             slug = $"{baseSlug}-{counter}";
             counter++;
         }
 
         return slug;
-    }
-}
-
-/// <summary>Extension method for string replacement.</summary>
-internal static class StringExtensions
-{
-    public static string ReplaceAll(this string str, string[] oldValues, string newValue)
-    {
-        foreach (var old in oldValues)
-        {
-            str = str.Replace(old, newValue);
-        }
-        return str;
     }
 }

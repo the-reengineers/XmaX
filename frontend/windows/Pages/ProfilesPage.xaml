@@ -17,14 +17,6 @@
 
             <ItemsControl x:Name="ProfilesList" Margin="0,8,0,0" />
 
-            <!-- ===== Fan Curves Section ===== -->
-            <TextBlock x:Name="FanCurvesTitle" Style="{StaticResource TitleTextBlockStyle}" Margin="0,16,0,0" />
-
-            <Button x:Name="CreateFanCurveBtn" Click="OnCreateFanCurveClick"
-                    Style="{StaticResource AccentButtonStyle}" HorizontalAlignment="Left" />
-
-            <ItemsControl x:Name="FanCurvesList" Margin="0,8,0,0" />
-
             <!-- ===== Power State Assignments Section ===== -->
             <TextBlock x:Name="PowerStateTitle" Style="{StaticResource TitleTextBlockStyle}" Margin="0,16,0,0" />
 

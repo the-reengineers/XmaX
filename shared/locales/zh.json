@@ -1,6 +1,7 @@
 {
   "nav.home": "首页",
   "nav.profiles": "配置",
+  "nav.cooling": "散热",
   "nav.settings": "设置",
 
   "title.profiles": "配置",
@@ -100,8 +101,13 @@
   "error.fan_curve_max_points": "风扇曲线最多 10 个点",
   "error.fan_curve_sorted": "点必须按温度升序排列",
   "error.fan_curve_speed_range": "风扇速度必须在 0 到 100% 之间",
+  "error.fan_curve_temp_range": "温度必须在 0 到 100°C 之间",
+
+  "label.temperature_axis": "温度 (°C)",
+  "label.fan_axis": "风扇\n（%）",
 
   "format.tdp_fan": "TDP：{0}/{1}/{2}W 风扇：{3}",
   "format.fan_auto": "自动",
-  "format.points_count": "{0} 个点"
+  "format.points_count": "{0} 个点",
+  "format.fan_curve_point": "{0}°C\n{1}%"
 }

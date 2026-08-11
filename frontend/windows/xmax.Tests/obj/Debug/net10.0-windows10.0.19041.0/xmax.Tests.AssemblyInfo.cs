@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("xmax.Tests")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+88d71e26f188e8a92dc29f3fdda0fd67f9c13f40")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+74cc69297db792ef1ad398053e9336350bc9bc3f")]
 [assembly: System.Reflection.AssemblyProductAttribute("xmax.Tests")]
 [assembly: System.Reflection.AssemblyTitleAttribute("xmax.Tests")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

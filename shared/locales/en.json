@@ -1,6 +1,7 @@
 {
   "nav.home": "Home",
   "nav.profiles": "Profiles",
+  "nav.cooling": "Cooling",
   "nav.settings": "Settings",
 
   "title.profiles": "Profiles",
@@ -100,8 +101,13 @@
   "error.fan_curve_max_points": "Fan curve must have at most 10 points",
   "error.fan_curve_sorted": "Points must be sorted by ascending temperature",
   "error.fan_curve_speed_range": "Fan speed must be between 0 and 100%",
+  "error.fan_curve_temp_range": "Temperature must be between 0 and 100°C",
+
+  "label.temperature_axis": "Temperature (°C)",
+  "label.fan_axis": "Fan\n(%)",
 
   "format.tdp_fan": "TDP: {0}/{1}/{2}W  Fan: {3}",
   "format.fan_auto": "auto",
-  "format.points_count": "{0} points"
+  "format.points_count": "{0} points",
+  "format.fan_curve_point": "{0}°C\n{1}%"
 }

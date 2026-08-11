@@ -19,7 +19,7 @@ import sys
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
-LOCALES_DIR = os.path.join(SCRIPT_DIR, "locales")
+LOCALES_DIR = os.path.join(PROJECT_ROOT, "shared", "locales")
 OUTPUT_FILE = os.path.join(PROJECT_ROOT, "frontend", "windows", "Generated", "Loc.cs")
 
 # Languages to generate (order matters: first is fallback)

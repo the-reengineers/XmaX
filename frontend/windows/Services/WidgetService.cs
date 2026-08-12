@@ -17,9 +17,9 @@ namespace XmaX.Services;
 /// </remarks>
 public sealed class WidgetService : INotifyPropertyChanged
 {
-    // Column count bounds (matching PROJECT.md Step 21/23)
+    // Column count bounds (3-4 only)
     public const int MinColumns = 3;
-    public const int MaxColumns = 5;
+    public const int MaxColumns = 4;
 
     private readonly PipeClient _pipe;
 
@@ -56,7 +56,7 @@ public sealed class WidgetService : INotifyPropertyChanged
     /// <summary>All registered widget IDs in display order (including hidden).</summary>
     public IReadOnlyList<string> WidgetOrder => _widgetOrder.AsReadOnly();
 
-    /// <summary>Current column count (3–5).</summary>
+    /// <summary>Current column count (3-4).</summary>
     public int Columns
     {
         get => _columns;
@@ -263,33 +263,46 @@ public sealed class WidgetService : INotifyPropertyChanged
     /// </summary>
     public async Task SaveLayoutAsync()
     {
-        var layout = GetLayout();
-
-        var widgetOrderArray = new JsonArray();
-        foreach (var id in layout.WidgetOrder)
+        try
         {
-            widgetOrderArray.Add(id);
+            if (!_pipe.IsConnected)
+            {
+                System.Diagnostics.Debug.WriteLine("[WidgetService] SaveLayoutAsync skipped: pipe not connected");
+                return;
+            }
+
+            var layout = GetLayout();
+
+            var widgetOrderArray = new JsonArray();
+            foreach (var id in layout.WidgetOrder)
+            {
+                widgetOrderArray.Add(id);
+            }
+
+            var visibilityObj = new JsonObject();
+            foreach (var kvp in layout.WidgetVisibility)
+            {
+                visibilityObj[kvp.Key] = kvp.Value;
+            }
+
+            var homeLayoutObj = new JsonObject
+            {
+                ["widget_order"] = widgetOrderArray,
+                ["widget_visibility"] = visibilityObj,
+                ["columns"] = layout.Columns,
+            };
+
+            var payload = new JsonObject
+            {
+                ["home_layout"] = homeLayoutObj,
+            };
+
+            await _pipe.SendCommandAsync("set_config", payload).ConfigureAwait(false);
         }
-
-        var visibilityObj = new JsonObject();
-        foreach (var kvp in layout.WidgetVisibility)
+        catch (Exception ex)
         {
-            visibilityObj[kvp.Key] = kvp.Value;
+            System.Diagnostics.Debug.WriteLine($"[WidgetService] SaveLayoutAsync failed: {ex.Message}");
         }
-
-        var homeLayoutObj = new JsonObject
-        {
-            ["widget_order"] = widgetOrderArray,
-            ["widget_visibility"] = visibilityObj,
-            ["columns"] = layout.Columns,
-        };
-
-        var payload = new JsonObject
-        {
-            ["home_layout"] = homeLayoutObj,
-        };
-
-        await _pipe.SendCommandAsync("set_config", payload).ConfigureAwait(false);
     }
 
     // ===== Internal =====

@@ -12,11 +12,13 @@ namespace XmaX.Tests;
 internal sealed class FakeWidget : IHomeWidget
 {
     public string WidgetId { get; }
+    public WidgetConfig Config { get; }
     public object Control { get; }
 
-    public FakeWidget(string id, object? control = null)
+    public FakeWidget(string id, object? control = null, WidgetConfig? config = null)
     {
         WidgetId = id;
+        Config = config ?? WidgetConfig.TransparentTile;
         Control = control ?? new object();
     }
 }

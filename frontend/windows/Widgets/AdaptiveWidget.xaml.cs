@@ -5,32 +5,29 @@ using XmaX.Services;
 namespace XmaX.Widgets;
 
 /// <summary>
-/// Adaptive controller widget with 3-button tuning preset selector and TDP ceiling slider.
+/// Adaptive widget showing tuning preset cards in a grid layout.
+/// Each card uses 1 column width matching the home page column count.
+/// Uses ProfileCard component for each preset. Tap to apply.
+/// Active preset is visually highlighted.
 /// </summary>
 public sealed partial class AdaptiveWidget : UserControl, IHomeWidget
 {
     private readonly AutoTuneService _autoTuneService;
-
-    // Prevents slider change from re-triggering when syncing from service state
-    private bool _suppressSliderChange;
+    private readonly WidgetService _widgetService;
 
     public string WidgetId => "adaptive";
+    public WidgetConfig Config => WidgetConfig.FixedTransparent(2, 3);  // 2-3 cols, transparent
     public object Control => this;
 
     public AdaptiveWidget()
     {
         this.InitializeComponent();
-        _suppressSliderChange = true;
-        TdpSlider.Minimum = 6;
-        TdpSlider.Maximum = 120;
-        _suppressSliderChange = false;
         TitleText.Text = Loc.Title_Adaptive;
-        BtnSilent.Content = Loc.Button_Silent;
-        BtnDefault.Content = Loc.Button_Default;
-        BtnPerformance.Content = Loc.Button_Performance;
-        TdpCeilingLabel.Text = Loc.Form_TdpCeiling;
         _autoTuneService = App.AutoTuneService;
+        _widgetService = App.WidgetService;
         _autoTuneService.PropertyChanged += OnAutoTuneChanged;
+        _widgetService.PropertyChanged += OnWidgetServiceChanged;
+        BuildPresetCards();
         UpdateDisplay();
     }
 
@@ -38,62 +35,100 @@ public sealed partial class AdaptiveWidget : UserControl, IHomeWidget
     {
         if (e.PropertyName == nameof(AutoTuneService.State) ||
             e.PropertyName == nameof(AutoTuneService.IsActive) ||
-            e.PropertyName == nameof(AutoTuneService.Tuning) ||
-            e.PropertyName == nameof(AutoTuneService.EffectiveTdpMaxW))
+            e.PropertyName == nameof(AutoTuneService.Tuning))
         {
             DispatcherQueue.TryEnqueue(UpdateDisplay);
         }
     }
 
-    private void UpdateDisplay()
+    private void OnWidgetServiceChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        var state = _autoTuneService.State;
-        var isActive = _autoTuneService.IsActive;
-        var tuning = _autoTuneService.Tuning;
-
-        // Highlight active tuning preset button
-        BtnSilent.Style = tuning == "silent" && isActive
-            ? (Microsoft.UI.Xaml.Style)Application.Current.Resources["AccentButtonStyle"]
-            : (Microsoft.UI.Xaml.Style)Application.Current.Resources["DefaultButtonStyle"];
-        BtnDefault.Style = tuning == "default" && isActive
-            ? (Microsoft.UI.Xaml.Style)Application.Current.Resources["AccentButtonStyle"]
-            : (Microsoft.UI.Xaml.Style)Application.Current.Resources["DefaultButtonStyle"];
-        BtnPerformance.Style = tuning == "performance" && isActive
-            ? (Microsoft.UI.Xaml.Style)Application.Current.Resources["AccentButtonStyle"]
-            : (Microsoft.UI.Xaml.Style)Application.Current.Resources["DefaultButtonStyle"];
-
-        // Sync TDP slider
-        _suppressSliderChange = true;
-        TdpSlider.Value = state.TdpMaxW;
-        TdpValue.Text = Loc.F("widget.tdp_format", state.EffectiveTdpMaxW);
-        _suppressSliderChange = false;
+        if (e.PropertyName == nameof(WidgetService.Columns))
+        {
+            DispatcherQueue.TryEnqueue(BuildPresetCards);
+        }
     }
 
-    private void OnTuningClick(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// Build ProfileCards for each tuning preset (silent, default, performance) in a grid.
+    /// Each card uses 1 column width matching the widget's actual column span.
+    /// </summary>
+    private void BuildPresetCards()
     {
-        if (sender is Button btn && btn.Tag is string tuning)
+        PresetGrid.Children.Clear();
+        PresetGrid.ColumnDefinitions.Clear();
+        PresetGrid.RowDefinitions.Clear();
+
+        var presets = new[]
+        {
+            new { Tuning = "silent", Name = Loc.Button_Silent, Info = "60°C" },
+            new { Tuning = "default", Name = Loc.Button_Default, Info = "80°C" },
+            new { Tuning = "performance", Name = Loc.Button_Performance, Info = "95°C" },
+        };
+
+        // Use the widget's actual column span (min of MaxColumns and home page columns)
+        var columns = Math.Min(Config.MaxColumns, _widgetService.Columns);
+
+        // Create columns matching the widget's column span
+        for (int c = 0; c < columns; c++)
+        {
+            PresetGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        }
+
+        // Calculate rows needed
+        var rows = (presets.Length + columns - 1) / columns;
+        for (int r = 0; r < rows; r++)
+        {
+            PresetGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        }
+
+        // Add preset cards
+        for (int i = 0; i < presets.Length; i++)
+        {
+            var preset = presets[i];
+            var row = i / columns;
+            var col = i % columns;
+
+            var card = new ProfileCard
+            {
+                ProfileId = preset.Tuning,
+                DisplayName = preset.Name,
+                Info = preset.Info,
+                VerticalAlignment = VerticalAlignment.Stretch,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+            };
+            card.CardTapped += OnPresetCardTapped;
+            PresetGrid.Children.Add(card);
+            Grid.SetRow(card, row);
+            Grid.SetColumn(card, col);
+        }
+    }
+
+    private void UpdateDisplay()
+    {
+        var tuning = _autoTuneService.Tuning;
+        var isActive = _autoTuneService.IsActive;
+
+        // Update card selection state
+        foreach (var child in PresetGrid.Children)
+        {
+            if (child is ProfileCard card)
+            {
+                card.IsSelected = card.ProfileId == tuning && isActive;
+            }
+        }
+    }
+
+    private void OnPresetCardTapped(object? sender, EventArgs e)
+    {
+        if (sender is ProfileCard card && !string.IsNullOrEmpty(card.ProfileId))
         {
             var state = _autoTuneService.State;
             _ = _autoTuneService.SetAutoTuneAsync(
-                tuning,
+                card.ProfileId,
                 state.TargetTempC,
                 state.TdpMaxW,
                 state.FanMaxPercent);
         }
-    }
-
-    private void OnTdpSliderChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
-    {
-        if (_suppressSliderChange) return;
-
-        var tdpW = (int)e.NewValue;
-        TdpValue.Text = Loc.F("widget.tdp_format", tdpW);
-
-        var state = _autoTuneService.State;
-        _ = _autoTuneService.SetAutoTuneAsync(
-            state.Tuning,
-            state.TargetTempC,
-            tdpW,
-            state.FanMaxPercent);
     }
 }

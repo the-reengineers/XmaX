@@ -83,10 +83,12 @@
   "metrics.cpu": "CPU",
   "metrics.gpu": "GPU",
   "metrics.ram": "RAM",
+  "metrics.vram": "VRAM",
   "metrics.temp_format": "{0}°C",
   "metrics.util_format": "{0}% util",
   "metrics.power_format": "{0}W",
   "metrics.ram_format": "{0}/{1}G",
+  "metrics.vram_format": "{0}/{1}G",
   "metrics.load_format": "{0}% load",
   "metrics.no_data": "—",
 

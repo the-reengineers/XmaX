@@ -2,6 +2,11 @@
 
 #include <iostream>
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+
 // EC register addresses for power state and charge limit
 static constexpr uint16_t EC_POWER_STATE   = 0x04FE;
 static constexpr uint16_t EC_CHARGE_LIMIT  = 0x04A3;
@@ -75,14 +80,49 @@ void MetricsPoller::poll_loop() {
 void MetricsPoller::poll_cpu() {
     std::lock_guard lock(metrics_mutex_);
 
-    // TODO: Implement CPU metrics polling
-    // - CPU utilization: GetSystemTimes delta (Windows) or /proc/stat (Linux)
-    // - CPU clock: WMI Win32_Processor (Windows) or /proc/cpuinfo (Linux)
-    // - CPU temperature: EC 0x0470 via WMI (Windows) or hwmon (Linux)
-    // - CPU package power: via TdpController (SMU mailbox)
+#ifdef _WIN32
+    // CPU utilization via GetSystemTimes
+    static FILETIME prev_idle = {}, prev_kernel = {}, prev_user = {};
+    static bool has_prev = false;
 
-    // For now, leave CPU metrics as defaults (0/nullopt)
-    // These will be implemented when Platform interface is extended
+    FILETIME idle, kernel, user;
+    if (GetSystemTimes(&idle, &kernel, &user)) {
+        if (has_prev) {
+            // Convert FILETIME to uint64_t (100-nanosecond intervals)
+            auto to_uint64 = [](const FILETIME& ft) -> uint64_t {
+                return (static_cast<uint64_t>(ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
+            };
+
+            uint64_t idle_diff = to_uint64(idle) - to_uint64(prev_idle);
+            uint64_t kernel_diff = to_uint64(kernel) - to_uint64(prev_kernel);
+            uint64_t user_diff = to_uint64(user) - to_uint64(prev_user);
+
+            // Kernel time includes idle time
+            uint64_t total = kernel_diff + user_diff;
+            if (total > 0) {
+                uint64_t busy = (kernel_diff - idle_diff) + user_diff;
+                current_metrics_.cpu.util_pct = static_cast<float>(busy * 100) / static_cast<float>(total);
+            }
+        }
+
+        prev_idle = idle;
+        prev_kernel = kernel;
+        prev_user = user;
+        has_prev = true;
+    }
+
+    // CPU clock speed via WMI (Win32_Processor.MaxClockSpeed)
+    // TODO: Implement WMI query for CPU clock
+
+    // CPU temperature via EC register 0x0470
+    auto temp_result = platform_.ec_read(0x0470);
+    if (temp_result) {
+        current_metrics_.cpu.temp_c = static_cast<int>(temp_result.value());
+    }
+
+    // CPU package power via SMU mailbox
+    // TODO: Implement SMU query for package power
+#endif
 }
 
 void MetricsPoller::poll_gpu() {
@@ -98,21 +138,32 @@ void MetricsPoller::poll_gpu() {
         current_metrics_.gpu.power_w = telemetry.power_w;
         current_metrics_.gpu.vram_used_mb = telemetry.vram_used_mb;
         current_metrics_.gpu.vram_total_mb = telemetry.vram_total_mb;
+        std::cout << "[metrics] GPU metrics OK: util=" << telemetry.util_pct
+                  << " clock=" << telemetry.clock_mhz << "MHz"
+                  << " temp=" << (telemetry.temp_c.has_value() ? std::to_string(telemetry.temp_c.value()) : "null")
+                  << std::endl;
     } else {
         // GPU metrics unavailable -- set to defaults
         current_metrics_.gpu = GpuMetrics{};
+        std::cout << "[metrics] GPU metrics unavailable (ADLX may have failed to initialize)" << std::endl;
     }
 }
 
 void MetricsPoller::poll_ram() {
     std::lock_guard lock(metrics_mutex_);
 
-    // TODO: Implement RAM metrics polling
-    // - Windows: GlobalMemoryStatusEx
-    // - Linux: sysinfo() or /proc/meminfo
-
-    // For now, leave RAM metrics as defaults (0)
-    // These will be implemented when Platform interface is extended
+#ifdef _WIN32
+    MEMORYSTATUSEX mem_status;
+    mem_status.dwLength = sizeof(MEMORYSTATUSEX);
+    if (GlobalMemoryStatusEx(&mem_status)) {
+        // Convert bytes to GB
+        constexpr double bytes_per_gb = 1024.0 * 1024.0 * 1024.0;
+        current_metrics_.ram.total_gb = static_cast<float>(mem_status.ullTotalPhys / bytes_per_gb);
+        current_metrics_.ram.avail_gb = static_cast<float>(mem_status.ullAvailPhys / bytes_per_gb);
+        current_metrics_.ram.used_gb = current_metrics_.ram.total_gb - current_metrics_.ram.avail_gb;
+        current_metrics_.ram.load_pct = static_cast<float>(mem_status.dwMemoryLoad);
+    }
+#endif
 }
 
 void MetricsPoller::poll_fan() {
@@ -150,6 +201,7 @@ void MetricsPoller::poll_power() {
     } else {
         current_metrics_.power.mode = PowerState::Source::Unknown;
         current_metrics_.power.label = "Unknown";
+        std::cout << "[metrics] Power state EC read failed (WMI may have failed)" << std::endl;
     }
 
     // Poll charge limit from EC register 0x04A3

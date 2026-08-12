@@ -4,23 +4,25 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             mc:Ignorable="d">
+             mc:Ignorable="d"
+             Tapped="OnWidgetTapped"
+             PointerEntered="OnPointerEntered"
+             PointerExited="OnPointerExited">
 
-    <Grid Padding="12" RowSpacing="8">
+    <Grid Padding="4" RowSpacing="4">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <TextBlock x:Name="TitleText" Style="{StaticResource BodyStrongTextBlockStyle}" />
 
-        <Button x:Name="ChargeLimitButton" Grid.Row="1"
-                HorizontalAlignment="Stretch"
-                Click="OnCycleClick">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <FontIcon Glyph="&#xE977;" FontSize="16" />
-                <TextBlock x:Name="ChargeLimitText" VerticalAlignment="Center" />
-            </StackPanel>
-        </Button>
+        <TextBlock x:Name="ChargeLimitText" Grid.Row="1"
+                   Style="{StaticResource SubtitleTextBlockStyle}" />
+
+        <TextBlock Grid.Row="2" Style="{StaticResource CaptionTextBlockStyle}"
+                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                   Text="Tap to cycle" />
     </Grid>
 </UserControl>

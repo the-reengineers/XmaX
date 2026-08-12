@@ -1,23 +1,23 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 using XmaX.Models;
 using XmaX.Services;
 
 namespace XmaX.Widgets;
 
 /// <summary>
-/// Profiles widget showing up to 3 profile tiles. Tap to apply.
+/// Profiles widget showing profile cards in a grid layout.
+/// Each card uses 1 column width matching the home page column count.
+/// Uses ProfileCard component for each profile. Tap to apply.
 /// Active profile is visually highlighted.
 /// </summary>
 public sealed partial class ProfilesWidget : UserControl, IHomeWidget
 {
-    /// <summary>Maximum number of profile tiles shown.</summary>
-    private const int MaxTiles = 3;
-
     private readonly ProfileService _profileService;
+    private readonly WidgetService _widgetService;
 
     public string WidgetId => "profiles";
+    public WidgetConfig Config => WidgetConfig.FlexibleTransparent(1, 4);  // Flexible, transparent
     public object Control => this;
 
     public ProfilesWidget()
@@ -25,8 +25,10 @@ public sealed partial class ProfilesWidget : UserControl, IHomeWidget
         this.InitializeComponent();
         TitleText.Text = Loc.Title_Profiles;
         _profileService = App.ProfileService;
+        _widgetService = App.WidgetService;
         _profileService.PropertyChanged += OnProfileServiceChanged;
-        RebuildTiles();
+        _widgetService.PropertyChanged += OnWidgetServiceChanged;
+        RebuildCards();
     }
 
     private void OnProfileServiceChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -34,16 +36,28 @@ public sealed partial class ProfilesWidget : UserControl, IHomeWidget
         if (e.PropertyName == nameof(ProfileService.Profiles) ||
             e.PropertyName == nameof(ProfileService.ActiveProfileId))
         {
-            DispatcherQueue.TryEnqueue(RebuildTiles);
+            DispatcherQueue.TryEnqueue(RebuildCards);
         }
     }
 
-    private void RebuildTiles()
+    private void OnWidgetServiceChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        ProfileTiles.Children.Clear();
+        if (e.PropertyName == nameof(WidgetService.Columns))
+        {
+            DispatcherQueue.TryEnqueue(RebuildCards);
+        }
+    }
+
+    private void RebuildCards()
+    {
+        CardsGrid.Children.Clear();
+        CardsGrid.ColumnDefinitions.Clear();
+        CardsGrid.RowDefinitions.Clear();
 
         var profiles = _profileService.Profiles;
         var activeId = _profileService.ActiveProfileId;
+        // Use the widget's actual column span (min of MaxColumns and home page columns)
+        var columns = Math.Min(Config.MaxColumns, _widgetService.Columns);
 
         if (profiles.Count == 0)
         {
@@ -53,46 +67,71 @@ public sealed partial class ProfilesWidget : UserControl, IHomeWidget
                 Style = (Microsoft.UI.Xaml.Style)Application.Current.Resources["CaptionTextBlockStyle"],
                 Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
             };
-            ProfileTiles.Children.Add(empty);
+            CardsGrid.Children.Add(empty);
             return;
         }
 
-        var count = Math.Min(profiles.Count, MaxTiles);
-        for (int i = 0; i < count; i++)
+        // Create columns matching home page column count
+        for (int c = 0; c < columns; c++)
+        {
+            CardsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        }
+
+        // Calculate rows needed
+        var rows = (profiles.Count + columns - 1) / columns;
+        for (int r = 0; r < rows; r++)
+        {
+            CardsGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        }
+
+        // Add profile cards
+        for (int i = 0; i < profiles.Count; i++)
         {
             var profile = profiles[i];
             var isActive = profile.Id == activeId;
+            var row = i / columns;
+            var col = i % columns;
 
-            var button = new Button
+            var card = new ProfileCard
             {
-                Content = profile.Name,
+                ProfileId = profile.Id,
+                DisplayName = profile.Name,
+                Info = GetProfileInfo(profile),
+                IsSelected = isActive,
+                VerticalAlignment = VerticalAlignment.Stretch,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
-                Tag = profile.Id,
             };
 
-            ToolTipService.SetToolTip(button, Loc.F("widget.apply_profile_tooltip", profile.Name));
-
-            if (isActive)
-            {
-                button.Style = (Microsoft.UI.Xaml.Style)Application.Current.Resources["AccentButtonStyle"];
-            }
-
-            button.Click += OnProfileTileClick;
-            ProfileTiles.Children.Add(button);
+            card.CardTapped += OnProfileCardTapped;
+            CardsGrid.Children.Add(card);
+            Grid.SetRow(card, row);
+            Grid.SetColumn(card, col);
         }
     }
 
-    private async void OnProfileTileClick(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// Get info text for a profile (e.g., TDP limits, fan curve).
+    /// </summary>
+    private string GetProfileInfo(Profile profile)
     {
-        if (sender is Button btn && btn.Tag is string profileId)
+        var parts = new List<string>();
+        if (profile.Tdp.Stapm > 0)
+            parts.Add($"{profile.Tdp.Stapm}W");
+        if (!string.IsNullOrEmpty(profile.FanCurve))
+            parts.Add(profile.FanCurve);
+        return parts.Count > 0 ? string.Join(" · ", parts) : "";
+    }
+
+    private async void OnProfileCardTapped(object? sender, EventArgs e)
+    {
+        if (sender is ProfileCard card && !string.IsNullOrEmpty(card.ProfileId))
         {
             try
             {
-                await _profileService.ApplyProfileAsync(profileId);
+                await _profileService.ApplyProfileAsync(card.ProfileId);
             }
             catch (Exception ex)
             {
-                // Show error to user
                 await ShowErrorAsync(Loc.Dialog_ApplyFailed, ex.Message);
             }
         }

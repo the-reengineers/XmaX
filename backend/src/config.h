@@ -1,8 +1,10 @@
 #pragma once
 
 #include <filesystem>
+#include <map>
 #include <optional>
 #include <string>
+#include <vector>
 
 // Configuration structures
 
@@ -26,6 +28,12 @@ struct PowerStateProfiles {
     PowerStateProfile dc_in;
 };
 
+struct HomeLayout {
+    std::vector<std::string> widget_order;
+    std::map<std::string, bool> widget_visibility;
+    int columns = 3;  // 3-5 columns
+};
+
 struct Config {
     std::string language = "auto";
     std::string theme = "system";
@@ -35,6 +43,7 @@ struct Config {
     bool auto_start = false;
     std::optional<AutoTuneConfig> auto_tune;
     PowerStateProfiles power_state_profiles;
+    HomeLayout home_layout;
 };
 
 // Load config from file

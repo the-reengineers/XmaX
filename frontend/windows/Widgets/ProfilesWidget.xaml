@@ -6,7 +6,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d">
 
-    <Grid Padding="12" RowSpacing="8">
+    <Grid Padding="4" RowSpacing="8">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -14,6 +14,7 @@
 
         <TextBlock x:Name="TitleText" Style="{StaticResource BodyStrongTextBlockStyle}" />
 
-        <StackPanel x:Name="ProfileTiles" Grid.Row="1" Spacing="6" />
+        <!-- Grid of profile cards (columns created dynamically) -->
+        <Grid x:Name="CardsGrid" Grid.Row="1" ColumnSpacing="8" />
     </Grid>
 </UserControl>

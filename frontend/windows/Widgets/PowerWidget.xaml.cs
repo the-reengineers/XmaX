@@ -1,33 +1,23 @@
-using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using XmaX.Services;
 
 namespace XmaX.Widgets;
 
 /// <summary>
-/// Power widget showing power source status, battery, and adaptive TDP ceiling slider.
-/// This widget spans the full row in the home page grid.
+/// Power state tile showing current power source and TDP limit.
 /// </summary>
 public sealed partial class PowerWidget : UserControl, IHomeWidget
 {
     private readonly MetricsService _metricsService;
     private readonly AutoTuneService _autoTuneService;
 
-    // Prevents slider change from re-triggering when syncing from service state
-    private bool _suppressSliderChange;
-
     public string WidgetId => "power";
+    public WidgetConfig Config => WidgetConfig.TransparentTile;  // 1x1 transparent tile
     public object Control => this;
 
     public PowerWidget()
     {
         this.InitializeComponent();
-        _suppressSliderChange = true;
-        TdpCeilingSlider.Minimum = 6;
-        TdpCeilingSlider.Maximum = 120;
-        _suppressSliderChange = false;
-        TitleText.Text = Loc.Title_Power;
-        TdpCeilingLabel.Text = Loc.Form_TdpCeiling;
         _metricsService = App.MetricsService;
         _autoTuneService = App.AutoTuneService;
         _metricsService.PropertyChanged += OnMetricsChanged;
@@ -39,61 +29,34 @@ public sealed partial class PowerWidget : UserControl, IHomeWidget
     {
         if (e.PropertyName == nameof(MetricsService.Metrics))
         {
-            DispatcherQueue.TryEnqueue(UpdatePowerStatus);
+            DispatcherQueue.TryEnqueue(UpdateDisplay);
         }
     }
 
     private void OnAutoTuneChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(AutoTuneService.State) ||
-            e.PropertyName == nameof(AutoTuneService.EffectiveTdpMaxW))
+        if (e.PropertyName == nameof(AutoTuneService.EffectiveTdpMaxW))
         {
-            DispatcherQueue.TryEnqueue(UpdateTdpSlider);
+            DispatcherQueue.TryEnqueue(UpdateDisplay);
         }
     }
 
     private void UpdateDisplay()
     {
-        UpdatePowerStatus();
-        UpdateTdpSlider();
-    }
-
-    private void UpdatePowerStatus()
-    {
         var power = _metricsService.Metrics.Power;
-        PowerSourceLabel.Text = !string.IsNullOrEmpty(power.Label) ? power.Label : power.Mode;
 
-        if (power.BatteryPercent.HasValue)
+        // Map power mode to locale string
+        StateText.Text = power.Mode switch
         {
-            BatteryText.Text = Loc.F("widget.charge_format", power.BatteryPercent.Value);
-        }
-        else
-        {
-            BatteryText.Text = "";
-        }
-    }
+            "battery" => Loc.Power_Battery,
+            "usb_c_slow" => Loc.Power_UsbCSlow,
+            "usb_c_fast" => Loc.Power_UsbCFast,
+            "dc_in" => Loc.Power_DcIn,
+            _ => power.Label ?? power.Mode,
+        };
 
-    private void UpdateTdpSlider()
-    {
-        _suppressSliderChange = true;
-        var effectiveTdp = _autoTuneService.EffectiveTdpMaxW;
-        TdpCeilingSlider.Value = effectiveTdp > 0 ? effectiveTdp : 55;
-        TdpCeilingValue.Text = Loc.F("widget.tdp_format", effectiveTdp);
-        _suppressSliderChange = false;
-    }
-
-    private void OnTdpCeilingChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
-    {
-        if (_suppressSliderChange) return;
-
-        var tdpW = (int)e.NewValue;
-        TdpCeilingValue.Text = Loc.F("widget.tdp_format", tdpW);
-
-        var state = _autoTuneService.State;
-        _ = _autoTuneService.SetAutoTuneAsync(
-            state.Tuning,
-            state.TargetTempC,
-            tdpW,
-            state.FanMaxPercent);
+        // Show TDP limit
+        var tdp = _autoTuneService.EffectiveTdpMaxW;
+        TdpText.Text = tdp > 0 ? Loc.F("metrics.power_format", tdp) : "";
     }
 }

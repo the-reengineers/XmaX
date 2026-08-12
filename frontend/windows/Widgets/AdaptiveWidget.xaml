@@ -6,45 +6,15 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d">
 
-    <Grid Padding="12" RowSpacing="8">
+    <Grid Padding="4" RowSpacing="8">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
         <TextBlock x:Name="TitleText" Style="{StaticResource BodyStrongTextBlockStyle}" />
 
-        <!-- 3-button tuning preset selector -->
-        <Grid Grid.Row="1" ColumnSpacing="4">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-
-            <Button x:Name="BtnSilent" Grid.Column="0"
-                    HorizontalAlignment="Stretch" Click="OnTuningClick" Tag="silent" />
-            <Button x:Name="BtnDefault" Grid.Column="1"
-                    HorizontalAlignment="Stretch" Click="OnTuningClick" Tag="default" />
-            <Button x:Name="BtnPerformance" Grid.Column="2"
-                    HorizontalAlignment="Stretch" Click="OnTuningClick" Tag="performance" />
-        </Grid>
-
-        <!-- TDP ceiling slider -->
-        <StackPanel Grid.Row="2" Spacing="4">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <TextBlock x:Name="TdpCeilingLabel" VerticalAlignment="Center" />
-                <TextBlock x:Name="TdpValue" Grid.Column="1" VerticalAlignment="Center"
-                           Style="{StaticResource CaptionTextBlockStyle}"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-            </Grid>
-            <Slider x:Name="TdpSlider" StepFrequency="1"
-                    ValueChanged="OnTdpSliderChanged" />
-        </StackPanel>
+        <!-- Adaptive profile cards (tuning presets) in a grid -->
+        <Grid x:Name="PresetGrid" Grid.Row="1" ColumnSpacing="8" RowSpacing="8" />
     </Grid>
 </UserControl>

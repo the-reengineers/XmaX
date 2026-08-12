@@ -1,11 +1,13 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using XmaX.Services;
 
 namespace XmaX.Widgets;
 
 /// <summary>
-/// Charge limit widget with a cycling button (75 → 80 → 85 → 90 → 95 → 100 → 75...).
+/// Charge limit widget - entire widget is clickable to cycle charge limits.
+/// Card background applied by HomePage (IsInteractiveCard = true).
 /// </summary>
 public sealed partial class ChargeLimitWidget : UserControl, IHomeWidget
 {
@@ -16,6 +18,7 @@ public sealed partial class ChargeLimitWidget : UserControl, IHomeWidget
     private readonly PipeClient _pipe;
 
     public string WidgetId => "charge_limit";
+    public WidgetConfig Config => WidgetConfig.CardTile;  // 1x1, card background (entire widget is toggle)
     public object Control => this;
 
     public ChargeLimitWidget()
@@ -26,8 +29,6 @@ public sealed partial class ChargeLimitWidget : UserControl, IHomeWidget
         _pipe = App.Pipe;
         _metricsService.PropertyChanged += OnMetricsChanged;
         UpdateDisplay();
-
-        ToolTipService.SetToolTip(this, Loc.Widget_CycleChargeTooltip);
     }
 
     private void OnMetricsChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -44,7 +45,23 @@ public sealed partial class ChargeLimitWidget : UserControl, IHomeWidget
         ChargeLimitText.Text = limit.HasValue ? Loc.F("widget.charge_format", limit.Value) : Loc.Metrics_NoData;
     }
 
-    private async void OnCycleClick(object sender, RoutedEventArgs e)
+    private void OnWidgetTapped(object sender, TappedRoutedEventArgs e)
+    {
+        _ = CycleChargeLimitAsync();
+    }
+
+    private void OnPointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        // Hover effect - slightly brighter
+        Opacity = 0.8;
+    }
+
+    private void OnPointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        Opacity = 1.0;
+    }
+
+    private async Task CycleChargeLimitAsync()
     {
         var current = _metricsService.Metrics.Power.ChargeLimitPercent ?? 100;
         var next = GetNextLimit(current);

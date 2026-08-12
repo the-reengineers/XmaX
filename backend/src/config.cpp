@@ -101,6 +101,30 @@ Config load_config(const std::filesystem::path& config_path) {
             parse_power_state(psp, "dc_in", config.power_state_profiles.dc_in);
         }
 
+        // Parse home layout
+        if (j.contains("home_layout") && j["home_layout"].is_object()) {
+            auto& hl = j["home_layout"];
+            if (hl.contains("widget_order") && hl["widget_order"].is_array()) {
+                config.home_layout.widget_order.clear();
+                for (const auto& item : hl["widget_order"]) {
+                    if (item.is_string()) {
+                        config.home_layout.widget_order.push_back(item.get<std::string>());
+                    }
+                }
+            }
+            if (hl.contains("widget_visibility") && hl["widget_visibility"].is_object()) {
+                config.home_layout.widget_visibility.clear();
+                for (auto it = hl["widget_visibility"].begin(); it != hl["widget_visibility"].end(); ++it) {
+                    if (it.value().is_boolean()) {
+                        config.home_layout.widget_visibility[it.key()] = it.value().get<bool>();
+                    }
+                }
+            }
+            if (hl.contains("columns") && hl["columns"].is_number_integer()) {
+                config.home_layout.columns = hl["columns"].get<int>();
+            }
+        }
+
         // Initialize session_persist from persist (session_persist is in-memory only)
         config.session_persist = config.persist;
 
@@ -144,6 +168,21 @@ bool save_config(const std::filesystem::path& config_path, const Config& config)
             {"usb_c_slow", {{"profile", psp.usb_c_slow.profile}, {"tdp_max_w", psp.usb_c_slow.tdp_max_w}}},
             {"usb_c_fast", {{"profile", psp.usb_c_fast.profile}, {"tdp_max_w", psp.usb_c_fast.tdp_max_w}}},
             {"dc_in", {{"profile", psp.dc_in.profile}, {"tdp_max_w", psp.dc_in.tdp_max_w}}}
+        };
+
+        // Home layout
+        json widget_order = json::array();
+        for (const auto& id : config.home_layout.widget_order) {
+            widget_order.push_back(id);
+        }
+        json widget_visibility = json::object();
+        for (const auto& [key, value] : config.home_layout.widget_visibility) {
+            widget_visibility[key] = value;
+        }
+        j["home_layout"] = {
+            {"widget_order", widget_order},
+            {"widget_visibility", widget_visibility},
+            {"columns", config.home_layout.columns}
         };
 
         // Ensure directory exists
@@ -217,6 +256,12 @@ bool validate_config(Config& config) {
     validate_power_state(config.power_state_profiles.usb_c_slow, 35);
     validate_power_state(config.power_state_profiles.usb_c_fast, 45);
     validate_power_state(config.power_state_profiles.dc_in, 55);
+
+    // Validate home layout columns (3-4 only)
+    if (config.home_layout.columns != 3 && config.home_layout.columns != 4) {
+        config.home_layout.columns = 3;
+        modified = true;
+    }
 
     return modified;
 }

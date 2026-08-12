@@ -11,6 +11,7 @@ namespace XmaX.Pages;
 public sealed partial class SettingsPage : Page
 {
     private readonly SettingsViewModel _viewModel;
+    private bool _isInitializing = true;  // Prevent slider events during initialization
 
     // Widget layout items for display
     private ObservableCollection<WidgetLayoutItem> _widgetItems = new();
@@ -90,10 +91,12 @@ public sealed partial class SettingsPage : Page
 
     private void InitializeColumnsSlider()
     {
+        _isInitializing = true;
         ColumnsSlider.Minimum = 3;
-        ColumnsSlider.Maximum = 5;
+        ColumnsSlider.Maximum = 4;
         ColumnsSlider.Value = _viewModel.Columns;
         ColumnsValue.Text = _viewModel.Columns.ToString();
+        _isInitializing = false;
     }
 
     // ===== Event handlers =====
@@ -126,6 +129,8 @@ public sealed partial class SettingsPage : Page
 
     private void OnColumnsChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
     {
+        if (_isInitializing) return;
+
         var value = (int)ColumnsSlider.Value;
         ColumnsValue.Text = value.ToString();
         _viewModel.Columns = value;

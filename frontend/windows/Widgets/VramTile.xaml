@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<UserControl x:Class="XmaX.Widgets.PowerWidget"
+<UserControl x:Class="XmaX.Widgets.VramTile"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -7,11 +7,9 @@
              mc:Ignorable="d">
 
     <StackPanel Spacing="4" Padding="4">
-        <TextBlock Text="POWER" Style="{StaticResource CaptionTextBlockStyle}"
+        <TextBlock Text="VRAM" Style="{StaticResource CaptionTextBlockStyle}"
                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-        <TextBlock x:Name="StateText" Style="{StaticResource SubtitleTextBlockStyle}" />
-        <TextBlock x:Name="TdpText" Style="{StaticResource CaptionTextBlockStyle}"
-                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        <TextBlock x:Name="UsageText" Style="{StaticResource SubtitleTextBlockStyle}" />
     </StackPanel>
 
 </UserControl>

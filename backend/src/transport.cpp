@@ -368,6 +368,16 @@ void TransportService::metrics_push_loop() {
                 metrics_json.pop_back();
             }
             evt.data = metrics_json;
+
+            // Debug: Log metric values being sent
+            std::cout << "[metrics] Sending: cpu_util=" << m.cpu.util_pct
+                      << " cpu_temp=" << (m.cpu.temp_c.has_value() ? std::to_string(m.cpu.temp_c.value()) : "null")
+                      << " gpu_util=" << m.gpu.util_pct
+                      << " ram_used=" << m.ram.used_gb << "GB"
+                      << " fan_rpm=" << m.fan.rpm
+                      << " power_mode=" << static_cast<int>(m.power.mode)
+                      << std::endl;
+
             send_event_immediate(evt);
         }
 
@@ -1221,6 +1231,21 @@ auto TransportService::handle_get_config(const Command& cmd) -> Response {
     psp["dc_in"]["tdp_max_w"] = config_.power_state_profiles.dc_in.tdp_max_w;
     data["power_state_profiles"] = psp;
 
+    // Home layout
+    json widget_order = json::array();
+    for (const auto& id : config_.home_layout.widget_order) {
+        widget_order.push_back(id);
+    }
+    json widget_visibility = json::object();
+    for (const auto& [key, value] : config_.home_layout.widget_visibility) {
+        widget_visibility[key] = value;
+    }
+    data["home_layout"] = {
+        {"widget_order", widget_order},
+        {"widget_visibility", widget_visibility},
+        {"columns", config_.home_layout.columns}
+    };
+
     Response resp;
     resp.id = cmd.id;
     resp.ok = true;
@@ -1250,6 +1275,32 @@ auto TransportService::handle_set_config(const Command& cmd) -> Response {
             }
             if (payload.contains("auto_start")) {
                 config_.auto_start = payload["auto_start"].get<bool>();
+            }
+            if (payload.contains("home_layout") && payload["home_layout"].is_object()) {
+                auto& hl = payload["home_layout"];
+                if (hl.contains("widget_order") && hl["widget_order"].is_array()) {
+                    config_.home_layout.widget_order.clear();
+                    for (const auto& item : hl["widget_order"]) {
+                        if (item.is_string()) {
+                            config_.home_layout.widget_order.push_back(item.get<std::string>());
+                        }
+                    }
+                }
+                if (hl.contains("widget_visibility") && hl["widget_visibility"].is_object()) {
+                    config_.home_layout.widget_visibility.clear();
+                    for (auto it = hl["widget_visibility"].begin(); it != hl["widget_visibility"].end(); ++it) {
+                        if (it.value().is_boolean()) {
+                            config_.home_layout.widget_visibility[it.key()] = it.value().get<bool>();
+                        }
+                    }
+                }
+                if (hl.contains("columns") && hl["columns"].is_number_integer()) {
+                    int cols = hl["columns"].get<int>();
+                    // Only allow 3 or 4 columns
+                    if (cols == 3 || cols == 4) {
+                        config_.home_layout.columns = cols;
+                    }
+                }
             }
 
             save_config(config_path_, config_);

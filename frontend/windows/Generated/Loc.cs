@@ -78,6 +78,8 @@ public static class Loc
         ["metrics.ram_format"] = @"{0}/{1}G",
         ["metrics.temp_format"] = @"{0}°C",
         ["metrics.util_format"] = @"{0}% util",
+        ["metrics.vram"] = @"VRAM",
+        ["metrics.vram_format"] = @"{0}/{1}G",
         ["nav.apply"] = @"Apply",
         ["nav.cooling"] = @"Cooling",
         ["nav.home"] = @"Home",
@@ -188,6 +190,8 @@ public static class Loc
         ["metrics.ram_format"] = @"{0}/{1}G",
         ["metrics.temp_format"] = @"{0}°C",
         ["metrics.util_format"] = @"{0}% 使用率",
+        ["metrics.vram"] = @"显存",
+        ["metrics.vram_format"] = @"{0}/{1}G",
         ["nav.apply"] = @"应用",
         ["nav.cooling"] = @"散热",
         ["nav.home"] = @"首页",
@@ -449,6 +453,12 @@ public static class Loc
 
     /// <summary>metrics.util_format</summary>
     public static string Metrics_UtilFormat => Get("metrics.util_format");
+
+    /// <summary>metrics.vram</summary>
+    public static string Metrics_Vram => Get("metrics.vram");
+
+    /// <summary>metrics.vram_format</summary>
+    public static string Metrics_VramFormat => Get("metrics.vram_format");
 
     /// <summary>nav.apply</summary>
     public static string Nav_Apply => Get("nav.apply");

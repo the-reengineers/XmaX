@@ -78,12 +78,18 @@ public sealed partial class MainWindow : Window
         SetupBackendIntegration();
         SetupNavigationLabels();
 
-        // Navigate to home page by default
+        // Load config first (await to ensure layout is loaded before HomePage is created)
+        _ = InitializeAsync();
+    }
+
+    private async Task InitializeAsync()
+    {
+        // Load config and update test mode banner
+        await LoadConfigAndUpdateBannerAsync();
+
+        // Navigate to home page by default (after config is loaded)
         RootFrame.Navigate(typeof(HomePage));
         NavView.SelectedItem = NavView.MenuItems[0];
-
-        // Load config and update test mode banner
-        _ = LoadConfigAndUpdateBannerAsync();
     }
 
     // ===== Navigation Labels =====
@@ -125,6 +131,12 @@ public sealed partial class MainWindow : Window
 
                 // Update toggle state (without triggering event)
                 SessionPersistToggle.IsOn = config.SessionPersist;
+
+                // Load home layout (columns, widget order, visibility) into WidgetService
+                if (config.HomeLayout != null)
+                {
+                    App.WidgetService.LoadLayout(config.HomeLayout);
+                }
             }
         }
         catch

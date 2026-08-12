@@ -135,6 +135,11 @@ private:
     // Apply all configured settings to hardware (used when session_persist transitions to true)
     void apply_all_settings();
 
+public:
+    // Check if session_persist is enabled (thread-safe)
+    auto is_session_persist() const -> bool;
+
+private:
     // References to subsystems
     Platform& platform_;
     MetricsPoller& metrics_;

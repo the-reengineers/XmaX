@@ -142,9 +142,30 @@ int main() {
         auto current_power_state = power->current_state();
         std::cout << "Power state: " << static_cast<int>(current_power_state) << std::endl;
 
-        // If persist=true, apply settings from config
-        if (config.persist) {
+        // Helper to get TDP ceiling for a power state from config
+        auto get_power_state_tdp = [&](PowerState::Source state) -> int {
+            switch (state) {
+                case PowerState::Source::Battery:
+                    return config.power_state_profiles.battery.tdp_max_w;
+                case PowerState::Source::UsbCSlow:
+                    return config.power_state_profiles.usb_c_slow.tdp_max_w;
+                case PowerState::Source::UsbCFast:
+                    return config.power_state_profiles.usb_c_fast.tdp_max_w;
+                case PowerState::Source::DcIn:
+                    return config.power_state_profiles.dc_in.tdp_max_w;
+                default:
+                    return 55; // Safe default for unknown state
+            }
+        };
+
+        // If session_persist=true, apply settings from config
+        if (config.session_persist) {
             std::cout << "Applying persisted settings..." << std::endl;
+
+            // Set initial power state TDP ceiling for adaptive controller
+            int initial_tdp_ceiling = get_power_state_tdp(current_power_state);
+            adaptive->set_power_state_ceiling(initial_tdp_ceiling);
+            std::cout << "Initial power state TDP ceiling: " << initial_tdp_ceiling << "W" << std::endl;
 
             // Apply charge limit
             if (config.charge_limit_pct >= 75 && config.charge_limit_pct <= 100) {
@@ -256,6 +277,23 @@ int main() {
         }
 
         // Wire up callbacks
+        // Power state change → update adaptive controller TDP ceiling (if session_persist enabled)
+        power->on_state_change([&](PowerState::Source new_state, PowerState::Source /*old_state*/) {
+            if (transport->is_session_persist()) {
+                int new_tdp_ceiling = get_power_state_tdp(new_state);
+                adaptive->set_power_state_ceiling(new_tdp_ceiling);
+                std::cout << "[power] State changed, new TDP ceiling: " << new_tdp_ceiling << "W" << std::endl;
+
+                // Send power_mode_change event to frontend
+                Event evt;
+                evt.event = "power_mode_change";
+                evt.data = "{}";
+                transport->send_event(evt);
+            } else {
+                std::cout << "[power] State changed (session_persist disabled, skipping HW update)" << std::endl;
+            }
+        });
+
         // Button press → send toggle event to frontend (frontend manages its own visibility)
         button->on_visibility_change([&](bool /*visible*/) {
             std::cout << "[button] Visibility change callback" << std::endl;

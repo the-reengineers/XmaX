@@ -224,6 +224,11 @@ auto TransportService::check_persist(const std::string& request_id) -> std::opti
     return std::nullopt;
 }
 
+auto TransportService::is_session_persist() const -> bool {
+    std::lock_guard lock(state_mutex_);
+    return config_.session_persist;
+}
+
 // ===== Connection loop =====
 
 void TransportService::connection_loop() {
@@ -1390,6 +1395,26 @@ void TransportService::apply_all_settings() {
     // Get current power state
     power_.update_power_state();
     auto current_power_state = power_.current_state();
+
+    // Set power state TDP ceiling for adaptive controller
+    int tdp_ceiling = 55;  // Safe default
+    switch (current_power_state) {
+        case PowerState::Source::Battery:
+            tdp_ceiling = config_.power_state_profiles.battery.tdp_max_w;
+            break;
+        case PowerState::Source::UsbCSlow:
+            tdp_ceiling = config_.power_state_profiles.usb_c_slow.tdp_max_w;
+            break;
+        case PowerState::Source::UsbCFast:
+            tdp_ceiling = config_.power_state_profiles.usb_c_fast.tdp_max_w;
+            break;
+        case PowerState::Source::DcIn:
+            tdp_ceiling = config_.power_state_profiles.dc_in.tdp_max_w;
+            break;
+        default:
+            break;
+    }
+    adaptive_.set_power_state_ceiling(tdp_ceiling);
 
     // Get power state profile
     std::string profile_slug;

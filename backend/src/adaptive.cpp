@@ -71,7 +71,14 @@ auto AdaptiveController::config() const -> AdaptiveConfig {
 
 void AdaptiveController::set_power_state_ceiling(int tdp_max_w) {
     std::lock_guard lock(mutex_);
+    int old_effective = effective_tdp_max_locked();
     power_state_ceiling_ = tdp_max_w;
+    int new_effective = effective_tdp_max_locked();
+
+    // If adaptive controller is active and effective TDP changed, emit an adjust event
+    if (active_.load() && old_effective != new_effective) {
+        emit_adjust(current_tdp_, current_fan_, static_cast<int>(smoothed_temp_), new_effective, "power_state_change");
+    }
 }
 
 auto AdaptiveController::effective_tdp_max() const -> int {

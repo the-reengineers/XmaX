@@ -80,6 +80,19 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         }
     }
 
+    /// <summary>Session persist toggle: apply settings for this session only (not saved to disk).</summary>
+    public bool SessionPersist
+    {
+        get => _config.SessionPersist;
+        set
+        {
+            if (_config.SessionPersist == value) return;
+            _config.SessionPersist = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SessionPersist)));
+            _ = SaveConfigFieldAsync("session_persist", value);
+        }
+    }
+
     /// <summary>Auto-start toggle: launch at user logon.</summary>
     public bool AutoStart
     {

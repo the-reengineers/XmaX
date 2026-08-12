@@ -94,6 +94,27 @@
                         Click="OnRevertClick" HorizontalAlignment="Stretch" />
             </StackPanel>
 
+            <!-- Factory reset (danger zone) -->
+            <StackPanel Spacing="8" Margin="0,16,0,0">
+                <Border BorderBrush="{ThemeResource SystemFillColorCriticalBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="16">
+                    <StackPanel Spacing="8">
+                        <TextBlock x:Name="FactoryResetLabel"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}"
+                                   Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                        <TextBlock x:Name="FactoryResetDescLabel"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap" />
+                        <Button x:Name="FactoryResetButton"
+                                Click="OnFactoryResetClick"
+                                HorizontalAlignment="Stretch"
+                                Background="{ThemeResource SystemFillColorCriticalBrush}"
+                                Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
         </StackPanel>
     </ScrollViewer>
 </Page>

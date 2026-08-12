@@ -3,6 +3,8 @@
   "nav.profiles": "Profiles",
   "nav.cooling": "Cooling",
   "nav.settings": "Settings",
+  "nav.test_mode": "Settings not persisted",
+  "nav.apply": "Apply",
 
   "title.profiles": "Profiles",
   "title.fan_curves": "Fan Curves",
@@ -59,6 +61,9 @@
   "settings.auto_start_desc": "Launch at user logon",
   "settings.columns": "Home Page Columns",
   "settings.widget_layout": "Widget Layout",
+  "settings.restore_defaults": "Restore Factory Defaults",
+  "settings.restore_defaults_desc": "Delete all user configurations and restore default settings",
+  "settings.restore_defaults_confirm": "Are you sure? This will delete all profiles, fan curves, and settings.",
   "settings.lang_auto": "Auto (System)",
   "settings.lang_en": "English",
   "settings.lang_zh": "中文 (简体)",

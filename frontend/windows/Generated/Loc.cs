@@ -78,10 +78,12 @@ public static class Loc
         ["metrics.ram_format"] = @"{0}/{1}G",
         ["metrics.temp_format"] = @"{0}°C",
         ["metrics.util_format"] = @"{0}% util",
+        ["nav.apply"] = @"Apply",
         ["nav.cooling"] = @"Cooling",
         ["nav.home"] = @"Home",
         ["nav.profiles"] = @"Profiles",
         ["nav.settings"] = @"Settings",
+        ["nav.test_mode"] = @"Settings not persisted",
         ["power.battery"] = @"Battery",
         ["power.dc_in"] = @"DC-In",
         ["power.usb_c_fast"] = @"USB-C (100W)",
@@ -95,6 +97,9 @@ public static class Loc
         ["settings.language"] = @"Language",
         ["settings.persist"] = @"Persist Settings",
         ["settings.persist_desc"] = @"Apply user-configured settings on startup",
+        ["settings.restore_defaults"] = @"Restore Factory Defaults",
+        ["settings.restore_defaults_confirm"] = @"Are you sure? This will delete all profiles, fan curves, and settings.",
+        ["settings.restore_defaults_desc"] = @"Delete all user configurations and restore default settings",
         ["settings.theme"] = @"Theme",
         ["settings.theme_dark"] = @"Dark",
         ["settings.theme_light"] = @"Light",
@@ -183,10 +188,12 @@ public static class Loc
         ["metrics.ram_format"] = @"{0}/{1}G",
         ["metrics.temp_format"] = @"{0}°C",
         ["metrics.util_format"] = @"{0}% 使用率",
+        ["nav.apply"] = @"应用",
         ["nav.cooling"] = @"散热",
         ["nav.home"] = @"首页",
         ["nav.profiles"] = @"配置",
         ["nav.settings"] = @"设置",
+        ["nav.test_mode"] = @"设置未持久化",
         ["power.battery"] = @"电池",
         ["power.dc_in"] = @"DC 输入",
         ["power.usb_c_fast"] = @"USB-C（100W）",
@@ -200,6 +207,9 @@ public static class Loc
         ["settings.language"] = @"语言",
         ["settings.persist"] = @"持久化设置",
         ["settings.persist_desc"] = @"启动时应用用户配置的设置",
+        ["settings.restore_defaults"] = @"恢复出厂默认",
+        ["settings.restore_defaults_confirm"] = @"确定要删除所有配置文件、风扇曲线和设置吗？",
+        ["settings.restore_defaults_desc"] = @"删除所有用户配置并恢复默认设置",
         ["settings.theme"] = @"主题",
         ["settings.theme_dark"] = @"深色",
         ["settings.theme_light"] = @"浅色",
@@ -440,6 +450,9 @@ public static class Loc
     /// <summary>metrics.util_format</summary>
     public static string Metrics_UtilFormat => Get("metrics.util_format");
 
+    /// <summary>nav.apply</summary>
+    public static string Nav_Apply => Get("nav.apply");
+
     /// <summary>nav.cooling</summary>
     public static string Nav_Cooling => Get("nav.cooling");
 
@@ -451,6 +464,9 @@ public static class Loc
 
     /// <summary>nav.settings</summary>
     public static string Nav_Settings => Get("nav.settings");
+
+    /// <summary>nav.test_mode</summary>
+    public static string Nav_TestMode => Get("nav.test_mode");
 
     /// <summary>power.battery</summary>
     public static string Power_Battery => Get("power.battery");
@@ -490,6 +506,15 @@ public static class Loc
 
     /// <summary>settings.persist_desc</summary>
     public static string Settings_PersistDesc => Get("settings.persist_desc");
+
+    /// <summary>settings.restore_defaults</summary>
+    public static string Settings_RestoreDefaults => Get("settings.restore_defaults");
+
+    /// <summary>settings.restore_defaults_confirm</summary>
+    public static string Settings_RestoreDefaultsConfirm => Get("settings.restore_defaults_confirm");
+
+    /// <summary>settings.restore_defaults_desc</summary>
+    public static string Settings_RestoreDefaultsDesc => Get("settings.restore_defaults_desc");
 
     /// <summary>settings.theme</summary>
     public static string Settings_Theme => Get("settings.theme");

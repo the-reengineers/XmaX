@@ -18,18 +18,36 @@
 
         <!-- Bottom tab navigation -->
         <Grid Grid.Row="1" Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}">
-            <NavigationView x:Name="NavView"
-                            PaneDisplayMode="Top"
-                            IsBackButtonVisible="Collapsed"
-                            IsSettingsVisible="False"
-                            SelectionChanged="OnNavSelectionChanged">
-                <NavigationView.MenuItems>
-                    <NavigationViewItem Tag="home" />
-                    <NavigationViewItem Tag="profiles" />
-                    <NavigationViewItem Tag="cooling" />
-                    <NavigationViewItem Tag="settings" />
-                </NavigationView.MenuItems>
-            </NavigationView>
+            <StackPanel>
+                <!-- Test mode banner (shown when persist=false) -->
+                <Border x:Name="TestModeBanner"
+                        Visibility="Collapsed"
+                        Background="{ThemeResource SystemFillColorCautionBrush}"
+                        Padding="16,8">
+                    <Grid>
+                        <TextBlock x:Name="TestModeText"
+                                   VerticalAlignment="Center"
+                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                        <ToggleSwitch x:Name="SessionPersistToggle"
+                                      HorizontalAlignment="Right"
+                                      VerticalAlignment="Center"
+                                      Toggled="OnSessionPersistToggled" />
+                    </Grid>
+                </Border>
+
+                <NavigationView x:Name="NavView"
+                                PaneDisplayMode="Top"
+                                IsBackButtonVisible="Collapsed"
+                                IsSettingsVisible="False"
+                                SelectionChanged="OnNavSelectionChanged">
+                    <NavigationView.MenuItems>
+                        <NavigationViewItem Tag="home" />
+                        <NavigationViewItem Tag="profiles" />
+                        <NavigationViewItem Tag="cooling" />
+                        <NavigationViewItem Tag="settings" />
+                    </NavigationView.MenuItems>
+                </NavigationView>
+            </StackPanel>
         </Grid>
     </Grid>
 </Window>

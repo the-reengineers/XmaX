@@ -30,6 +30,7 @@ struct Config {
     std::string language = "auto";
     std::string theme = "system";
     bool persist = false;
+    bool session_persist = false;  // In-memory only, not serialized to JSON. Initialized from persist on startup.
     int charge_limit_pct = 100;
     bool auto_start = false;
     std::optional<AutoTuneConfig> auto_tune;

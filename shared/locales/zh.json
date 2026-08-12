@@ -3,6 +3,8 @@
   "nav.profiles": "配置",
   "nav.cooling": "散热",
   "nav.settings": "设置",
+  "nav.test_mode": "设置未持久化",
+  "nav.apply": "应用",
 
   "title.profiles": "配置",
   "title.fan_curves": "风扇曲线",
@@ -59,6 +61,9 @@
   "settings.auto_start_desc": "用户登录时启动",
   "settings.columns": "首页列数",
   "settings.widget_layout": "小部件布局",
+  "settings.restore_defaults": "恢复出厂默认",
+  "settings.restore_defaults_desc": "删除所有用户配置并恢复默认设置",
+  "settings.restore_defaults_confirm": "确定要删除所有配置文件、风扇曲线和设置吗？",
   "settings.lang_auto": "自动（跟随系统）",
   "settings.lang_en": "English",
   "settings.lang_zh": "中文 (简体)",

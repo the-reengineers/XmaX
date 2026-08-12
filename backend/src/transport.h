@@ -129,6 +129,11 @@ private:
     auto handle_set_auto_tune(const Command& cmd) -> Response;
     auto handle_get_config(const Command& cmd) -> Response;
     auto handle_set_config(const Command& cmd) -> Response;
+    auto handle_set_session_persist(const Command& cmd) -> Response;
+    auto handle_restore_defaults(const Command& cmd) -> Response;
+
+    // Apply all configured settings to hardware (used when session_persist transitions to true)
+    void apply_all_settings();
 
     // References to subsystems
     Platform& platform_;

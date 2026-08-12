@@ -23,6 +23,14 @@ public sealed class AppConfig
     [JsonPropertyName("persist")]
     public bool Persist { get; set; }
 
+    /// <summary>
+    /// Session-level persist flag. In-memory only, not saved to disk.
+    /// Initialized from Persist on backend startup. When true, allows hardware writes
+    /// even if Persist is false (for testing). Lost when backend service stops.
+    /// </summary>
+    [JsonPropertyName("session_persist")]
+    public bool SessionPersist { get; set; }
+
     /// <summary>Battery charge limit percentage (75–100). Applied on startup when persist=true.</summary>
     [JsonPropertyName("charge_limit_pct")]
     public int ChargeLimitPercent { get; set; } = 100;
@@ -47,7 +55,7 @@ public sealed class AppConfig
     public HomeLayout HomeLayout { get; set; } = new();
 
     public override string ToString() =>
-        $"Config(lang:{Language}, theme:{Theme}, persist:{Persist}, " +
+        $"Config(lang:{Language}, theme:{Theme}, persist:{Persist}, sessionPersist:{SessionPersist}, " +
         $"chargeLimit:{ChargeLimitPercent}%, autoStart:{AutoStart}, " +
         $"autoTune:{AutoTune?.ToString() ?? "none"}, " +
         $"layout:{HomeLayout})";

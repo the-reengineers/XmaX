@@ -29,6 +29,9 @@ public sealed partial class SettingsPage : Page
         ColumnsLabel.Text = Loc.Settings_Columns;
         WidgetLayoutLabel.Text = Loc.Settings_WidgetLayout;
         RevertButton.Content = Loc.Button_RevertDefaults;
+        FactoryResetLabel.Text = Loc.Settings_RestoreDefaults;
+        FactoryResetDescLabel.Text = Loc.Settings_RestoreDefaultsDesc;
+        FactoryResetButton.Content = Loc.Settings_RestoreDefaults;
 
         _viewModel = new SettingsViewModel(App.Pipe, App.WidgetService);
         _viewModel.PropertyChanged += OnViewModelChanged;
@@ -170,6 +173,44 @@ public sealed partial class SettingsPage : Page
         if (result == ContentDialogResult.Primary)
         {
             await _viewModel.RevertToDefaultsAsync();
+        }
+    }
+
+    private async void OnFactoryResetClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new ContentDialog
+        {
+            Title = Loc.Settings_RestoreDefaults,
+            Content = Loc.Settings_RestoreDefaultsConfirm,
+            PrimaryButtonText = Loc.Button_Ok,
+            CloseButtonText = Loc.Button_Cancel,
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = this.XamlRoot,
+        };
+
+        var result = await dialog.ShowAsync();
+        if (result == ContentDialogResult.Primary)
+        {
+            try
+            {
+                await App.Pipe.SendCommandAsync("restore_defaults").ConfigureAwait(true);
+                // Reload config after reset
+                await _viewModel.LoadConfigAsync().ConfigureAwait(true);
+                // Update UI
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    InitializeLanguageDropdown();
+                    InitializeThemeDropdown();
+                    PersistToggle.IsOn = _viewModel.Persist;
+                    AutoStartToggle.IsOn = _viewModel.AutoStart;
+                    InitializeColumnsSlider();
+                    BuildWidgetLayoutList();
+                });
+            }
+            catch
+            {
+                // Factory reset failed — show error or ignore
+            }
         }
     }
 

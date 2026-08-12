@@ -81,6 +81,9 @@ public sealed partial class MainWindow : Window
         // Navigate to home page by default
         RootFrame.Navigate(typeof(HomePage));
         NavView.SelectedItem = NavView.MenuItems[0];
+
+        // Load config and update test mode banner
+        _ = LoadConfigAndUpdateBannerAsync();
     }
 
     // ===== Navigation Labels =====
@@ -95,6 +98,57 @@ public sealed partial class MainWindow : Window
             ((NavigationViewItem)items[1]).Content = Loc.Nav_Profiles;
             ((NavigationViewItem)items[2]).Content = Loc.Nav_Cooling;
             ((NavigationViewItem)items[3]).Content = Loc.Nav_Settings;
+        }
+
+        // Set test mode banner labels
+        TestModeText.Text = Loc.Nav_TestMode;
+        SessionPersistToggle.OnContent = Loc.Nav_Apply;
+        SessionPersistToggle.OffContent = "";
+    }
+
+    // ===== Test Mode Banner =====
+
+    private async Task LoadConfigAndUpdateBannerAsync()
+    {
+        try
+        {
+            var data = await App.Pipe.SendCommandAsync("get_config").ConfigureAwait(true);
+            var config = System.Text.Json.JsonSerializer.Deserialize<XmaX.Models.AppConfig>(
+                data.ToJsonString(),
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = false }
+            );
+
+            if (config != null)
+            {
+                // Show banner only when persist=false
+                TestModeBanner.Visibility = config.Persist ? Visibility.Collapsed : Visibility.Visible;
+
+                // Update toggle state (without triggering event)
+                SessionPersistToggle.IsOn = config.SessionPersist;
+            }
+        }
+        catch
+        {
+            // Failed to load config — hide banner
+            TestModeBanner.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private async void OnSessionPersistToggled(object sender, RoutedEventArgs e)
+    {
+        var value = SessionPersistToggle.IsOn;
+        try
+        {
+            var payload = new System.Text.Json.Nodes.JsonObject
+            {
+                ["value"] = value
+            };
+            await App.Pipe.SendCommandAsync("set_session_persist", payload).ConfigureAwait(true);
+        }
+        catch
+        {
+            // Failed to send command — revert toggle
+            SessionPersistToggle.IsOn = !value;
         }
     }
 

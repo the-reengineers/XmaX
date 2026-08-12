@@ -1681,6 +1681,7 @@ TEST_F(TransportServiceTest, SetFanPersistDisabled) {
 
 TEST_F(TransportServiceTest, SetFanPersistEnabled) {
     config_.persist = true;
+    config_.session_persist = true;
 
     auto cmd = make_command("set_fan", "req_001", R"({"mode": "auto"})");
     auto resp = service_->dispatch(cmd);
@@ -1692,6 +1693,7 @@ TEST_F(TransportServiceTest, SetFanPersistEnabled) {
 
 TEST_F(TransportServiceTest, SetFanInvalidMode) {
     config_.persist = true;
+    config_.session_persist = true;
 
     auto cmd = make_command("set_fan", "req_001", R"({"mode": "invalid"})");
     auto resp = service_->dispatch(cmd);
@@ -1754,6 +1756,7 @@ TEST_F(TransportServiceTest, SetProfilePersistDisabled) {
 
 TEST_F(TransportServiceTest, SetProfileNotFound) {
     config_.persist = true;
+    config_.session_persist = true;
 
     auto cmd = make_command("set_profile", "req_001", R"({"id": "nonexistent"})");
     auto resp = service_->dispatch(cmd);
@@ -1866,6 +1869,7 @@ TEST_F(TransportServiceTest, SetChargeLimitPersistDisabled) {
 
 TEST_F(TransportServiceTest, SetChargeLimitInvalidRange) {
     config_.persist = true;
+    config_.session_persist = true;
 
     auto cmd = make_command("set_charge_limit", "req_001", R"({"percent": 50})");
     auto resp = service_->dispatch(cmd);
@@ -1901,6 +1905,7 @@ TEST_F(TransportServiceTest, SetAutoTunePersistDisabled) {
 
 TEST_F(TransportServiceTest, SetAutoTunePersistEnabled) {
     config_.persist = true;
+    config_.session_persist = true;
 
     auto cmd = make_command("set_auto_tune", "req_001",
         R"({"tuning": "performance", "target_temp_c": 80, "tdp_max_w": 60, "fan_max_pct": 90})");

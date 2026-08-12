@@ -25,6 +25,7 @@ Config load_config(const std::filesystem::path& config_path) {
 
     if (!std::filesystem::exists(config_path)) {
         // Create default config file
+        config.session_persist = config.persist;  // Initialize session_persist
         save_config(config_path, config);
         return config;
     }
@@ -100,6 +101,9 @@ Config load_config(const std::filesystem::path& config_path) {
             parse_power_state(psp, "dc_in", config.power_state_profiles.dc_in);
         }
 
+        // Initialize session_persist from persist (session_persist is in-memory only)
+        config.session_persist = config.persist;
+
         // Validate and fix
         if (validate_config(config)) {
             save_config(config_path, config);
@@ -108,6 +112,7 @@ Config load_config(const std::filesystem::path& config_path) {
     } catch (const json::exception& e) {
         std::cerr << "Config file corrupted, using defaults: " << e.what() << std::endl;
         config = get_default_config();
+        config.session_persist = config.persist;  // Initialize session_persist
         save_config(config_path, config);
     }
 

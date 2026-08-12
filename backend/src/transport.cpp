@@ -208,13 +208,13 @@ void TransportService::write_loop() {
 // ===== Persist gate =====
 
 auto TransportService::check_persist(const std::string& request_id) -> std::optional<Response> {
-    bool persist;
+    bool session_persist;
     {
         std::lock_guard lock(state_mutex_);
-        persist = config_.persist;
+        session_persist = config_.session_persist;
     }
 
-    if (!persist) {
+    if (!session_persist) {
         Response resp;
         resp.id = request_id;
         resp.ok = false;
@@ -415,6 +415,8 @@ auto TransportService::dispatch(const Command& cmd) -> Response {
     if (cmd.method == "set_auto_tune") return handle_set_auto_tune(cmd);
     if (cmd.method == "get_config") return handle_get_config(cmd);
     if (cmd.method == "set_config") return handle_set_config(cmd);
+    if (cmd.method == "set_session_persist") return handle_set_session_persist(cmd);
+    if (cmd.method == "restore_defaults") return handle_restore_defaults(cmd);
 
     // Unknown command
     Response resp;
@@ -1192,6 +1194,7 @@ auto TransportService::handle_get_config(const Command& cmd) -> Response {
     data["language"] = config_.language;
     data["theme"] = config_.theme;
     data["persist"] = config_.persist;
+    data["session_persist"] = config_.session_persist;
     data["charge_limit_pct"] = config_.charge_limit_pct;
     data["auto_start"] = config_.auto_start;
 
@@ -1260,5 +1263,131 @@ auto TransportService::handle_set_config(const Command& cmd) -> Response {
         resp.ok = false;
         resp.error = ErrorCode::ParseError;
         return resp;
+    }
+}
+
+auto TransportService::handle_set_session_persist(const Command& cmd) -> Response {
+    try {
+        auto payload = json::parse(cmd.payload);
+
+        if (!payload.contains("value") || !payload["value"].is_boolean()) {
+            Response resp;
+            resp.id = cmd.id;
+            resp.ok = false;
+            resp.error = ErrorCode::ParseError;
+            return resp;
+        }
+
+        bool new_value = payload["value"].get<bool>();
+        bool old_value;
+
+        {
+            std::lock_guard lock(state_mutex_);
+            old_value = config_.session_persist;
+            config_.session_persist = new_value;
+        }
+
+        // If transitioning from false to true, apply all settings to hardware
+        if (!old_value && new_value) {
+            apply_all_settings();
+        }
+
+        Response resp;
+        resp.id = cmd.id;
+        resp.ok = true;
+        return resp;
+    } catch (const json::exception&) {
+        Response resp;
+        resp.id = cmd.id;
+        resp.ok = false;
+        resp.error = ErrorCode::ParseError;
+        return resp;
+    }
+}
+
+auto TransportService::handle_restore_defaults(const Command& cmd) -> Response {
+    {
+        std::lock_guard lock(state_mutex_);
+
+        // Reset config to defaults
+        config_ = get_default_config();
+        config_.session_persist = false;  // Reset session_persist too
+        save_config(config_path_, config_);
+
+        // Clear all profiles and fan curves
+        profiles_.profiles.clear();
+        profiles_.fan_curves.clear();
+        save_profiles(profiles_path_, profiles_);
+    }
+
+    // Reset hardware to safe defaults
+    (void)fan_.set_mode(FanState::Mode::Auto);
+    // TDP and charge limit will be at BIOS defaults on next boot
+
+    Response resp;
+    resp.id = cmd.id;
+    resp.ok = true;
+    return resp;
+}
+
+void TransportService::apply_all_settings() {
+    // Apply charge limit
+    if (config_.charge_limit_pct >= 75 && config_.charge_limit_pct <= 100) {
+        (void)power_.write_charge_limit(static_cast<uint8_t>(config_.charge_limit_pct));
+    }
+
+    // Get current power state
+    power_.update_power_state();
+    auto current_power_state = power_.current_state();
+
+    // Get power state profile
+    std::string profile_slug;
+    switch (current_power_state) {
+        case PowerState::Source::Battery:
+            profile_slug = config_.power_state_profiles.battery.profile;
+            break;
+        case PowerState::Source::UsbCSlow:
+            profile_slug = config_.power_state_profiles.usb_c_slow.profile;
+            break;
+        case PowerState::Source::UsbCFast:
+            profile_slug = config_.power_state_profiles.usb_c_fast.profile;
+            break;
+        case PowerState::Source::DcIn:
+            profile_slug = config_.power_state_profiles.dc_in.profile;
+            break;
+        default:
+            break;
+    }
+
+    // Apply profile if configured
+    if (!profile_slug.empty()) {
+        auto it = profiles_.profiles.find(profile_slug);
+        if (it != profiles_.profiles.end()) {
+            const auto& profile = it->second;
+
+            // Apply TDP limits
+            (void)tdp_.write_tdp(profile.stapm_w, profile.fast_w, profile.slow_w);
+
+            // Apply fan curve
+            if (profile.fan_curve.has_value()) {
+                auto curve_it = profiles_.fan_curves.find(profile.fan_curve.value());
+                if (curve_it != profiles_.fan_curves.end()) {
+                    (void)fan_.set_mode(FanState::Mode::Curve);
+                    fan_.set_curve(curve_it->second);
+                }
+            } else {
+                (void)fan_.set_mode(FanState::Mode::Auto);
+            }
+        }
+    }
+
+    // Restore adaptive controller if configured
+    if (config_.auto_tune.has_value() && config_.auto_tune->enabled) {
+        const auto& at = config_.auto_tune.value();
+        TuningPreset preset = TuningPreset::Default;
+        if (at.tuning == "silent") preset = TuningPreset::Silent;
+        else if (at.tuning == "performance") preset = TuningPreset::Performance;
+
+        adaptive_.activate(preset, at.target_temp_c, at.tdp_max_w, at.fan_max_pct);
     }
 }

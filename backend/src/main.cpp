@@ -177,7 +177,7 @@ int main() {
 
             // Get power state profile
             std::string profile_slug;
-            int tdp_max_w = 25;
+            int tdp_max_w = 55;  // OneXConsole default for Battery (normal)
             switch (current_power_state) {
                 case PowerState::Source::Battery:
                     profile_slug = config.power_state_profiles.battery.profile;

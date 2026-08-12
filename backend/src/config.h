@@ -18,7 +18,7 @@ struct AutoTuneConfig {
 
 struct PowerStateProfile {
     std::string profile;  // Slug reference
-    int tdp_max_w = 25;
+    int tdp_max_w = 55;   // OneXConsole default for Battery (normal)
 };
 
 struct PowerStateProfiles {

@@ -13,10 +13,10 @@ Config get_default_config() {
     config.charge_limit_pct = 100;
     config.auto_start = false;
     config.auto_tune = std::nullopt;
-    config.power_state_profiles.battery = {"", 25};
-    config.power_state_profiles.usb_c_slow = {"", 35};
-    config.power_state_profiles.usb_c_fast = {"", 45};
-    config.power_state_profiles.dc_in = {"", 55};
+    config.power_state_profiles.battery = {"", 55};      // OneXConsole: Battery (normal) = 55W
+    config.power_state_profiles.usb_c_slow = {"", 20};   // OneXConsole: USB-C 65W = 20W
+    config.power_state_profiles.usb_c_fast = {"", 55};   // OneXConsole: USB-C 100W = 55W
+    config.power_state_profiles.dc_in = {"", 80};        // OneXConsole: DC-In = 80W
     return config;
 }
 
@@ -252,10 +252,10 @@ bool validate_config(Config& config) {
         }
     };
 
-    validate_power_state(config.power_state_profiles.battery, 25);
-    validate_power_state(config.power_state_profiles.usb_c_slow, 35);
-    validate_power_state(config.power_state_profiles.usb_c_fast, 45);
-    validate_power_state(config.power_state_profiles.dc_in, 55);
+    validate_power_state(config.power_state_profiles.battery, 55);      // OneXConsole: Battery (normal) = 55W
+    validate_power_state(config.power_state_profiles.usb_c_slow, 20);   // OneXConsole: USB-C 65W = 20W
+    validate_power_state(config.power_state_profiles.usb_c_fast, 55);   // OneXConsole: USB-C 100W = 55W
+    validate_power_state(config.power_state_profiles.dc_in, 80);        // OneXConsole: DC-In = 80W
 
     // Validate home layout columns (3-4 only)
     if (config.home_layout.columns != 3 && config.home_layout.columns != 4) {

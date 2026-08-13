@@ -61,13 +61,24 @@ public sealed partial class HomePage : Page
 
         // Listen for page size changes to recalculate widget heights
         this.SizeChanged += OnPageSizeChanged;
+
+        // Defer initial grid build until page is fully loaded
+        this.Loaded += OnPageLoaded;
+    }
+
+    private void OnPageLoaded(object sender, RoutedEventArgs e)
+    {
+        // Build grid after all widgets are fully loaded
+        BuildGrid();
     }
 
     protected override void OnNavigatedTo(Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
-        // Rebuild grid when navigating to this page (ensures layout is current after async config load)
-        BuildGrid();
+        // Ensure critical widgets are visible (override config if needed)
+        _widgetService.SetVisible("power", true);
+        _widgetService.SetVisible("charge_limit", true);
+        // Grid will be built when page loads (see OnPageLoaded)
     }
 
     private void SubscribeToVisibleWidgets()
@@ -97,8 +108,8 @@ public sealed partial class HomePage : Page
 
     private void OnPageSizeChanged(object sender, SizeChangedEventArgs e)
     {
-        // Recalculate row heights when page width changes
-        DispatcherQueue.TryEnqueue(UpdateRowHeights);
+        // Rebuild grid when page width changes (recalculates all row heights including title rows)
+        DispatcherQueue.TryEnqueue(BuildGrid);
     }
 
     /// <summary>
@@ -115,20 +126,10 @@ public sealed partial class HomePage : Page
     }
 
     /// <summary>
-    /// Update all row definitions to have the same calculated height.
-    /// </summary>
-    private void UpdateRowHeights()
-    {
-        var height = CalculateWidgetHeight();
-        foreach (var rowDef in WidgetGrid.RowDefinitions)
-        {
-            rowDef.Height = new GridLength(height);
-        }
-    }
-
-    /// <summary>
     /// Rebuild the widget grid based on current VisibleWidgets and column count.
     /// Each widget's Config determines its column span and background style.
+    /// Widgets can span multiple rows using GetRequiredRows().
+    /// Full-width widgets (AlwaysFillRow=true) can have titles, adding extra height.
     /// </summary>
     private void BuildGrid()
     {
@@ -141,6 +142,16 @@ public sealed partial class HomePage : Page
             var columns = _widgetService.Columns;
             var widgets = _widgetService.VisibleWidgets;
 
+            // Open log file for this build
+            var logPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "xmax_homepage.log");
+            System.IO.File.WriteAllText(logPath, $"[HomePage] BuildGrid: {widgets.Count} visible widgets, {columns} columns\n");
+            foreach (var w in widgets)
+            {
+                var colSpan = w.Config.AlwaysFillRow ? columns : Math.Min(w.Config.MaxColumns, columns);
+                var rowSpan = w.GetRequiredRows(colSpan) + (!string.IsNullOrEmpty(w.Title) ? 1 : 0);
+                System.IO.File.AppendAllText(logPath, $"  - {w.WidgetId}: colSpan={colSpan}, rowSpan={rowSpan}, title={w.Title ?? "null"}\n");
+            }
+
             if (widgets.Count == 0) return;
 
             // Create column definitions
@@ -149,31 +160,91 @@ public sealed partial class HomePage : Page
                 WidgetGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             }
 
-            // Calculate widget height = page width / columns
-            var widgetHeight = CalculateWidgetHeight();
+            // Calculate standard row height = page width / columns
+            var rowHeight = CalculateWidgetHeight();
 
-            // Calculate rows needed
-            int currentRow = 0;
-            int currentCol = 0;
+            // Track occupied cells for multi-row widget layout
+            var occupiedCells = new HashSet<(int row, int col)>();
 
             foreach (var widget in widgets)
             {
                 var config = widget.Config;
+                var hasTitle = !string.IsNullOrEmpty(widget.Title);
 
                 // Determine column span for this widget
-                // If AlwaysFillRow is true, span the full row width
-                // Otherwise, use MaxColumns (clamped to grid column count)
                 var columnSpan = config.AlwaysFillRow ? columns : Math.Min(config.MaxColumns, columns);
 
-                // Check if widget fits in current row
-                if (currentCol + columnSpan > columns)
+                // Determine content row span for this widget
+                var availableColumns = config.AlwaysFillRow ? columns : Math.Min(config.MaxColumns, columns);
+                var contentRows = widget.GetRequiredRows(availableColumns);
+
+                // Calculate total row span (including title row if present)
+                var totalRowSpan = contentRows + (hasTitle ? 1 : 0);
+
+                // Find the next available position where this widget fits
+                int placeRow = 0;
+                int placeCol = 0;
+                bool found = false;
+                int maxRows = 100; // Safety limit to prevent infinite loops
+
+                System.IO.File.AppendAllText(logPath, $"  Searching for position for {widget.WidgetId} (rowSpan={totalRowSpan}, colSpan={columnSpan})...\n");
+
+                while (!found && placeRow < maxRows)
                 {
-                    // Move to next row
-                    currentRow++;
-                    currentCol = 0;
+                    for (int c = 0; c <= columns - columnSpan; c++)
+                    {
+                        // Check if all cells for this widget are free
+                        bool fits = true;
+                        for (int dr = 0; dr < totalRowSpan && fits; dr++)
+                        {
+                            for (int dc = 0; dc < columnSpan && fits; dc++)
+                            {
+                                if (occupiedCells.Contains((placeRow + dr, c + dc)))
+                                {
+                                    fits = false;
+                                }
+                            }
+                        }
+
+                        if (fits)
+                        {
+                            placeCol = c;
+                            found = true;
+                            break;
+                        }
+                    }
+
+                    if (!found)
+                    {
+                        placeRow++;
+                    }
                 }
 
-                EnsureRowDefinition(currentRow, widgetHeight);
+                if (!found)
+                {
+                    System.IO.File.AppendAllText(logPath, $"  ERROR: Could not find position for {widget.WidgetId}\n");
+                    continue; // Skip this widget
+                }
+
+                // Mark cells as occupied
+                for (int dr = 0; dr < totalRowSpan; dr++)
+                {
+                    for (int dc = 0; dc < columnSpan; dc++)
+                    {
+                        occupiedCells.Add((placeRow + dr, placeCol + dc));
+                    }
+                }
+
+                // Create row definitions with appropriate heights
+                // If widget has title, first row is title height, rest are standard height
+                for (int r = 0; r < totalRowSpan; r++)
+                {
+                    var rowIndex = placeRow + r;
+                    var height = (r == 0 && hasTitle) ? WidgetConfig.TitleHeight : rowHeight;
+                    EnsureRowDefinition(rowIndex, height);
+                }
+
+                System.IO.File.AppendAllText(logPath, $"  Placed {widget.WidgetId} at ({placeRow}, {placeCol}) with rowSpan={totalRowSpan}, colSpan={columnSpan}\n");
 
                 var control = widget.Control as FrameworkElement;
                 if (control != null)
@@ -183,41 +254,77 @@ public sealed partial class HomePage : Page
                     {
                         parentPanel.Children.Remove(control);
                     }
+                    else if (control.Parent is Border parentBorder)
+                    {
+                        parentBorder.Child = null;
+                    }
 
-                    // Apply background based on IsInteractiveCard
-                    var container = CreateWidgetContainer(control, config);
+                    // Create container with title (if present) and card background
+                    var container = CreateWidgetContainer(control, config, widget.Title);
 
-                    Grid.SetRow(container, currentRow);
-                    Grid.SetColumn(container, currentCol);
+                    Grid.SetRow(container, placeRow);
+                    Grid.SetColumn(container, placeCol);
                     Grid.SetColumnSpan(container, columnSpan);
-                    WidgetGrid.Children.Add(container);
-                }
+                    Grid.SetRowSpan(container, totalRowSpan);
 
-                currentCol += columnSpan;
+                    try
+                    {
+                        WidgetGrid.Children.Add(container);
+                    }
+                    catch (Exception ex)
+                    {
+                        System.IO.File.AppendAllText(logPath, $"  WARNING: Could not add {widget.WidgetId} to grid: {ex.Message}\n");
+                    }
+                }
             }
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[HomePage] BuildGrid failed: {ex.Message}");
+            var logPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "xmax_homepage.log");
+            System.IO.File.AppendAllText(logPath, $"[HomePage] BuildGrid EXCEPTION: {ex.Message}\n  Stack: {ex.StackTrace}\n");
         }
     }
 
     /// <summary>
     /// Creates a container for the widget with appropriate background style.
+    /// Widgets handle their own titles internally.
     /// </summary>
-    private FrameworkElement CreateWidgetContainer(FrameworkElement content, WidgetConfig config)
+    private FrameworkElement CreateWidgetContainer(FrameworkElement content, WidgetConfig config, string? title)
     {
+        // Apply card background if interactive
         if (config.IsInteractiveCard)
         {
-            // Card style: Border with background
-            var border = new Border
+            // Check if content is already wrapped in a Border
+            if (content.Parent is Border existingBorder)
             {
-                Background = Application.Current.Resources["CardBackgroundFillColorDefaultBrush"] as Brush,
-                CornerRadius = new CornerRadius(8),
-                Padding = new Thickness(10),
-                Child = content
-            };
-            return border;
+                // Reuse the existing Border
+                return existingBorder;
+            }
+
+            // Ensure content is not already a child of another parent
+            if (content.Parent is Panel parentPanel)
+            {
+                parentPanel.Children.Remove(content);
+            }
+
+            try
+            {
+                var border = new Border
+                {
+                    Background = Application.Current.Resources["CardBackgroundFillColorDefaultBrush"] as Brush,
+                    CornerRadius = new CornerRadius(8),
+                    Padding = new Thickness(10),
+                    Child = content
+                };
+                return border;
+            }
+            catch (Exception ex)
+            {
+                // If wrapping fails, just return the content without the Border
+                var logPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "xmax_homepage.log");
+                System.IO.File.AppendAllText(logPath, $"  WARNING: Could not wrap {content.GetType().Name} in Border: {ex.Message}\n");
+                return content;
+            }
         }
         else
         {

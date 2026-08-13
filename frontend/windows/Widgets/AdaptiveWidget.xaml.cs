@@ -18,6 +18,8 @@ public sealed partial class AdaptiveWidget : UserControl, IHomeWidget
     public string WidgetId => "adaptive";
     public WidgetConfig Config => WidgetConfig.FixedTransparent(2, 3);  // 2-3 cols, transparent
     public object Control => this;
+    public string? Title => Loc.Title_Adaptive;
+    public int GetRequiredRows(int availableColumns) => Config.Rows;
 
     public AdaptiveWidget()
     {

@@ -9,20 +9,25 @@
              PointerEntered="OnPointerEntered"
              PointerExited="OnPointerExited">
 
-    <Grid Padding="4" RowSpacing="4">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
+    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            CornerRadius="8"
+            Padding="10">
+        <Grid RowSpacing="4">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-        <TextBlock x:Name="TitleText" Style="{StaticResource BodyStrongTextBlockStyle}" />
+            <TextBlock Text="CHARGE LIMIT" Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
 
-        <TextBlock x:Name="ChargeLimitText" Grid.Row="1"
-                   Style="{StaticResource SubtitleTextBlockStyle}" />
+            <TextBlock x:Name="ChargeLimitText" Grid.Row="1"
+                       Style="{StaticResource SubtitleTextBlockStyle}" />
 
-        <TextBlock Grid.Row="2" Style="{StaticResource CaptionTextBlockStyle}"
-                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                   Text="Tap to cycle" />
-    </Grid>
+            <TextBlock Grid.Row="2" Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       Text="Tap to cycle" />
+        </Grid>
+    </Border>
 </UserControl>

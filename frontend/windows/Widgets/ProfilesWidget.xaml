@@ -12,9 +12,13 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <TextBlock x:Name="TitleText" Style="{StaticResource BodyStrongTextBlockStyle}" />
+        <TextBlock x:Name="TitleText"
+                   Style="{StaticResource BodyStrongTextBlockStyle}"
+                   TextTrimming="CharacterEllipsis"
+                   TextWrapping="NoWrap"
+                   MaxLines="1" />
 
         <!-- Grid of profile cards (columns created dynamically) -->
-        <Grid x:Name="CardsGrid" Grid.Row="1" ColumnSpacing="8" />
+        <Grid x:Name="CardsGrid" Grid.Row="1" ColumnSpacing="8" RowSpacing="8" />
     </Grid>
 </UserControl>

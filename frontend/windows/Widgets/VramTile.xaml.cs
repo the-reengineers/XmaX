@@ -13,6 +13,8 @@ public sealed partial class VramTile : UserControl, IHomeWidget
     public string WidgetId => "vram";
     public WidgetConfig Config => WidgetConfig.TransparentTile;
     public object Control => this;
+    public string? Title => null;
+    public int GetRequiredRows(int availableColumns) => Config.Rows;
 
     public VramTile()
     {

@@ -18,13 +18,14 @@ public sealed partial class ChargeLimitWidget : UserControl, IHomeWidget
     private readonly PipeClient _pipe;
 
     public string WidgetId => "charge_limit";
-    public WidgetConfig Config => WidgetConfig.CardTile;  // 1x1, card background (entire widget is toggle)
+    public WidgetConfig Config => WidgetConfig.TransparentTile;  // 1x1, transparent (widget handles its own card background)
     public object Control => this;
+    public string? Title => null;
+    public int GetRequiredRows(int availableColumns) => Config.Rows;
 
     public ChargeLimitWidget()
     {
         this.InitializeComponent();
-        TitleText.Text = Loc.Title_ChargeLimit;
         _metricsService = App.MetricsService;
         _pipe = App.Pipe;
         _metricsService.PropertyChanged += OnMetricsChanged;

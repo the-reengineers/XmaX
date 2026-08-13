@@ -6,7 +6,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d">
 
-    <StackPanel Spacing="4" Padding="4">
+    <StackPanel Spacing="4" Padding="10">
         <TextBlock Text="POWER" Style="{StaticResource CaptionTextBlockStyle}"
                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
         <TextBlock x:Name="StateText" Style="{StaticResource SubtitleTextBlockStyle}" />

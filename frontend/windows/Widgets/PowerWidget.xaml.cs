@@ -14,6 +14,8 @@ public sealed partial class PowerWidget : UserControl, IHomeWidget
     public string WidgetId => "power";
     public WidgetConfig Config => WidgetConfig.TransparentTile;  // 1x1 transparent tile
     public object Control => this;
+    public string? Title => null;
+    public int GetRequiredRows(int availableColumns) => Config.Rows;
 
     public PowerWidget()
     {

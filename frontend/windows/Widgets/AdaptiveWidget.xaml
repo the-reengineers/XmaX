@@ -12,7 +12,11 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <TextBlock x:Name="TitleText" Style="{StaticResource BodyStrongTextBlockStyle}" />
+        <TextBlock x:Name="TitleText"
+                   Style="{StaticResource BodyStrongTextBlockStyle}"
+                   TextTrimming="CharacterEllipsis"
+                   TextWrapping="NoWrap"
+                   MaxLines="1" />
 
         <!-- Adaptive profile cards (tuning presets) in a grid -->
         <Grid x:Name="PresetGrid" Grid.Row="1" ColumnSpacing="8" RowSpacing="8" />

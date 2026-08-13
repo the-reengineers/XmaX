@@ -14,6 +14,22 @@ public interface IHomeWidget
 
     /// <summary>The UI control to display. Typically a UserControl.</summary>
     object Control { get; }
+
+    /// <summary>
+    /// Optional title displayed at the top of the widget.
+    /// Only applicable for widgets with AlwaysFillRow=true.
+    /// Null means no title.
+    /// </summary>
+    string? Title { get; }
+
+    /// <summary>
+    /// Calculate the number of content rows this widget requires based on available columns.
+    /// Used by HomePage layout to determine row spans.
+    /// Does not include title row - layout adds title height separately if Title is not null.
+    /// </summary>
+    /// <param name="availableColumns">Number of columns available to this widget.</param>
+    /// <returns>Number of content rows needed (minimum 1).</returns>
+    int GetRequiredRows(int availableColumns);
 }
 
 /// <summary>
@@ -29,19 +45,44 @@ public interface IHomeWidget
 /// If true, widget always spans the full row width (ignores MaxColumns).
 /// If false, widget spans up to MaxColumns (clamped to grid column count).
 /// </param>
+/// <param name="Rows">Fixed number of rows this widget occupies (default 1).</param>
+/// <param name="AutoExpandRows">
+/// If true, widget can expand beyond base row count based on content.
+/// Requires AlwaysFillRow to be true (throws exception otherwise).
+/// </param>
 public sealed class WidgetConfig
 {
+    /// <summary>Standard height for widget titles in pixels (based on system font size).</summary>
+    public const double TitleHeight = 24.0;
+
     public int MinColumns { get; }
     public int MaxColumns { get; }
     public bool IsInteractiveCard { get; }
     public bool AlwaysFillRow { get; }
+    public int Rows { get; }
+    public bool AutoExpandRows { get; }
 
-    public WidgetConfig(int minColumns, int maxColumns, bool isInteractiveCard, bool alwaysFillRow = false)
+    public WidgetConfig(
+        int minColumns,
+        int maxColumns,
+        bool isInteractiveCard,
+        bool alwaysFillRow = false,
+        int rows = 1,
+        bool autoExpandRows = false)
     {
         MinColumns = System.Math.Clamp(minColumns, 1, 4);
         MaxColumns = System.Math.Clamp(maxColumns, MinColumns, 4);
         IsInteractiveCard = isInteractiveCard;
         AlwaysFillRow = alwaysFillRow;
+        Rows = System.Math.Max(1, rows);
+
+        // Validate: AutoExpandRows requires AlwaysFillRow
+        if (autoExpandRows && !alwaysFillRow)
+        {
+            throw new System.ArgumentException(
+                "AutoExpandRows can only be enabled when AlwaysFillRow is true.");
+        }
+        AutoExpandRows = autoExpandRows;
     }
 
     /// <summary>Preset for 1x1 transparent tile (e.g., metric tiles).</summary>
@@ -51,10 +92,20 @@ public sealed class WidgetConfig
     public static WidgetConfig CardTile => new(1, 1, true);
 
     /// <summary>Preset for flexible transparent container (e.g., profiles).</summary>
-    public static WidgetConfig FlexibleTransparent(int minColumns = 1, int maxColumns = 4, bool alwaysFillRow = false)
-        => new(minColumns, maxColumns, false, alwaysFillRow);
+    public static WidgetConfig FlexibleTransparent(
+        int minColumns = 1,
+        int maxColumns = 4,
+        bool alwaysFillRow = false,
+        int rows = 1,
+        bool autoExpandRows = false)
+        => new(minColumns, maxColumns, false, alwaysFillRow, rows, autoExpandRows);
 
     /// <summary>Preset for fixed-width transparent container (e.g., adaptive, power).</summary>
-    public static WidgetConfig FixedTransparent(int minColumns, int maxColumns, bool alwaysFillRow = false)
-        => new(minColumns, maxColumns, false, alwaysFillRow);
+    public static WidgetConfig FixedTransparent(
+        int minColumns,
+        int maxColumns,
+        bool alwaysFillRow = false,
+        int rows = 1,
+        bool autoExpandRows = false)
+        => new(minColumns, maxColumns, false, alwaysFillRow, rows, autoExpandRows);
 }

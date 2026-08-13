@@ -13,6 +13,8 @@ public sealed partial class CpuTile : UserControl, IHomeWidget
     public string WidgetId => "cpu";
     public WidgetConfig Config => WidgetConfig.TransparentTile;
     public object Control => this;
+    public string? Title => null;
+    public int GetRequiredRows(int availableColumns) => Config.Rows;
 
     public CpuTile()
     {

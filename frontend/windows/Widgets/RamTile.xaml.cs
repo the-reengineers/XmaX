@@ -13,6 +13,8 @@ public sealed partial class RamTile : UserControl, IHomeWidget
     public string WidgetId => "ram";
     public WidgetConfig Config => WidgetConfig.TransparentTile;
     public object Control => this;
+    public string? Title => null;
+    public int GetRequiredRows(int availableColumns) => Config.Rows;
 
     public RamTile()
     {

@@ -28,10 +28,15 @@ struct PowerStateProfiles {
     PowerStateProfile dc_in;
 };
 
+struct WidgetEntry {
+    std::string id;
+    int col_span = 1;
+    int row_span = 1;
+};
+
 struct HomeLayout {
-    std::vector<std::string> widget_order;
-    std::map<std::string, bool> widget_visibility;
-    int columns = 3;  // 3-5 columns
+    std::vector<WidgetEntry> widgets;
+    int columns = 3;  // 3-4 columns
     int column_width = 140;  // Base column width in pixels (at 100% DPI)
     int window_height = 600;  // Window height in pixels (at 100% DPI)
 };

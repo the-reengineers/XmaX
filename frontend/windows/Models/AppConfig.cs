@@ -101,19 +101,32 @@ public sealed class PowerStateAssignment
 }
 
 /// <summary>
-/// Home page widget layout: display order, visibility, and column count.
+/// A single widget entry in the home layout, with ID and size.
+/// </summary>
+public sealed class WidgetEntry
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = "";
+
+    [JsonPropertyName("col_span")]
+    public int ColSpan { get; set; } = 1;
+
+    [JsonPropertyName("row_span")]
+    public int RowSpan { get; set; } = 1;
+
+    public override string ToString() => $"{Id}({ColSpan}x{RowSpan})";
+}
+
+/// <summary>
+/// Home page widget layout: widget list (order + size), and grid dimensions.
 /// </summary>
 public sealed class HomeLayout
 {
-    /// <summary>Widget IDs in display order. Widgets not in this list use default position.</summary>
-    [JsonPropertyName("widget_order")]
-    public List<string> WidgetOrder { get; set; } = new();
+    /// <summary>Widgets in display order, each with ID and size.</summary>
+    [JsonPropertyName("widgets")]
+    public List<WidgetEntry> Widgets { get; set; } = new();
 
-    /// <summary>Widget ID → visible. Widgets not in this map default to visible.</summary>
-    [JsonPropertyName("widget_visibility")]
-    public Dictionary<string, bool> WidgetVisibility { get; set; } = new();
-
-    /// <summary>Number of columns in the home page grid (3–5).</summary>
+    /// <summary>Number of columns in the home page grid (3–4).</summary>
     [JsonPropertyName("columns")]
     public int Columns { get; set; } = 3;
 
@@ -126,5 +139,5 @@ public sealed class HomeLayout
     public int WindowHeight { get; set; } = 600;
 
     public override string ToString() =>
-        $"HomeLayout(order:[{string.Join(",", WidgetOrder)}], cols:{Columns}, colWidth:{ColumnWidth}, height:{WindowHeight})";
+        $"HomeLayout(widgets:[{string.Join(",", Widgets)}], cols:{Columns}, colWidth:{ColumnWidth}, height:{WindowHeight})";
 }

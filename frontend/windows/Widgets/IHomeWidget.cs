@@ -46,10 +46,6 @@ public interface IHomeWidget
 /// If false, widget spans up to MaxColumns (clamped to grid column count).
 /// </param>
 /// <param name="Rows">Fixed number of rows this widget occupies (default 1).</param>
-/// <param name="AutoExpandRows">
-/// If true, widget can expand beyond base row count based on content.
-/// Requires AlwaysFillRow to be true (throws exception otherwise).
-/// </param>
 public sealed class WidgetConfig
 {
     /// <summary>Standard height for widget titles in pixels (based on system font size).</summary>
@@ -60,29 +56,19 @@ public sealed class WidgetConfig
     public bool IsInteractiveCard { get; }
     public bool AlwaysFillRow { get; }
     public int Rows { get; }
-    public bool AutoExpandRows { get; }
 
     public WidgetConfig(
         int minColumns,
         int maxColumns,
         bool isInteractiveCard,
         bool alwaysFillRow = false,
-        int rows = 1,
-        bool autoExpandRows = false)
+        int rows = 1)
     {
         MinColumns = System.Math.Clamp(minColumns, 1, 4);
         MaxColumns = System.Math.Clamp(maxColumns, MinColumns, 4);
         IsInteractiveCard = isInteractiveCard;
         AlwaysFillRow = alwaysFillRow;
         Rows = System.Math.Max(1, rows);
-
-        // Validate: AutoExpandRows requires AlwaysFillRow
-        if (autoExpandRows && !alwaysFillRow)
-        {
-            throw new System.ArgumentException(
-                "AutoExpandRows can only be enabled when AlwaysFillRow is true.");
-        }
-        AutoExpandRows = autoExpandRows;
     }
 
     /// <summary>Preset for 1x1 transparent tile (e.g., metric tiles).</summary>
@@ -96,16 +82,14 @@ public sealed class WidgetConfig
         int minColumns = 1,
         int maxColumns = 4,
         bool alwaysFillRow = false,
-        int rows = 1,
-        bool autoExpandRows = false)
-        => new(minColumns, maxColumns, false, alwaysFillRow, rows, autoExpandRows);
+        int rows = 1)
+        => new(minColumns, maxColumns, false, alwaysFillRow, rows);
 
     /// <summary>Preset for fixed-width transparent container (e.g., adaptive, power).</summary>
     public static WidgetConfig FixedTransparent(
         int minColumns,
         int maxColumns,
         bool alwaysFillRow = false,
-        int rows = 1,
-        bool autoExpandRows = false)
-        => new(minColumns, maxColumns, false, alwaysFillRow, rows, autoExpandRows);
+        int rows = 1)
+        => new(minColumns, maxColumns, false, alwaysFillRow, rows);
 }

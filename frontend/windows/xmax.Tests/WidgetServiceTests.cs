@@ -204,84 +204,6 @@ public class WidgetServiceTests
     // ===== Reordering =====
 
     [Fact]
-    public void MoveUp_MovesOnePositionEarlier()
-    {
-        var svc = CreateService();
-        svc.Register(new FakeWidget("a"));
-        svc.Register(new FakeWidget("b"));
-        svc.Register(new FakeWidget("c"));
-
-        svc.MoveUp("b");
-
-        Assert.Equal("b", svc.WidgetOrder[0]);
-        Assert.Equal("a", svc.WidgetOrder[1]);
-        Assert.Equal("c", svc.WidgetOrder[2]);
-    }
-
-    [Fact]
-    public void MoveUp_AlreadyFirst_NoOp()
-    {
-        var svc = CreateService();
-        svc.Register(new FakeWidget("a"));
-        svc.Register(new FakeWidget("b"));
-
-        svc.MoveUp("a"); // Already first
-
-        Assert.Equal("a", svc.WidgetOrder[0]);
-        Assert.Equal("b", svc.WidgetOrder[1]);
-    }
-
-    [Fact]
-    public void MoveUp_UnknownId_NoOp()
-    {
-        var svc = CreateService();
-        svc.Register(new FakeWidget("a"));
-
-        svc.MoveUp("nonexistent"); // Should not throw
-
-        Assert.Single(svc.WidgetOrder);
-    }
-
-    [Fact]
-    public void MoveDown_MovesOnePositionLater()
-    {
-        var svc = CreateService();
-        svc.Register(new FakeWidget("a"));
-        svc.Register(new FakeWidget("b"));
-        svc.Register(new FakeWidget("c"));
-
-        svc.MoveDown("b");
-
-        Assert.Equal("a", svc.WidgetOrder[0]);
-        Assert.Equal("c", svc.WidgetOrder[1]);
-        Assert.Equal("b", svc.WidgetOrder[2]);
-    }
-
-    [Fact]
-    public void MoveDown_AlreadyLast_NoOp()
-    {
-        var svc = CreateService();
-        svc.Register(new FakeWidget("a"));
-        svc.Register(new FakeWidget("b"));
-
-        svc.MoveDown("b"); // Already last
-
-        Assert.Equal("a", svc.WidgetOrder[0]);
-        Assert.Equal("b", svc.WidgetOrder[1]);
-    }
-
-    [Fact]
-    public void MoveDown_UnknownId_NoOp()
-    {
-        var svc = CreateService();
-        svc.Register(new FakeWidget("a"));
-
-        svc.MoveDown("nonexistent"); // Should not throw
-
-        Assert.Single(svc.WidgetOrder);
-    }
-
-    [Fact]
     public void SetOrder_ReordersWidgets()
     {
         var svc = CreateService();
@@ -366,87 +288,10 @@ public class WidgetServiceTests
         Assert.False(changed);
     }
 
-    // ===== LoadLayout / GetLayout =====
-
-    [Fact]
-    public void GetLayout_ReturnsCurrentState()
-    {
-        var svc = CreateService();
-        svc.Register(new FakeWidget("a"));
-        svc.Register(new FakeWidget("b"));
-        svc.SetVisible("b", false);
-        svc.Columns = 4;
-
-        var layout = svc.GetLayout();
-
-        Assert.Equal(new[] { "a", "b" }, layout.WidgetOrder);
-        Assert.True(layout.WidgetVisibility["a"]);
-        Assert.False(layout.WidgetVisibility["b"]);
-        Assert.Equal(4, layout.Columns);
-    }
-
-    [Fact]
-    public void LoadLayout_AppliesOrderVisibilityAndColumns()
-    {
-        var svc = CreateService();
-        svc.Register(new FakeWidget("a"));
-        svc.Register(new FakeWidget("b"));
-        svc.Register(new FakeWidget("c"));
-
-        var layout = new HomeLayout
-        {
-            WidgetOrder = new List<string> { "c", "a", "b" },
-            WidgetVisibility = new Dictionary<string, bool>
-            {
-                ["b"] = false,
-            },
-            Columns = 5,
-        };
-
-        svc.LoadLayout(layout);
-
-        Assert.Equal("c", svc.WidgetOrder[0]);
-        Assert.Equal("a", svc.WidgetOrder[1]);
-        Assert.Equal("b", svc.WidgetOrder[2]);
-        Assert.False(svc.IsVisible("b"));
-        Assert.True(svc.IsVisible("a")); // Default visibility unchanged
-        Assert.Equal(5, svc.Columns);
-        Assert.Equal(2, svc.VisibleWidgets.Count); // b is hidden
-    }
-
-    [Fact]
-    public void LoadLayout_UnknownIdsInOrder_AreIgnored()
-    {
-        var svc = CreateService();
-        svc.Register(new FakeWidget("a"));
-
-        var layout = new HomeLayout
-        {
-            WidgetOrder = new List<string> { "nonexistent", "a" },
-        };
-
-        svc.LoadLayout(layout);
-
-        // "nonexistent" is not a registered widget, so only "a" remains
-        Assert.Single(svc.WidgetOrder);
-        Assert.Equal("a", svc.WidgetOrder[0]);
-    }
-
-    [Fact]
-    public void LoadLayout_NullLayout_NoOp()
-    {
-        var svc = CreateService();
-        svc.Register(new FakeWidget("a"));
-
-        svc.LoadLayout(null!); // Should not throw
-
-        Assert.Single(svc.WidgetOrder);
-    }
-
     // ===== VisibleWidgets tracks changes =====
 
     [Fact]
-    public void VisibleWidgets_UpdatesOnRegisterUnregisterMoveToggle()
+    public void VisibleWidgets_UpdatesOnRegisterUnregisterToggle()
     {
         var svc = CreateService();
 
@@ -460,16 +305,11 @@ public class WidgetServiceTests
         Assert.Single(svc.VisibleWidgets);
         Assert.Equal("b", svc.VisibleWidgets[0].WidgetId);
 
-        // Move b up (no visible change since a is hidden)
-        svc.MoveUp("b");
-        Assert.Single(svc.VisibleWidgets);
-
         // Show a
         svc.SetVisible("a", true);
         Assert.Equal(2, svc.VisibleWidgets.Count);
-        // b was moved up, so b is first
-        Assert.Equal("b", svc.VisibleWidgets[0].WidgetId);
-        Assert.Equal("a", svc.VisibleWidgets[1].WidgetId);
+        Assert.Equal("a", svc.VisibleWidgets[0].WidgetId);
+        Assert.Equal("b", svc.VisibleWidgets[1].WidgetId);
 
         // Unregister b
         svc.Unregister("b");
@@ -478,22 +318,6 @@ public class WidgetServiceTests
     }
 
     // ===== PropertyChanged =====
-
-    [Fact]
-    public void PropertyChanged_FiresOnMove()
-    {
-        var svc = CreateService();
-        svc.Register(new FakeWidget("a"));
-        svc.Register(new FakeWidget("b"));
-
-        var firedProperties = new List<string>();
-        svc.PropertyChanged += (_, e) => firedProperties.Add(e.PropertyName!);
-
-        svc.MoveUp("b");
-
-        Assert.Contains(nameof(WidgetService.WidgetOrder), firedProperties);
-        Assert.Contains(nameof(WidgetService.VisibleWidgets), firedProperties);
-    }
 
     [Fact]
     public void PropertyChanged_FiresOnVisibilityChange()

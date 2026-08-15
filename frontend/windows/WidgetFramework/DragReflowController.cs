@@ -62,6 +62,9 @@ public class DragReflowController
     /// <summary>Whether a drag or resize operation is in progress.</summary>
     public bool IsDragging => _isDragging || _isResizing;
 
+    /// <summary>Fired after a drag or resize operation completes (not on plain clicks).</summary>
+    public event Action? LayoutChanged;
+
     // ===== Pointer handlers =====
 
     public void OnPointerPressed(object sender, PointerRoutedEventArgs e)
@@ -146,10 +149,12 @@ public class DragReflowController
     public void OnPointerReleased(object sender, PointerRoutedEventArgs e)
     {
         var canvas = sender as UIElement;
+        bool layoutChanged = false;
 
         if (_isResizing)
         {
             EndResize();
+            layoutChanged = true;
         }
         else if (_isDragging)
         {
@@ -160,6 +165,7 @@ public class DragReflowController
 
             ResetContainer(_draggedContainer!);
             _host.LayoutWidgets(animate: false);
+            layoutChanged = true;
         }
         // If pending (click without threshold), do nothing
 
@@ -175,6 +181,11 @@ public class DragReflowController
 
         _draggedWidget = null;
         _draggedContainer = null;
+
+        if (layoutChanged)
+        {
+            LayoutChanged?.Invoke();
+        }
     }
 
     // ===== Drag logic =====

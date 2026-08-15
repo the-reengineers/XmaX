@@ -195,10 +195,13 @@ public sealed partial class MainWindow : Window
                 // Update toggle state (without triggering event)
                 SessionPersistToggle.IsOn = config.SessionPersist;
 
-                // Load home layout (columns, widget order, visibility) into WidgetService
+                // Apply home layout dimensions to WidgetService
                 if (config.HomeLayout != null)
                 {
-                    App.WidgetService.LoadLayout(config.HomeLayout);
+                    App.WidgetService.Columns = config.HomeLayout.Columns;
+                    App.WidgetService.ColumnWidth = config.HomeLayout.ColumnWidth;
+                    App.WidgetService.WindowHeight = config.HomeLayout.WindowHeight;
+                    App.WidgetService.LoadWidgetSpans(config.HomeLayout.Widgets);
                 }
             }
         }

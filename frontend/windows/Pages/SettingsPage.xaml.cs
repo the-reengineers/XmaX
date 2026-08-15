@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using XmaX.ViewModels;
@@ -13,9 +12,6 @@ public sealed partial class SettingsPage : Page
     private readonly SettingsViewModel _viewModel;
     private bool _isInitializing = true;  // Prevent slider events during initialization
 
-    // Widget layout items for display
-    private ObservableCollection<WidgetLayoutItem> _widgetItems = new();
-
     public SettingsPage()
     {
         this.InitializeComponent();
@@ -28,7 +24,6 @@ public sealed partial class SettingsPage : Page
         AutoStartLabel.Text = Loc.Settings_AutoStart;
         AutoStartDescLabel.Text = Loc.Settings_AutoStartDesc;
         ColumnsLabel.Text = Loc.Settings_Columns;
-        WidgetLayoutLabel.Text = Loc.Settings_WidgetLayout;
         RevertButton.Content = Loc.Button_RevertDefaults;
         FactoryResetLabel.Text = Loc.Settings_RestoreDefaults;
         FactoryResetDescLabel.Text = Loc.Settings_RestoreDefaultsDesc;
@@ -40,13 +35,6 @@ public sealed partial class SettingsPage : Page
         InitializeLanguageDropdown();
         InitializeThemeDropdown();
         InitializeColumnsSlider();
-
-        // Build widget layout list after a short delay to let widgets register
-        DispatcherQueue.TryEnqueue(async () =>
-        {
-            await Task.Delay(100); // Let widgets register
-            BuildWidgetLayoutList();
-        });
     }
 
     // ===== Initialization =====
@@ -136,32 +124,6 @@ public sealed partial class SettingsPage : Page
         _viewModel.Columns = value;
     }
 
-    private void OnWidgetVisibilityToggled(object sender, RoutedEventArgs e)
-    {
-        if (sender is ToggleSwitch toggle && toggle.Tag is string widgetId)
-        {
-            _viewModel.ToggleWidgetVisibility(widgetId);
-        }
-    }
-
-    private void OnMoveWidgetUp(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button btn && btn.Tag is string widgetId)
-        {
-            _viewModel.MoveWidgetUp(widgetId);
-            BuildWidgetLayoutList();
-        }
-    }
-
-    private void OnMoveWidgetDown(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button btn && btn.Tag is string widgetId)
-        {
-            _viewModel.MoveWidgetDown(widgetId);
-            BuildWidgetLayoutList();
-        }
-    }
-
     private async void OnRevertClick(object sender, RoutedEventArgs e)
     {
         var dialog = new ContentDialog
@@ -209,7 +171,6 @@ public sealed partial class SettingsPage : Page
                     PersistToggle.IsOn = _viewModel.Persist;
                     AutoStartToggle.IsOn = _viewModel.AutoStart;
                     InitializeColumnsSlider();
-                    BuildWidgetLayoutList();
                 });
             }
             catch
@@ -235,68 +196,5 @@ public sealed partial class SettingsPage : Page
                 InitializeColumnsSlider();
             });
         }
-        else if (e.PropertyName == nameof(SettingsViewModel.WidgetOrder))
-        {
-            DispatcherQueue.TryEnqueue(BuildWidgetLayoutList);
-        }
     }
-
-    // ===== Widget layout =====
-
-    private void BuildWidgetLayoutList()
-    {
-        _widgetItems.Clear();
-
-        foreach (var widgetId in _viewModel.WidgetOrder)
-        {
-            var label = GetWidgetLabel(widgetId);
-            var isVisible = _viewModel.IsWidgetVisible(widgetId);
-
-            _widgetItems.Add(new WidgetLayoutItem
-            {
-                WidgetId = widgetId,
-                Label = label,
-                IsVisible = isVisible,
-            });
-        }
-
-        WidgetLayoutList.ItemsSource = _widgetItems;
-    }
-
-    private static string GetWidgetLabel(string widgetId)
-    {
-        // Map widget IDs to display names
-        return widgetId switch
-        {
-            "profiles" => Loc.Widget_Profiles,
-            "metrics" => Loc.Widget_Metrics,
-            "adaptive" => Loc.Widget_Adaptive,
-            "charge_limit" => Loc.Widget_ChargeLimit,
-            "power" => Loc.Widget_Power,
-            _ => widgetId,
-        };
-    }
-}
-
-/// <summary>
-/// Display item for widget layout editor.
-/// </summary>
-public sealed class WidgetLayoutItem : System.ComponentModel.INotifyPropertyChanged
-{
-    public string WidgetId { get; set; } = "";
-    public string Label { get; set; } = "";
-
-    private bool _isVisible;
-    public bool IsVisible
-    {
-        get => _isVisible;
-        set
-        {
-            if (_isVisible == value) return;
-            _isVisible = value;
-            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(IsVisible)));
-        }
-    }
-
-    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
 }

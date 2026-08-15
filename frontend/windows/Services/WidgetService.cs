@@ -31,6 +31,7 @@ public sealed class WidgetService : INotifyPropertyChanged
     // Current layout state
     private List<string> _widgetOrder = new();
     private readonly Dictionary<string, bool> _visibility = new();
+    private readonly Dictionary<string, (int colSpan, int rowSpan)> _widgetSpans = new();
     private int _columns = MinColumns;
     private int _columnWidth = DefaultColumnWidth;
     private int _windowHeight = DefaultWindowHeight;
@@ -151,6 +152,27 @@ public sealed class WidgetService : INotifyPropertyChanged
     public IHomeWidget? GetWidget(string widgetId) =>
         _widgets.TryGetValue(widgetId, out var w) ? w : null;
 
+    /// <summary>Get the stored col_span/row_span for a widget, or (1,1) if not stored.</summary>
+    public (int colSpan, int rowSpan) GetWidgetSpan(string widgetId) =>
+        _widgetSpans.GetValueOrDefault(widgetId, (1, 1));
+
+    /// <summary>
+    /// Update widget order and spans from a list of GridWidgets.
+    /// Called by HomePage after drag/resize to sync state before saving.
+    /// </summary>
+    public void UpdateLayoutFromGridWidgets(IEnumerable<(string id, int colSpan, int rowSpan)> widgets)
+    {
+        _widgetOrder.Clear();
+        _widgetSpans.Clear();
+        foreach (var (id, colSpan, rowSpan) in widgets)
+        {
+            _widgetOrder.Add(id);
+            _widgetSpans[id] = (colSpan, rowSpan);
+        }
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(WidgetOrder)));
+        RefreshVisibleList();
+    }
+
     // ===== Visibility =====
 
     /// <summary>Whether a widget is visible.</summary>
@@ -178,36 +200,6 @@ public sealed class WidgetService : INotifyPropertyChanged
     }
 
     // ===== Reordering =====
-
-    /// <summary>
-    /// Move a widget one position earlier in the display order.
-    /// No-op if already first or not registered.
-    /// </summary>
-    public void MoveUp(string widgetId)
-    {
-        var index = _widgetOrder.IndexOf(widgetId);
-        if (index <= 0) return; // -1 (not found) or 0 (already first)
-
-        _widgetOrder.RemoveAt(index);
-        _widgetOrder.Insert(index - 1, widgetId);
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(WidgetOrder)));
-        RefreshVisibleList();
-    }
-
-    /// <summary>
-    /// Move a widget one position later in the display order.
-    /// No-op if already last or not registered.
-    /// </summary>
-    public void MoveDown(string widgetId)
-    {
-        var index = _widgetOrder.IndexOf(widgetId);
-        if (index < 0 || index >= _widgetOrder.Count - 1) return;
-
-        _widgetOrder.RemoveAt(index);
-        _widgetOrder.Insert(index + 1, widgetId);
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(WidgetOrder)));
-        RefreshVisibleList();
-    }
 
     /// <summary>
     /// Set the full widget order at once.
@@ -245,59 +237,22 @@ public sealed class WidgetService : INotifyPropertyChanged
     // ===== Layout persistence =====
 
     /// <summary>
-    /// Load layout from an AppConfig's HomeLayout.
-    /// Unknown widget IDs in the config are ignored.
-    /// Widgets not in the config retain their default visibility (true).
+    /// Load widget span data from config (called by MainWindow during config load).
+    /// Stores col_span/row_span for each widget so GetWidgetSpan returns saved sizes.
     /// </summary>
-    public void LoadLayout(HomeLayout layout)
+    public void LoadWidgetSpans(IEnumerable<WidgetEntry> widgets)
     {
-        if (layout == null) return;
-
-        // Apply column count
-        Columns = layout.Columns;
-
-        // Apply column width
-        ColumnWidth = layout.ColumnWidth;
-
-        // Apply window height
-        WindowHeight = layout.WindowHeight;
-
-        // Apply widget order (only registered widgets)
-        if (layout.WidgetOrder.Count > 0)
+        _widgetSpans.Clear();
+        foreach (var w in widgets)
         {
-            SetOrder(layout.WidgetOrder);
+            _widgetSpans[w.Id] = (w.ColSpan, w.RowSpan);
         }
-
-        // Apply visibility
-        foreach (var kvp in layout.WidgetVisibility)
-        {
-            if (_widgets.ContainsKey(kvp.Key))
-            {
-                _visibility[kvp.Key] = kvp.Value;
-            }
-        }
-
-        RefreshVisibleList();
-    }
-
-    /// <summary>
-    /// Build the current layout as a HomeLayout for serialization.
-    /// </summary>
-    public HomeLayout GetLayout()
-    {
-        return new HomeLayout
-        {
-            WidgetOrder = new List<string>(_widgetOrder),
-            WidgetVisibility = new Dictionary<string, bool>(_visibility),
-            Columns = _columns,
-            ColumnWidth = _columnWidth,
-            WindowHeight = _windowHeight,
-        };
     }
 
     /// <summary>
     /// Save the current layout to config.json via set_config.
     /// Only sends the home_layout field (partial update).
+    /// Uses internal _widgetOrder + _widgetSpans (populated by UpdateLayoutFromGridWidgets).
     /// </summary>
     public async Task SaveLayoutAsync()
     {
@@ -309,27 +264,24 @@ public sealed class WidgetService : INotifyPropertyChanged
                 return;
             }
 
-            var layout = GetLayout();
-
-            var widgetOrderArray = new JsonArray();
-            foreach (var id in layout.WidgetOrder)
+            var widgetsArray = new JsonArray();
+            foreach (var id in _widgetOrder)
             {
-                widgetOrderArray.Add(id);
-            }
-
-            var visibilityObj = new JsonObject();
-            foreach (var kvp in layout.WidgetVisibility)
-            {
-                visibilityObj[kvp.Key] = kvp.Value;
+                var (colSpan, rowSpan) = _widgetSpans.GetValueOrDefault(id, (1, 1));
+                widgetsArray.Add(new JsonObject
+                {
+                    ["id"] = id,
+                    ["col_span"] = colSpan,
+                    ["row_span"] = rowSpan,
+                });
             }
 
             var homeLayoutObj = new JsonObject
             {
-                ["widget_order"] = widgetOrderArray,
-                ["widget_visibility"] = visibilityObj,
-                ["columns"] = layout.Columns,
-                ["column_width"] = layout.ColumnWidth,
-                ["window_height"] = layout.WindowHeight,
+                ["widgets"] = widgetsArray,
+                ["columns"] = _columns,
+                ["column_width"] = _columnWidth,
+                ["window_height"] = _windowHeight,
             };
 
             var payload = new JsonObject

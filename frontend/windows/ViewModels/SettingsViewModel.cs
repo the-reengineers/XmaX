@@ -137,9 +137,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             if (config != null)
             {
                 Config = config;
-
-                // Load widget layout into WidgetService
-                _widgetService.LoadLayout(config.HomeLayout);
             }
         }
         catch
@@ -172,38 +169,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             // Save failed — config is out of sync, but UI is updated
         }
     }
-
-    // ===== Widget layout management =====
-
-    /// <summary>Toggle visibility of a widget by ID.</summary>
-    public void ToggleWidgetVisibility(string widgetId)
-    {
-        _widgetService.ToggleVisible(widgetId);
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs($"WidgetVisibility[{widgetId}]"));
-        _ = _widgetService.SaveLayoutAsync();
-    }
-
-    /// <summary>Move a widget up in the display order.</summary>
-    public void MoveWidgetUp(string widgetId)
-    {
-        _widgetService.MoveUp(widgetId);
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(WidgetOrder)));
-        _ = _widgetService.SaveLayoutAsync();
-    }
-
-    /// <summary>Move a widget down in the display order.</summary>
-    public void MoveWidgetDown(string widgetId)
-    {
-        _widgetService.MoveDown(widgetId);
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(WidgetOrder)));
-        _ = _widgetService.SaveLayoutAsync();
-    }
-
-    /// <summary>Get all registered widget IDs in current order.</summary>
-    public IReadOnlyList<string> WidgetOrder => _widgetService.WidgetOrder;
-
-    /// <summary>Check if a widget is visible.</summary>
-    public bool IsWidgetVisible(string widgetId) => _widgetService.IsVisible(widgetId);
 
     // ===== System defaults =====
 

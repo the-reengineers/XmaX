@@ -21,30 +21,10 @@ public sealed partial class ProfilesWidget : UserControl, IHomeWidget
         minColumns: 1,
         maxColumns: 4,
         alwaysFillRow: true,
-        rows: 1,
-        autoExpandRows: true);  // Flexible, transparent, auto-expand rows
+        rows: 1);
     public object Control => this;
     public string? Title => Loc.Title_Profiles;
-
-    public int GetRequiredRows(int availableColumns)
-    {
-        var profiles = _profileService.Profiles;
-        if (profiles.Count == 0) return Config.Rows;
-
-        // Calculate columns this widget will actually use
-        var columns = Config.AlwaysFillRow
-            ? availableColumns
-            : Math.Min(Config.MaxColumns, availableColumns);
-
-        // Calculate rows needed for all profiles
-        var calculatedRows = (profiles.Count + columns - 1) / columns;
-
-        // If auto-expand is enabled, return max of base rows and calculated rows
-        // Otherwise, return base rows
-        return Config.AutoExpandRows
-            ? Math.Max(Config.Rows, calculatedRows)
-            : Config.Rows;
-    }
+    public int GetRequiredRows(int availableColumns) => Config.Rows;
 
     public ProfilesWidget()
     {

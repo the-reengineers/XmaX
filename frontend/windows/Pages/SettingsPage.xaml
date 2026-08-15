@@ -53,41 +53,6 @@
                 </StackPanel>
             </StackPanel>
 
-            <!-- Widget layout -->
-            <StackPanel Spacing="8">
-                <TextBlock x:Name="WidgetLayoutLabel" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                <ItemsControl x:Name="WidgetLayoutList">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Grid Padding="8" ColumnSpacing="8" Margin="0,2"
-                                  Background="{StaticResource CardBackgroundFillColorDefaultBrush}"
-                                  CornerRadius="8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-
-                                <TextBlock Grid.Column="0" VerticalAlignment="Center"
-                                           Text="{Binding Label}" />
-
-                                <ToggleSwitch Grid.Column="1" IsOn="{Binding IsVisible, Mode=TwoWay}"
-                                              VerticalAlignment="Center"
-                                              Toggled="OnWidgetVisibilityToggled"
-                                              Tag="{Binding WidgetId}" />
-
-                                <Button Grid.Column="2" Content="↑" Tag="{Binding WidgetId}"
-                                        Click="OnMoveWidgetUp" VerticalAlignment="Center" />
-
-                                <Button Grid.Column="3" Content="↓" Tag="{Binding WidgetId}"
-                                        Click="OnMoveWidgetDown" VerticalAlignment="Center" />
-                            </Grid>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </StackPanel>
-
             <!-- Revert to defaults -->
             <StackPanel Spacing="8" Margin="0,8,0,0">
                 <Button x:Name="RevertButton"

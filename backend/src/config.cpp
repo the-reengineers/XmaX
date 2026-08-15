@@ -104,22 +104,54 @@ Config load_config(const std::filesystem::path& config_path) {
         // Parse home layout
         if (j.contains("home_layout") && j["home_layout"].is_object()) {
             auto& hl = j["home_layout"];
-            if (hl.contains("widget_order") && hl["widget_order"].is_array()) {
-                config.home_layout.widget_order.clear();
+
+            // New format: widgets array with per-widget size
+            if (hl.contains("widgets") && hl["widgets"].is_array()) {
+                config.home_layout.widgets.clear();
+                for (const auto& item : hl["widgets"]) {
+                    if (item.is_object()) {
+                        WidgetEntry entry;
+                        if (item.contains("id") && item["id"].is_string()) {
+                            entry.id = item["id"].get<std::string>();
+                        }
+                        if (item.contains("col_span") && item["col_span"].is_number_integer()) {
+                            entry.col_span = item["col_span"].get<int>();
+                        }
+                        if (item.contains("row_span") && item["row_span"].is_number_integer()) {
+                            entry.row_span = item["row_span"].get<int>();
+                        }
+                        if (!entry.id.empty()) {
+                            config.home_layout.widgets.push_back(entry);
+                        }
+                    }
+                }
+            }
+            // Backward compat: old format with widget_order + widget_visibility
+            else if (hl.contains("widget_order") && hl["widget_order"].is_array()) {
+                config.home_layout.widgets.clear();
+                std::map<std::string, bool> visibility;
+
+                // Parse visibility map (if present)
+                if (hl.contains("widget_visibility") && hl["widget_visibility"].is_object()) {
+                    for (auto it = hl["widget_visibility"].begin(); it != hl["widget_visibility"].end(); ++it) {
+                        if (it.value().is_boolean()) {
+                            visibility[it.key()] = it.value().get<bool>();
+                        }
+                    }
+                }
+
+                // Convert widget_order to widgets array (only visible widgets)
                 for (const auto& item : hl["widget_order"]) {
                     if (item.is_string()) {
-                        config.home_layout.widget_order.push_back(item.get<std::string>());
+                        auto id = item.get<std::string>();
+                        auto vis_it = visibility.find(id);
+                        if (vis_it == visibility.end() || vis_it->second) {
+                            config.home_layout.widgets.push_back({id, 1, 1});
+                        }
                     }
                 }
             }
-            if (hl.contains("widget_visibility") && hl["widget_visibility"].is_object()) {
-                config.home_layout.widget_visibility.clear();
-                for (auto it = hl["widget_visibility"].begin(); it != hl["widget_visibility"].end(); ++it) {
-                    if (it.value().is_boolean()) {
-                        config.home_layout.widget_visibility[it.key()] = it.value().get<bool>();
-                    }
-                }
-            }
+
             if (hl.contains("columns") && hl["columns"].is_number_integer()) {
                 config.home_layout.columns = hl["columns"].get<int>();
             }
@@ -177,17 +209,16 @@ bool save_config(const std::filesystem::path& config_path, const Config& config)
         };
 
         // Home layout
-        json widget_order = json::array();
-        for (const auto& id : config.home_layout.widget_order) {
-            widget_order.push_back(id);
-        }
-        json widget_visibility = json::object();
-        for (const auto& [key, value] : config.home_layout.widget_visibility) {
-            widget_visibility[key] = value;
+        json widgets_array = json::array();
+        for (const auto& w : config.home_layout.widgets) {
+            widgets_array.push_back({
+                {"id", w.id},
+                {"col_span", w.col_span},
+                {"row_span", w.row_span}
+            });
         }
         j["home_layout"] = {
-            {"widget_order", widget_order},
-            {"widget_visibility", widget_visibility},
+            {"widgets", widgets_array},
             {"columns", config.home_layout.columns},
             {"column_width", config.home_layout.column_width},
             {"window_height", config.home_layout.window_height}
@@ -269,6 +300,18 @@ bool validate_config(Config& config) {
     if (config.home_layout.columns != 3 && config.home_layout.columns != 4) {
         config.home_layout.columns = 3;
         modified = true;
+    }
+
+    // Validate widget entries
+    for (auto& w : config.home_layout.widgets) {
+        if (w.col_span < 1 || w.col_span > config.home_layout.columns) {
+            w.col_span = 1;
+            modified = true;
+        }
+        if (w.row_span < 1) {
+            w.row_span = 1;
+            modified = true;
+        }
     }
 
     return modified;

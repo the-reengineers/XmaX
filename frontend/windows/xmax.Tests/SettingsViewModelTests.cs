@@ -141,17 +141,6 @@ public class SettingsViewModelTests
     }
 
     [Fact]
-    public void SettingsViewModel_WidgetOrder_DelegatesToWidgetService()
-    {
-        using var pipe = new PipeClient();
-        var widgetService = new WidgetService(pipe);
-        var vm = new SettingsViewModel(pipe, widgetService);
-
-        // Initially empty
-        Assert.Empty(vm.WidgetOrder);
-    }
-
-    [Fact]
     public void SettingsViewModel_LanguageOptions_ValidValues()
     {
         using var pipe = new PipeClient();

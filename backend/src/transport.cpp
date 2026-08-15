@@ -1249,18 +1249,19 @@ auto TransportService::handle_get_config(const Command& cmd) -> Response {
     data["power_state_profiles"] = psp;
 
     // Home layout
-    json widget_order = json::array();
-    for (const auto& id : config_.home_layout.widget_order) {
-        widget_order.push_back(id);
-    }
-    json widget_visibility = json::object();
-    for (const auto& [key, value] : config_.home_layout.widget_visibility) {
-        widget_visibility[key] = value;
+    json widgets_array = json::array();
+    for (const auto& w : config_.home_layout.widgets) {
+        widgets_array.push_back({
+            {"id", w.id},
+            {"col_span", w.col_span},
+            {"row_span", w.row_span}
+        });
     }
     data["home_layout"] = {
-        {"widget_order", widget_order},
-        {"widget_visibility", widget_visibility},
-        {"columns", config_.home_layout.columns}
+        {"widgets", widgets_array},
+        {"columns", config_.home_layout.columns},
+        {"column_width", config_.home_layout.column_width},
+        {"window_height", config_.home_layout.window_height}
     };
 
     Response resp;
@@ -1295,27 +1296,42 @@ auto TransportService::handle_set_config(const Command& cmd) -> Response {
             }
             if (payload.contains("home_layout") && payload["home_layout"].is_object()) {
                 auto& hl = payload["home_layout"];
-                if (hl.contains("widget_order") && hl["widget_order"].is_array()) {
-                    config_.home_layout.widget_order.clear();
-                    for (const auto& item : hl["widget_order"]) {
-                        if (item.is_string()) {
-                            config_.home_layout.widget_order.push_back(item.get<std::string>());
-                        }
-                    }
-                }
-                if (hl.contains("widget_visibility") && hl["widget_visibility"].is_object()) {
-                    config_.home_layout.widget_visibility.clear();
-                    for (auto it = hl["widget_visibility"].begin(); it != hl["widget_visibility"].end(); ++it) {
-                        if (it.value().is_boolean()) {
-                            config_.home_layout.widget_visibility[it.key()] = it.value().get<bool>();
+                if (hl.contains("widgets") && hl["widgets"].is_array()) {
+                    config_.home_layout.widgets.clear();
+                    for (const auto& item : hl["widgets"]) {
+                        if (item.is_object()) {
+                            WidgetEntry entry;
+                            if (item.contains("id") && item["id"].is_string()) {
+                                entry.id = item["id"].get<std::string>();
+                            }
+                            if (item.contains("col_span") && item["col_span"].is_number_integer()) {
+                                entry.col_span = item["col_span"].get<int>();
+                            }
+                            if (item.contains("row_span") && item["row_span"].is_number_integer()) {
+                                entry.row_span = item["row_span"].get<int>();
+                            }
+                            if (!entry.id.empty()) {
+                                config_.home_layout.widgets.push_back(entry);
+                            }
                         }
                     }
                 }
                 if (hl.contains("columns") && hl["columns"].is_number_integer()) {
                     int cols = hl["columns"].get<int>();
-                    // Only allow 3 or 4 columns
                     if (cols == 3 || cols == 4) {
                         config_.home_layout.columns = cols;
+                    }
+                }
+                if (hl.contains("column_width") && hl["column_width"].is_number_integer()) {
+                    int cw = hl["column_width"].get<int>();
+                    if (cw > 0) {
+                        config_.home_layout.column_width = cw;
+                    }
+                }
+                if (hl.contains("window_height") && hl["window_height"].is_number_integer()) {
+                    int wh = hl["window_height"].get<int>();
+                    if (wh > 0) {
+                        config_.home_layout.window_height = wh;
                     }
                 }
             }

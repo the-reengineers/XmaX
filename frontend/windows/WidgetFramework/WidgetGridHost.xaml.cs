@@ -15,7 +15,7 @@ namespace XmaX.WidgetFramework;
 /// </summary>
 public sealed partial class WidgetGridHost : UserControl
 {
-    private const double Spacing = 8.0;
+    internal const double Spacing = 8.0;
     private const double GridPadding = 12.0;
     private const double WidgetCornerRadius = 8.0;
     private const int AnimationDurationMs = 200;

@@ -9,11 +9,11 @@ public class GridWidget
     /// <summary>Unique widget identifier.</summary>
     public string Id { get; }
 
-    /// <summary>Number of columns this widget spans.</summary>
-    public int ColumnSpan { get; }
+    /// <summary>Number of columns this widget spans (mutable for resize).</summary>
+    public int ColumnSpan { get; set; }
 
-    /// <summary>Number of rows this widget spans.</summary>
-    public int RowSpan { get; }
+    /// <summary>Number of rows this widget spans (mutable for resize).</summary>
+    public int RowSpan { get; set; }
 
     /// <summary>
     /// If true, the widget always spans the full row width (ColumnSpan is forced to grid column count).

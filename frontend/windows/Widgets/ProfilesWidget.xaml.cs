@@ -120,11 +120,15 @@ public sealed partial class ProfilesWidget : UserControl, IHomeWidget
             var row = i / columns;
             var col = i % columns;
 
+            // Resolve fan curve data for mini chart
+            var fanCurve = _profileService.FanCurves.FirstOrDefault(f => f.Id == profile.FanCurve);
+
             var card = new ProfileCard
             {
                 ProfileId = profile.Id,
                 DisplayName = profile.Name,
                 Info = GetProfileInfo(profile),
+                FanCurveData = fanCurve,
                 IsSelected = isActive,
                 VerticalAlignment = VerticalAlignment.Stretch,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
@@ -138,16 +142,11 @@ public sealed partial class ProfilesWidget : UserControl, IHomeWidget
     }
 
     /// <summary>
-    /// Get info text for a profile (e.g., TDP limits, fan curve).
+    /// Get info text for a profile (TDP values only).
     /// </summary>
     private string GetProfileInfo(Profile profile)
     {
-        var parts = new List<string>();
-        if (profile.Tdp.Stapm > 0)
-            parts.Add($"{profile.Tdp.Stapm}W");
-        if (!string.IsNullOrEmpty(profile.FanCurve))
-            parts.Add(profile.FanCurve);
-        return parts.Count > 0 ? string.Join(" · ", parts) : "";
+        return $"{profile.Tdp.Stapm}W · {profile.Tdp.Fast}W · {profile.Tdp.Slow}W";
     }
 
     private async void OnProfileCardTapped(object? sender, EventArgs e)

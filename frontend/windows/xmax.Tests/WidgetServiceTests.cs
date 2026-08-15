@@ -14,6 +14,8 @@ internal sealed class FakeWidget : IHomeWidget
     public string WidgetId { get; }
     public WidgetConfig Config { get; }
     public object Control { get; }
+    public string? Title => null;
+    public int GetRequiredRows(int availableColumns) => Config.Rows;
 
     public FakeWidget(string id, object? control = null, WidgetConfig? config = null)
     {

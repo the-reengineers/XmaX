@@ -10,8 +10,14 @@ using json = nlohmann::json;
 ProfileStorage load_profiles(const std::filesystem::path& profiles_path) {
     ProfileStorage storage;
 
+    // Register builtin curves
+    for (auto& curve : get_builtin_fan_curves()) {
+        storage.builtin_curves.insert(curve.id);
+        storage.fan_curves[curve.id] = curve;
+    }
+
     if (!std::filesystem::exists(profiles_path)) {
-        // Create empty profiles file
+        // Create empty profiles file (builtins are already in storage)
         save_profiles(profiles_path, storage);
         return storage;
     }
@@ -26,9 +32,12 @@ ProfileStorage load_profiles(const std::filesystem::path& profiles_path) {
 
         json j = json::parse(file);
 
-        // Load fan curves
+        // Load fan curves (skip builtins — they are set in code)
         if (j.contains("fan_curves") && j["fan_curves"].is_object()) {
             for (auto& [slug, curve_json] : j["fan_curves"].items()) {
+                if (storage.builtin_curves.count(slug)) {
+                    continue;  // Builtin curves cannot be overwritten by file
+                }
                 FanCurve curve;
                 curve.id = slug;
                 if (curve_json.contains("name") && curve_json["name"].is_string()) {
@@ -73,7 +82,15 @@ ProfileStorage load_profiles(const std::filesystem::path& profiles_path) {
 
     } catch (const json::exception& e) {
         std::cerr << "Profiles file corrupted, using empty storage: " << e.what() << std::endl;
-        storage = ProfileStorage{};
+        // Keep builtins, clear only user data
+        storage.profiles.clear();
+        for (auto it = storage.fan_curves.begin(); it != storage.fan_curves.end(); ) {
+            if (storage.builtin_curves.count(it->first) == 0) {
+                it = storage.fan_curves.erase(it);
+            } else {
+                ++it;
+            }
+        }
         save_profiles(profiles_path, storage);
     }
 
@@ -84,9 +101,12 @@ bool save_profiles(const std::filesystem::path& profiles_path, const ProfileStor
     try {
         json j;
 
-        // Save fan curves
+        // Save fan curves (skip builtins — they are in code, not persisted to disk)
         json fan_curves_json;
         for (auto& [slug, curve] : storage.fan_curves) {
+            if (storage.builtin_curves.count(slug)) {
+                continue;  // Builtins are not persisted to file
+            }
             json curve_json;
             curve_json["name"] = curve.name;
             json points_json = json::array();
@@ -194,6 +214,13 @@ bool validate_fan_curve(const FanCurve& curve, std::string& error) {
     return true;
 }
 
+// Helper: case-insensitive string comparison
+static bool icase_eq(const std::string& a, const std::string& b) {
+    return a.size() == b.size() &&
+           std::equal(a.begin(), a.end(), b.begin(),
+               [](unsigned char c, unsigned char d) { return std::tolower(c) == std::tolower(d); });
+}
+
 std::optional<std::string> save_fan_curve(ProfileStorage& storage, FanCurve curve) {
     std::string error;
     if (!validate_fan_curve(curve, error)) {
@@ -209,11 +236,23 @@ std::optional<std::string> save_fan_curve(ProfileStorage& storage, FanCurve curv
         curve.id = generate_slug(curve.name, existing);
     }
 
+    // Reject if the resulting slug collides with a builtin (case-insensitive)
+    for (const auto& builtin_id : storage.builtin_curves) {
+        if (icase_eq(curve.id, builtin_id)) {
+            return "Cannot create a fan curve with that name — it conflicts with a built-in curve";
+        }
+    }
+
     storage.fan_curves[curve.id] = curve;
     return std::nullopt;
 }
 
 std::optional<std::string> delete_fan_curve(ProfileStorage& storage, const std::string& slug) {
+    // Builtin curves cannot be deleted
+    if (is_builtin_curve(slug, storage)) {
+        return "Built-in fan curves cannot be deleted";
+    }
+
     // Check if curve exists
     if (storage.fan_curves.find(slug) == storage.fan_curves.end()) {
         return "Fan curve not found";
@@ -238,11 +277,14 @@ std::optional<std::string> save_profile(ProfileStorage& storage, Profile profile
         return "TDP values must be between 6 and 120W";
     }
 
-    // Validate fan curve reference if present
-    if (profile.fan_curve.has_value()) {
-        if (storage.fan_curves.find(profile.fan_curve.value()) == storage.fan_curves.end()) {
-            return "Fan curve not found: " + profile.fan_curve.value();
-        }
+    // Fan curve is mandatory — FE must always provide one
+    if (!profile.fan_curve.has_value()) {
+        return "A fan curve is required for all profiles";
+    }
+
+    // Validate fan curve reference exists
+    if (storage.fan_curves.find(profile.fan_curve.value()) == storage.fan_curves.end()) {
+        return "Fan curve not found: " + profile.fan_curve.value();
     }
 
     // Generate slug if creating new profile
@@ -269,6 +311,25 @@ std::optional<std::string> delete_profile(ProfileStorage& storage, const std::st
 
     storage.profiles.erase(slug);
     return std::nullopt;
+}
+
+std::vector<FanCurve> get_builtin_fan_curves() {
+    FanCurve default_curve;
+    default_curve.id = "default";
+    default_curve.name = "Default";
+    default_curve.points = {
+        {45, 35},
+        {55, 45},
+        {65, 60},
+        {75, 75},
+        {85, 85},
+        {90, 100}
+    };
+    return {default_curve};
+}
+
+bool is_builtin_curve(const std::string& slug, const ProfileStorage& storage) {
+    return storage.builtin_curves.count(slug) > 0;
 }
 
 int interpolate_fan_speed(const FanCurve& curve, int temp_c) {

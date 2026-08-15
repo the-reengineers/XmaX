@@ -44,6 +44,7 @@ public sealed partial class ChargeLimitWidget : UserControl, IHomeWidget
     {
         var limit = _metricsService.Metrics.Power.ChargeLimitPercent;
         ChargeLimitText.Text = limit.HasValue ? Loc.F("widget.charge_format", limit.Value) : Loc.Metrics_NoData;
+        ChargeGauge.Value = limit ?? 0;
     }
 
     private void OnWidgetTapped(object sender, TappedRoutedEventArgs e)

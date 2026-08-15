@@ -20,13 +20,9 @@ public sealed class Profile
     [JsonPropertyName("tdp")]
     public TdpLimits Tdp { get; set; } = new();
 
-    /// <summary>
-    /// Fan curve slug reference, or null for BIOS auto fan control.
-    /// When null, the firmware controls fan behavior.
-    /// When set, the backend runs the curve interpolation loop.
-    /// </summary>
+    /// <summary>Fan curve slug reference. Mandatory — every profile must have a fan curve.</summary>
     [JsonPropertyName("fan_curve")]
-    public string? FanCurve { get; set; }
+    public string FanCurve { get; set; } = "";
 
     public override string ToString() =>
         $"Profile({Id}: \"{Name}\", TDP:{Tdp.Stapm}/{Tdp.Fast}/{Tdp.Slow}W, Fan:{FanCurve ?? "auto"})";

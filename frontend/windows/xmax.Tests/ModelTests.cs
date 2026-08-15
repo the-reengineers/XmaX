@@ -153,7 +153,7 @@ public class ModelTests
     }
 
     [Fact]
-    public void Profile_NullFanCurve_DeserializesAsNull()
+    public void Profile_NullFanCurve_DeserializesAsEmpty()
     {
         var json = """
         {
@@ -167,7 +167,7 @@ public class ModelTests
         var profile = JsonSerializer.Deserialize<Profile>(json, JsonOptions);
 
         Assert.NotNull(profile);
-        Assert.Null(profile.FanCurve); // BIOS auto fan control
+        Assert.Equal("", profile.FanCurve); // Deserializes as empty string when null
     }
 
     [Fact]

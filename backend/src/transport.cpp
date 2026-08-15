@@ -857,6 +857,7 @@ auto TransportService::handle_get_fan_curves(const Command& cmd) -> Response {
         json c;
         c["id"] = curve.id;
         c["name"] = curve.name;
+        c["builtin"] = profiles_.builtin_curves.count(id) > 0;
         json points = json::array();
         for (const auto& pt : curve.points) {
             json p;
@@ -923,7 +924,7 @@ auto TransportService::handle_save_fan_curve(const Command& cmd) -> Response {
                 Response resp;
                 resp.id = cmd.id;
                 resp.ok = false;
-                resp.error = ErrorCode::FanCurveInvalid;
+                resp.error = ErrorCode::BuiltinProtected;
                 return resp;
             }
             save_profiles(profiles_path_, profiles_);
@@ -953,12 +954,23 @@ auto TransportService::handle_delete_fan_curve(const Command& cmd) -> Response {
 
         {
             std::lock_guard lock(state_mutex_);
+            // Check builtin protection first
+            if (is_builtin_curve(id, profiles_)) {
+                Response resp;
+                resp.id = cmd.id;
+                resp.ok = false;
+                resp.error = ErrorCode::BuiltinProtected;
+                return resp;
+            }
+
             auto err = delete_fan_curve(profiles_, id);
             if (err.has_value()) {
                 Response resp;
                 resp.id = cmd.id;
                 resp.ok = false;
-                resp.error = ErrorCode::FanCurveInUse;
+                resp.error = err->find("not found") != std::string::npos
+                    ? ErrorCode::FanCurveNotFound
+                    : ErrorCode::FanCurveInUse;
                 return resp;
             }
             save_profiles(profiles_path_, profiles_);
@@ -1370,9 +1382,15 @@ auto TransportService::handle_restore_defaults(const Command& cmd) -> Response {
         config_.session_persist = false;  // Reset session_persist too
         save_config(config_path_, config_);
 
-        // Clear all profiles and fan curves
+        // Clear all user profiles and user fan curves (builtins are preserved)
         profiles_.profiles.clear();
-        profiles_.fan_curves.clear();
+        for (auto it = profiles_.fan_curves.begin(); it != profiles_.fan_curves.end(); ) {
+            if (profiles_.builtin_curves.count(it->first) == 0) {
+                it = profiles_.fan_curves.erase(it);
+            } else {
+                ++it;
+            }
+        }
         save_profiles(profiles_path_, profiles_);
     }
 

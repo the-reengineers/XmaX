@@ -40,7 +40,6 @@ public sealed class ProfileEditorDialog : ContentDialog
             _fastSlider.Value = existingProfile.Tdp.Fast;
             _slowSlider.Value = existingProfile.Tdp.Slow;
 
-            _fanCurveCombo.Items.Add(Loc.Form_None);
             foreach (var fc in fanCurves)
             {
                 _fanCurveCombo.Items.Add(fc);
@@ -48,7 +47,8 @@ public sealed class ProfileEditorDialog : ContentDialog
             _fanCurveCombo.DisplayMemberPath = nameof(FanCurve.Name);
 
             var selected = fanCurves.FirstOrDefault(f => f.Id == existingProfile.FanCurve);
-            _fanCurveCombo.SelectedItem = selected ?? _fanCurveCombo.Items[0];
+            _fanCurveCombo.SelectedItem = selected ?? (fanCurves.FirstOrDefault(f => f.Builtin)
+                ?? fanCurves.FirstOrDefault());
         }
         else
         {
@@ -56,13 +56,14 @@ public sealed class ProfileEditorDialog : ContentDialog
             _fastSlider.Value = 50;
             _slowSlider.Value = 45;
 
-            _fanCurveCombo.Items.Add(Loc.Form_None);
             foreach (var fc in fanCurves)
             {
                 _fanCurveCombo.Items.Add(fc);
             }
             _fanCurveCombo.DisplayMemberPath = nameof(FanCurve.Name);
-            _fanCurveCombo.SelectedIndex = 0;
+            // Default to the builtin Default curve
+            _fanCurveCombo.SelectedItem = fanCurves.FirstOrDefault(f => f.Builtin)
+                ?? fanCurves.FirstOrDefault();
         }
     }
 
@@ -97,10 +98,11 @@ public sealed class ProfileEditorDialog : ContentDialog
             return;
         }
 
-        string? fanCurveId = null;
-        if (_fanCurveCombo.SelectedItem is FanCurve fc)
+        // Fan curve is mandatory — reject if none selected
+        if (_fanCurveCombo.SelectedItem is not FanCurve selectedCurve)
         {
-            fanCurveId = fc.Id;
+            args.Cancel = true;
+            return;
         }
 
         ResultProfile = new Profile
@@ -112,7 +114,7 @@ public sealed class ProfileEditorDialog : ContentDialog
                 Fast = (int)_fastSlider.Value,
                 Slow = (int)_slowSlider.Value,
             },
-            FanCurve = fanCurveId,
+            FanCurve = selectedCurve.Id,
         };
     }
 }

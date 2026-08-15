@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using XmaX.Models;
 
 namespace XmaX.Widgets;
 
@@ -34,6 +35,12 @@ public sealed partial class ProfileCard : UserControl
     {
         get => InfoText.Text;
         set => InfoText.Text = value;
+    }
+
+    /// <summary>Fan curve data for the mini chart at the bottom of the card.</summary>
+    public FanCurve? FanCurveData
+    {
+        set => FanCurveChart.SetCurve(value);
     }
 
     /// <summary>Whether this card is selected/active.</summary>

@@ -21,7 +21,7 @@ _be_src := "backend"
 _be_build := "backend/build"
 _be_out := _be_build + "/" + config
 _fe_src := "frontend/windows"
-_fe_publish := _fe_src + "/bin/" + config + "/net10.0-windows10.0.19041.0/" + _fe_rid + "/publish"
+_fe_build := _fe_src + "/bin/" + config + "/net10.0-windows10.0.26100.0/" + _fe_rid + "/publish"
 
 # Unified output directory (copy target for testing/running)
 _out := "out/" + config
@@ -34,6 +34,7 @@ default:
 generate-assets:
     python scripts/generate_icon.py shared/assets/logo.png backend/logo.ico
     python scripts/generate_icon.py shared/assets/logo.png frontend/windows/Assets/logo.ico
+    {{ if _os == "windows" { "Copy-Item -Path 'frontend/assets/materialdesignicons-webfont.ttf' -Destination 'frontend/windows/Assets/' -Force" } else { "cp frontend/assets/materialdesignicons-webfont.ttf frontend/windows/Assets/" } }}
 
 # Build backend
 build-be: generate-assets
@@ -49,7 +50,7 @@ build: build-be build-fe
 
 # Copy both builds into out/<config>/ for unified testing
 copy: build
-    {{ if _os == "windows" { "New-Item -ItemType Directory -Path '" + _out + "' -Force | Out-Null; Copy-Item -Path '" + _be_out + "/*' -Destination '" + _out + "/' -Recurse -Force; Copy-Item -Path '" + _fe_publish + "/*' -Destination '" + _out + "/' -Recurse -Force" } else { "mkdir -p " + _out + " && cp -rv " + _be_out + "/* " + _out + "/ && cp -rv " + _fe_publish + "/* " + _out + "/" } }}
+    {{ if _os == "windows" { "New-Item -ItemType Directory -Path '" + _out + "' -Force | Out-Null; Copy-Item -Path '" + _be_out + "\\*' -Destination '" + _out + "' -Recurse -Force; Copy-Item -Path '" + _fe_build + "\\*' -Destination '" + _out + "' -Recurse -Force" } else { "mkdir -p " + _out + " && cp -rv " + _be_out + "/* " + _out + "/ && cp -rv " + _fe_build + "/* " + _out + "/" } }}
 
 # Run backend unit tests
 test-be: build-be
@@ -72,6 +73,13 @@ run-fe: copy
 
 # Dev mode: build both, copy to out/, start backend (which spawns the frontend). Ctrl+C stops both.
 dev: copy
+    @echo "Starting {{_be_name}} ({{config}}) — frontend spawned automatically"
+    @echo "Press Ctrl+C to stop both"
+    {{ if _os == "windows" { "& " } else { "" } }}"{{_out}}/{{_be_name}}"
+
+# Run without rebuilding (copies existing build outputs to out/). Errors if outputs are missing.
+run:
+    {{ if _os == "windows" { "if (-not (Test-Path '" + _be_out + "')) { Write-Host 'Error: Backend build not found. Run `just build` first.' -ForegroundColor Red; exit 1 }; if (-not (Test-Path '" + _fe_build + "')) { Write-Host 'Error: Frontend build not found. Run `just build` first.' -ForegroundColor Red; exit 1 }; New-Item -ItemType Directory -Path '" + _out + "' -Force | Out-Null; Copy-Item -Path '" + _be_out + "\\*' -Destination '" + _out + "' -Recurse -Force; Copy-Item -Path '" + _fe_build + "\\*' -Destination '" + _out + "' -Recurse -Force" } else { "if [ ! -d '" + _be_out + "' ]; then echo 'Error: Backend build not found. Run `just build` first.' >&2; exit 1; fi; if [ ! -d '" + _fe_build + "' ]; then echo 'Error: Frontend build not found. Run `just build` first.' >&2; exit 1; fi; mkdir -p " + _out + " && cp -rv " + _be_out + "/* " + _out + "/ && cp -rv " + _fe_build + "/* " + _out + "/" } }}
     @echo "Starting {{_be_name}} ({{config}}) — frontend spawned automatically"
     @echo "Press Ctrl+C to stop both"
     {{ if _os == "windows" { "& " } else { "" } }}"{{_out}}/{{_be_name}}"

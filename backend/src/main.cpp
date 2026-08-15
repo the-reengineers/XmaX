@@ -21,7 +21,68 @@
 #include <memory>
 #include <mutex>
 
+#ifdef _WIN32
+#include <windows.h>
+#include <shellapi.h>
+#endif
+
 namespace fs = std::filesystem;
+
+#ifdef _WIN32
+// Check if current process is running elevated
+static bool is_elevated() {
+    BOOL is_admin = FALSE;
+    SID_IDENTIFIER_AUTHORITY nt_authority = SECURITY_NT_AUTHORITY;
+    PSID admin_group = nullptr;
+
+    if (AllocateAndInitializeSid(&nt_authority, 2,
+                                  SECURITY_BUILTIN_DOMAIN_RID,
+                                  DOMAIN_ALIAS_RID_ADMINS,
+                                  0, 0, 0, 0, 0, 0, &admin_group)) {
+        if (!CheckTokenMembership(nullptr, admin_group, &is_admin)) {
+            is_admin = FALSE;
+        }
+        FreeSid(admin_group);
+    }
+
+    return is_admin != FALSE;
+}
+
+// Re-launch self as elevated using ShellExecute
+static bool relaunch_elevated(int argc, char* argv[]) {
+    // Get current executable path
+    wchar_t exe_path[MAX_PATH];
+    if (GetModuleFileNameW(nullptr, exe_path, MAX_PATH) == 0) {
+        return false;
+    }
+
+    // Build command line from argv
+    std::wstring cmd_line;
+    for (int i = 1; i < argc; ++i) {
+        if (i > 1) cmd_line += L" ";
+        // Convert char* to wchar_t*
+        int len = MultiByteToWideChar(CP_UTF8, 0, argv[i], -1, nullptr, 0);
+        if (len > 0) {
+            std::wstring arg(len, L'\0');
+            MultiByteToWideChar(CP_UTF8, 0, argv[i], -1, &arg[0], len);
+            cmd_line += arg;
+        }
+    }
+
+    // Launch elevated with "runas" verb
+    HINSTANCE result = ShellExecuteW(
+        nullptr,
+        L"runas",
+        exe_path,
+        cmd_line.empty() ? nullptr : cmd_line.c_str(),
+        nullptr,
+        SW_SHOWNORMAL
+    );
+
+    // ShellExecute returns > 32 on success
+    return (intptr_t)result > 32;
+}
+#endif
 
 // Global flag for signal handling
 static std::atomic<bool> g_shutdown_requested{false};
@@ -72,7 +133,23 @@ static void on_terminate() {
     std::abort();
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+#ifdef _WIN32
+    // Check if running elevated; if not, re-launch self as elevated
+    if (!is_elevated()) {
+        std::cout << "Requesting elevated permissions...\n";
+        if (relaunch_elevated(argc, argv)) {
+            // Successfully launched elevated instance, exit this one
+            return 0;
+        } else {
+            // Failed to elevate (user cancelled or other error)
+            // Exit immediately - backend requires elevation for hardware access
+            std::cerr << "Error: Elevated permissions required. Exiting.\n";
+            return 1;
+        }
+    }
+#endif
+
     // Create platform instance
     auto platform = create_platform();
     g_platform = platform.get();

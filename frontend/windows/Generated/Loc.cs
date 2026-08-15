@@ -84,6 +84,8 @@ public static class Loc
         ["nav.cooling"] = @"Cooling",
         ["nav.home"] = @"Home",
         ["nav.profiles"] = @"Profiles",
+        ["nav.set"] = @"Set",
+        ["nav.set2"] = @"Set2",
         ["nav.settings"] = @"Settings",
         ["nav.test_mode"] = @"Settings not persisted",
         ["power.battery"] = @"Battery",
@@ -196,6 +198,8 @@ public static class Loc
         ["nav.cooling"] = @"散热",
         ["nav.home"] = @"首页",
         ["nav.profiles"] = @"配置",
+        ["nav.set"] = @"自定义",
+        ["nav.set2"] = @"设置2",
         ["nav.settings"] = @"设置",
         ["nav.test_mode"] = @"设置未持久化",
         ["power.battery"] = @"电池",
@@ -471,6 +475,12 @@ public static class Loc
 
     /// <summary>nav.profiles</summary>
     public static string Nav_Profiles => Get("nav.profiles");
+
+    /// <summary>nav.set</summary>
+    public static string Nav_Set => Get("nav.set");
+
+    /// <summary>nav.set2</summary>
+    public static string Nav_Set2 => Get("nav.set2");
 
     /// <summary>nav.settings</summary>
     public static string Nav_Settings => Get("nav.settings");

@@ -16,6 +16,10 @@ public sealed class FanCurve
     [JsonPropertyName("name")]
     public string Name { get; set; } = "";
 
+    /// <summary>Whether this is a built-in curve that cannot be deleted or modified.</summary>
+    [JsonPropertyName("builtin")]
+    public bool Builtin { get; set; }
+
     /// <summary>
     /// Temperature-to-speed mapping points.
     /// Rules: min 2, max 10 points. Must be sorted by ascending temp_c.

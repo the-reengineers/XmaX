@@ -82,7 +82,7 @@ public sealed partial class ProfilesPage : Page
         info.Children.Add(new TextBlock { Text = profile.Name, Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] });
         info.Children.Add(new TextBlock
         {
-            Text = Loc.F("format.tdp_fan", profile.Tdp.Stapm, profile.Tdp.Fast, profile.Tdp.Slow, profile.FanCurve ?? Loc.Format_FanAuto),
+            Text = Loc.F("format.tdp_fan", profile.Tdp.Stapm, profile.Tdp.Fast, profile.Tdp.Slow, profile.FanCurve),
             Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
             Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
         });

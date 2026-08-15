@@ -75,7 +75,8 @@ enum class ErrorCode : uint32_t {
     FanCurveNotFound = 4003,
     FanCurveInUse = 4004,
     ProfileInUse = 4005,
-    PersistDisabled = 4006
+    PersistDisabled = 4006,
+    BuiltinProtected = 4008
 };
 
 std::string error_code_to_string(ErrorCode code);

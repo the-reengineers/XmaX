@@ -117,6 +117,14 @@ public sealed class HomeLayout
     [JsonPropertyName("columns")]
     public int Columns { get; set; } = 3;
 
+    /// <summary>Base column width in pixels (at 100% DPI). Default 140.</summary>
+    [JsonPropertyName("column_width")]
+    public int ColumnWidth { get; set; } = 140;
+
+    /// <summary>Window height in pixels (at 100% DPI). Default 600.</summary>
+    [JsonPropertyName("window_height")]
+    public int WindowHeight { get; set; } = 600;
+
     public override string ToString() =>
-        $"HomeLayout(order:[{string.Join(",", WidgetOrder)}], cols:{Columns})";
+        $"HomeLayout(order:[{string.Join(",", WidgetOrder)}], cols:{Columns}, colWidth:{ColumnWidth}, height:{WindowHeight})";
 }

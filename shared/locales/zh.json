@@ -2,6 +2,8 @@
   "nav.home": "首页",
   "nav.profiles": "配置",
   "nav.cooling": "散热",
+  "nav.set": "自定义",
+  "nav.set2": "设置2",
   "nav.settings": "设置",
   "nav.test_mode": "设置未持久化",
   "nav.apply": "应用",

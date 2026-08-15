@@ -2,6 +2,8 @@
   "nav.home": "Home",
   "nav.profiles": "Profiles",
   "nav.cooling": "Cooling",
+  "nav.set": "Set",
+  "nav.set2": "Set2",
   "nav.settings": "Settings",
   "nav.test_mode": "Settings not persisted",
   "nav.apply": "Apply",

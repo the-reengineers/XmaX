@@ -32,6 +32,8 @@ struct HomeLayout {
     std::vector<std::string> widget_order;
     std::map<std::string, bool> widget_visibility;
     int columns = 3;  // 3-5 columns
+    int column_width = 140;  // Base column width in pixels (at 100% DPI)
+    int window_height = 600;  // Window height in pixels (at 100% DPI)
 };
 
 struct Config {

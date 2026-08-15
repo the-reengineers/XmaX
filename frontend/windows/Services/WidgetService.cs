@@ -20,6 +20,8 @@ public sealed class WidgetService : INotifyPropertyChanged
     // Column count bounds (3-4 only)
     public const int MinColumns = 3;
     public const int MaxColumns = 4;
+    public const int DefaultColumnWidth = 140;
+    public const int DefaultWindowHeight = 600;
 
     private readonly PipeClient _pipe;
 
@@ -30,6 +32,8 @@ public sealed class WidgetService : INotifyPropertyChanged
     private List<string> _widgetOrder = new();
     private readonly Dictionary<string, bool> _visibility = new();
     private int _columns = MinColumns;
+    private int _columnWidth = DefaultColumnWidth;
+    private int _windowHeight = DefaultWindowHeight;
 
     // Observable list of visible widgets in display order (for UI binding)
     private ObservableCollection<IHomeWidget> _visibleWidgets = new();
@@ -66,6 +70,32 @@ public sealed class WidgetService : INotifyPropertyChanged
             if (_columns == clamped) return;
             _columns = clamped;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Columns)));
+        }
+    }
+
+    /// <summary>Base column width in pixels (at 100% DPI).</summary>
+    public int ColumnWidth
+    {
+        get => _columnWidth;
+        set
+        {
+            if (value <= 0) return;
+            if (_columnWidth == value) return;
+            _columnWidth = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ColumnWidth)));
+        }
+    }
+
+    /// <summary>Window height in pixels (at 100% DPI).</summary>
+    public int WindowHeight
+    {
+        get => _windowHeight;
+        set
+        {
+            if (value <= 0) return;
+            if (_windowHeight == value) return;
+            _windowHeight = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(WindowHeight)));
         }
     }
 
@@ -226,6 +256,12 @@ public sealed class WidgetService : INotifyPropertyChanged
         // Apply column count
         Columns = layout.Columns;
 
+        // Apply column width
+        ColumnWidth = layout.ColumnWidth;
+
+        // Apply window height
+        WindowHeight = layout.WindowHeight;
+
         // Apply widget order (only registered widgets)
         if (layout.WidgetOrder.Count > 0)
         {
@@ -254,6 +290,8 @@ public sealed class WidgetService : INotifyPropertyChanged
             WidgetOrder = new List<string>(_widgetOrder),
             WidgetVisibility = new Dictionary<string, bool>(_visibility),
             Columns = _columns,
+            ColumnWidth = _columnWidth,
+            WindowHeight = _windowHeight,
         };
     }
 
@@ -290,6 +328,8 @@ public sealed class WidgetService : INotifyPropertyChanged
                 ["widget_order"] = widgetOrderArray,
                 ["widget_visibility"] = visibilityObj,
                 ["columns"] = layout.Columns,
+                ["column_width"] = layout.ColumnWidth,
+                ["window_height"] = layout.WindowHeight,
             };
 
             var payload = new JsonObject

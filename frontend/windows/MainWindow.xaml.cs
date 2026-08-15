@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
@@ -18,9 +19,9 @@ public sealed partial class MainWindow : Window
     // Window margin from screen edge (taskbar-aware)
     private const int WindowMargin = 10;
 
-    // Window size
-    private const int WindowWidth = 420;
-    private const int WindowHeight = 600;
+    // Base dimensions (unscaled, at 100% DPI)
+    private const int GridPadding = 12;       // Each side (matches HomePage.xaml)
+    private const int ColumnSpacing = 8;      // Between columns (matches HomePage.xaml)
 
     // Win32 constants
     private const int GWL_EXSTYLE = -20;
@@ -68,6 +69,35 @@ public sealed partial class MainWindow : Window
     [DllImport("dwmapi.dll")]
     private static extern int DwmExtendFrameIntoClientArea(IntPtr hwnd, ref MARGINS margins);
 
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr hwnd);
+
+    // Get DPI scale factor for this window
+    private double GetDpiScale()
+    {
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var dpi = GetDpiForWindow(hwnd);
+        return dpi / 96.0;
+    }
+
+    // Calculate scaled window dimensions
+    private int GetScaledWindowWidth(int columns, int columnWidth)
+    {
+        // Width = (columns × columnWidth) + ((columns-1) × spacing) + (2 × padding)
+        var baseWidth = (columns * columnWidth)
+                      + ((columns - 1) * ColumnSpacing)
+                      + (2 * GridPadding);
+
+        var scale = GetDpiScale();
+        return (int)(baseWidth * scale);
+    }
+
+    private int GetScaledWindowHeight(int windowHeight)
+    {
+        var scale = GetDpiScale();
+        return (int)(windowHeight * scale);
+    }
+
     public MainWindow()
     {
         this.InitializeComponent();
@@ -77,6 +107,7 @@ public sealed partial class MainWindow : Window
         SetupClickOutsideToHide();
         SetupBackendIntegration();
         SetupNavigationLabels();
+        SetupDynamicResizing();
 
         // Load config first (await to ensure layout is loaded before HomePage is created)
         _ = InitializeAsync();
@@ -98,18 +129,50 @@ public sealed partial class MainWindow : Window
     {
         // Set tab labels from Loc
         var items = NavView.MenuItems;
-        if (items.Count >= 4)
+        if (items.Count >= 6)
         {
             ((NavigationViewItem)items[0]).Content = Loc.Nav_Home;
             ((NavigationViewItem)items[1]).Content = Loc.Nav_Profiles;
             ((NavigationViewItem)items[2]).Content = Loc.Nav_Cooling;
-            ((NavigationViewItem)items[3]).Content = Loc.Nav_Settings;
+            ((NavigationViewItem)items[3]).Content = Loc.Nav_Set;
+            ((NavigationViewItem)items[4]).Content = Loc.Nav_Set2;
+            ((NavigationViewItem)items[5]).Content = Loc.Nav_Settings;
         }
 
         // Set test mode banner labels
         TestModeText.Text = Loc.Nav_TestMode;
         SessionPersistToggle.OnContent = Loc.Nav_Apply;
         SessionPersistToggle.OffContent = "";
+    }
+
+    // ===== Dynamic Window Resizing =====
+
+    private void SetupDynamicResizing()
+    {
+        // Handle column count changes
+        App.WidgetService.PropertyChanged += OnWidgetServicePropertyChanged;
+    }
+
+    private void OnWidgetServicePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(XmaX.Services.WidgetService.Columns)
+            || e.PropertyName == nameof(XmaX.Services.WidgetService.ColumnWidth)
+            || e.PropertyName == nameof(XmaX.Services.WidgetService.WindowHeight))
+        {
+            ResizeWindowToCurrentConfig();
+        }
+    }
+
+    private void ResizeWindowToCurrentConfig()
+    {
+        var columns = App.WidgetService.Columns;
+        var columnWidth = App.WidgetService.ColumnWidth;
+        var windowHeight = App.WidgetService.WindowHeight;
+        var width = GetScaledWindowWidth(columns, columnWidth);
+        var height = GetScaledWindowHeight(windowHeight);
+
+        this.AppWindow.Resize(new SizeInt32(width, height));
+        PositionBottomRight();
     }
 
     // ===== Test Mode Banner =====
@@ -187,8 +250,13 @@ public sealed partial class MainWindow : Window
             presenter.IsMinimizable = false;
         }
 
-        // Set window size
-        appWindow.Resize(new SizeInt32(WindowWidth, WindowHeight));
+        // Set window size based on current config
+        var columns = App.WidgetService.Columns;
+        var columnWidth = App.WidgetService.ColumnWidth;
+        var windowHeight = App.WidgetService.WindowHeight;
+        var width = GetScaledWindowWidth(columns, columnWidth);
+        var height = GetScaledWindowHeight(windowHeight);
+        appWindow.Resize(new SizeInt32(width, height));
 
         // Hide from task switchers
         appWindow.IsShownInSwitchers = false;
@@ -230,9 +298,12 @@ public sealed partial class MainWindow : Window
 
         var workArea = displayArea.WorkArea;
 
+        // Get current window size (already scaled)
+        var windowSize = appWindow.Size;
+
         // Position bottom-right with margin
-        var x = workArea.X + workArea.Width - WindowWidth - WindowMargin;
-        var y = workArea.Y + workArea.Height - WindowHeight - WindowMargin;
+        var x = workArea.X + workArea.Width - windowSize.Width - WindowMargin;
+        var y = workArea.Y + workArea.Height - windowSize.Height - WindowMargin;
 
         appWindow.Move(new PointInt32(x, y));
     }
@@ -285,6 +356,8 @@ public sealed partial class MainWindow : Window
                 "home" => typeof(HomePage),
                 "profiles" => typeof(ProfilesPage),
                 "cooling" => typeof(CoolingPage),
+                "set" => typeof(SetPage),
+                "set2" => typeof(Set2Page),
                 "settings" => typeof(SettingsPage),
                 _ => typeof(HomePage),
             };
@@ -293,8 +366,44 @@ public sealed partial class MainWindow : Window
             if (RootFrame.CurrentSourcePageType != pageType)
             {
                 RootFrame.Navigate(pageType);
+
+                // Resize window based on page type
+                if (pageType == typeof(SetPage))
+                {
+                    ResizeWindowForSetPage();
+                }
+                else
+                {
+                    ResizeWindowToNormal();
+                }
             }
         }
+    }
+
+    private void ResizeWindowForSetPage()
+    {
+        // Set page width = normal width + left panel width (3 columns)
+        var columns = App.WidgetService.Columns;
+        var columnWidth = App.WidgetService.ColumnWidth;
+        var windowHeight = App.WidgetService.WindowHeight;
+        var normalWidth = GetScaledWindowWidth(columns, columnWidth);
+
+        // Calculate left panel width (3 columns + spacing + padding, scaled)
+        var leftPanelWidth = (3 * columnWidth) + (2 * ColumnSpacing) + (2 * GridPadding);
+        var scale = GetDpiScale();
+        var scaledLeftPanelWidth = (int)(leftPanelWidth * scale);
+
+        var totalWidth = normalWidth + scaledLeftPanelWidth;
+        var height = GetScaledWindowHeight(windowHeight);
+
+        this.AppWindow.Resize(new SizeInt32(totalWidth, height));
+        PositionBottomRight();
+    }
+
+    private void ResizeWindowToNormal()
+    {
+        // Resize back to normal width
+        ResizeWindowToCurrentConfig();
     }
 
     // ===== Public Methods =====

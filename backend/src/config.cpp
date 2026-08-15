@@ -123,6 +123,12 @@ Config load_config(const std::filesystem::path& config_path) {
             if (hl.contains("columns") && hl["columns"].is_number_integer()) {
                 config.home_layout.columns = hl["columns"].get<int>();
             }
+            if (hl.contains("column_width") && hl["column_width"].is_number_integer()) {
+                config.home_layout.column_width = hl["column_width"].get<int>();
+            }
+            if (hl.contains("window_height") && hl["window_height"].is_number_integer()) {
+                config.home_layout.window_height = hl["window_height"].get<int>();
+            }
         }
 
         // Initialize session_persist from persist (session_persist is in-memory only)
@@ -182,7 +188,9 @@ bool save_config(const std::filesystem::path& config_path, const Config& config)
         j["home_layout"] = {
             {"widget_order", widget_order},
             {"widget_visibility", widget_visibility},
-            {"columns", config.home_layout.columns}
+            {"columns", config.home_layout.columns},
+            {"column_width", config.home_layout.column_width},
+            {"window_height", config.home_layout.window_height}
         };
 
         // Ensure directory exists

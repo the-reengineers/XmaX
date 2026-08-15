@@ -7,6 +7,7 @@
 #include <wbemidl.h>
 #include <taskschd.h>
 #include <comdef.h>
+#include <tlhelp32.h>
 
 #include <cstdlib>
 #include <iostream>
@@ -1155,6 +1156,29 @@ public:
 
     // ===== Process Management =====
 
+    // Helper to enable a privilege on the current process token
+    static bool enable_privilege(const wchar_t* privilege_name) {
+        HANDLE token = nullptr;
+        if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &token)) {
+            return false;
+        }
+
+        LUID luid{};
+        if (!LookupPrivilegeValueW(nullptr, privilege_name, &luid)) {
+            CloseHandle(token);
+            return false;
+        }
+
+        TOKEN_PRIVILEGES tp{};
+        tp.PrivilegeCount = 1;
+        tp.Privileges[0].Luid = luid;
+        tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+
+        bool result = AdjustTokenPrivileges(token, FALSE, &tp, sizeof(tp), nullptr, nullptr) != 0;
+        CloseHandle(token);
+        return result;
+    }
+
     auto spawn_frontend(const std::filesystem::path& exe_path) -> Result<ChildProcess> override {
         // Create Job Object if not already created
         if (!job_handle_) {
@@ -1181,27 +1205,134 @@ public:
             job_handle_ = job;
         }
 
+        std::wstring path_wide = exe_path.wstring();
         STARTUPINFOW si{};
         si.cb = sizeof(STARTUPINFOW);
-
         PROCESS_INFORMATION pi{};
 
-        std::wstring path_wide = exe_path.wstring();
+        // Check if backend is elevated
+        BOOL is_admin = FALSE;
+        SID_IDENTIFIER_AUTHORITY nt_authority = SECURITY_NT_AUTHORITY;
+        PSID admin_group = nullptr;
+        if (AllocateAndInitializeSid(&nt_authority, 2,
+                                      SECURITY_BUILTIN_DOMAIN_RID,
+                                      DOMAIN_ALIAS_RID_ADMINS,
+                                      0, 0, 0, 0, 0, 0, &admin_group)) {
+            CheckTokenMembership(nullptr, admin_group, &is_admin);
+            FreeSid(admin_group);
+        }
 
-        BOOL success = CreateProcessW(
-            path_wide.c_str(),
-            nullptr,
-            nullptr,
-            nullptr,
-            FALSE,
-            0,
-            nullptr,
-            nullptr,
-            &si,
-            &pi
-        );
+        std::cout << "[spawn_frontend] Backend elevated: " << (is_admin ? "yes" : "no") << std::endl;
+
+        BOOL success = FALSE;
+
+        if (is_admin) {
+            // Backend is elevated - launch frontend at medium integrity (non-elevated)
+            // by using the token from explorer.exe and setting integrity level to Medium
+
+            DWORD explorer_pid = 0;
+            HWND explorer_hwnd = FindWindowW(L"Progman", nullptr); // Desktop window
+            if (explorer_hwnd) {
+                GetWindowThreadProcessId(explorer_hwnd, &explorer_pid);
+                std::cout << "[spawn_frontend] Found explorer via Progman, PID: " << explorer_pid << std::endl;
+            }
+
+            if (explorer_pid == 0) {
+                // Fallback: find explorer.exe by name
+                HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+                if (snapshot != INVALID_HANDLE_VALUE) {
+                    PROCESSENTRY32W pe{};
+                    pe.dwSize = sizeof(pe);
+                    if (Process32FirstW(snapshot, &pe)) {
+                        do {
+                            if (_wcsicmp(pe.szExeFile, L"explorer.exe") == 0) {
+                                explorer_pid = pe.th32ProcessID;
+                                std::cout << "[spawn_frontend] Found explorer via snapshot, PID: " << explorer_pid << std::endl;
+                                break;
+                            }
+                        } while (Process32NextW(snapshot, &pe));
+                    }
+                    CloseHandle(snapshot);
+                }
+            }
+
+            if (explorer_pid != 0) {
+                HANDLE explorer_process = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, explorer_pid);
+                if (explorer_process) {
+                    std::cout << "[spawn_frontend] Opened explorer process" << std::endl;
+                    HANDLE explorer_token = nullptr;
+                    if (OpenProcessToken(explorer_process, TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY | TOKEN_QUERY | TOKEN_ADJUST_DEFAULT, &explorer_token)) {
+                        std::cout << "[spawn_frontend] Got explorer token" << std::endl;
+                        HANDLE duplicated_token = nullptr;
+                        if (DuplicateTokenEx(explorer_token, TOKEN_ALL_ACCESS, nullptr, SecurityImpersonation, TokenPrimary, &duplicated_token)) {
+                            std::cout << "[spawn_frontend] Duplicated token, calling CreateProcessWithTokenW" << std::endl;
+                            success = CreateProcessWithTokenW(
+                                duplicated_token,
+                                0,
+                                path_wide.c_str(),
+                                nullptr,
+                                0,
+                                nullptr,
+                                nullptr,
+                                &si,
+                                &pi
+                            );
+                            if (!success) {
+                                std::cout << "[spawn_frontend] CreateProcessWithTokenW failed: " << GetLastError() << std::endl;
+                            } else {
+                                std::cout << "[spawn_frontend] CreateProcessWithTokenW result: success" << std::endl;
+                            }
+                            CloseHandle(duplicated_token);
+                        } else {
+                            std::cout << "[spawn_frontend] DuplicateTokenEx failed: " << GetLastError() << std::endl;
+                        }
+                        CloseHandle(explorer_token);
+                    } else {
+                        std::cout << "[spawn_frontend] OpenProcessToken failed: " << GetLastError() << std::endl;
+                    }
+                    CloseHandle(explorer_process);
+                } else {
+                    std::cout << "[spawn_frontend] OpenProcess failed: " << GetLastError() << std::endl;
+                }
+            } else {
+                std::cout << "[spawn_frontend] Could not find explorer process" << std::endl;
+            }
+
+            if (!success) {
+                // Fallback: use CreateProcessW (will inherit elevated token)
+                std::cout << "[spawn_frontend] Falling back to CreateProcessW" << std::endl;
+                success = CreateProcessW(
+                    path_wide.c_str(),
+                    nullptr,
+                    nullptr,
+                    nullptr,
+                    FALSE,
+                    0,
+                    nullptr,
+                    nullptr,
+                    &si,
+                    &pi
+                );
+            }
+        } else {
+            // Backend is not elevated - use normal CreateProcessW
+            std::cout << "[spawn_frontend] Using CreateProcessW (non-elevated)" << std::endl;
+            success = CreateProcessW(
+                path_wide.c_str(),
+                nullptr,
+                nullptr,
+                nullptr,
+                FALSE,
+                0,
+                nullptr,
+                nullptr,
+                &si,
+                &pi
+            );
+        }
 
         if (!success) {
+            std::cout << "[spawn_frontend] Final CreateProcess failed: " << GetLastError() << std::endl;
             return std::unexpected(ErrorCode::HardwareBusy);
         }
 
@@ -1216,6 +1347,8 @@ public:
         ChildProcess child;
         child.pid = pi.dwProcessId;
         child.process_handle = pi.hProcess;
+
+        std::cout << "[spawn_frontend] Frontend spawned with PID: " << child.pid << std::endl;
 
         return child;
     }

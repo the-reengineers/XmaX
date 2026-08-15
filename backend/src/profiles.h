@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 #include <map>
@@ -33,6 +34,8 @@ struct Profile {
 struct ProfileStorage {
     std::map<std::string, Profile> profiles;
     std::map<std::string, FanCurve> fan_curves;
+    // Built-in curve IDs that cannot be deleted or overwritten by user input.
+    std::set<std::string> builtin_curves;
 };
 
 // Load profiles from file
@@ -65,3 +68,9 @@ std::optional<std::string> delete_profile(ProfileStorage& storage, const std::st
 
 // Interpolate fan speed from temperature using curve
 int interpolate_fan_speed(const FanCurve& curve, int temp_c);
+
+// Get all builtin fan curves (hardcoded, immutable defaults).
+std::vector<FanCurve> get_builtin_fan_curves();
+
+// Check if a curve slug is builtin (case-insensitive comparison against builtin IDs).
+bool is_builtin_curve(const std::string& slug, const ProfileStorage& storage);

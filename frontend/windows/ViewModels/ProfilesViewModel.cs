@@ -71,7 +71,7 @@ public sealed class ProfilesViewModel : INotifyPropertyChanged
     /// <summary>
     /// Create a new profile with the given name, TDP values, and fan curve.
     /// </summary>
-    public async Task CreateProfileAsync(string name, int stapm, int fast, int slow, string? fanCurveId)
+    public async Task CreateProfileAsync(string name, int stapm, int fast, int slow, string fanCurveId)
     {
         var slug = GenerateSlug(name);
         var profile = new Profile

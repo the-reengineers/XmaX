@@ -16,6 +16,8 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
@@ -25,7 +27,11 @@
             <TextBlock x:Name="ChargeLimitText" Grid.Row="1"
                        Style="{StaticResource SubtitleTextBlockStyle}" />
 
-            <TextBlock Grid.Row="2" Style="{StaticResource CaptionTextBlockStyle}"
+            <ProgressBar x:Name="ChargeGauge" Grid.Row="3"
+                         Minimum="0" Maximum="100" Value="0"
+                         Height="8" />
+
+            <TextBlock Grid.Row="4" Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        Text="Tap to cycle" />
         </Grid>

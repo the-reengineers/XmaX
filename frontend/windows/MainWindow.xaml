@@ -44,6 +44,8 @@
                         <NavigationViewItem Tag="home" />
                         <NavigationViewItem Tag="profiles" />
                         <NavigationViewItem Tag="cooling" />
+                        <NavigationViewItem Tag="set" />
+                        <NavigationViewItem Tag="set2" />
                         <NavigationViewItem Tag="settings" />
                     </NavigationView.MenuItems>
                 </NavigationView>

@@ -19,6 +19,7 @@ std::string error_code_to_string(ErrorCode code) {
         case ErrorCode::FanCurveInUse: return "fan_curve_in_use";
         case ErrorCode::ProfileInUse: return "profile_in_use";
         case ErrorCode::PersistDisabled: return "persist_disabled";
+        case ErrorCode::BuiltinProtected: return "builtin_protected";
         default: return "unknown";
     }
 }

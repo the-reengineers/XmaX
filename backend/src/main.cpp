@@ -219,28 +219,12 @@ int main(int argc, char* argv[]) {
         auto current_power_state = power->current_state();
         std::cout << "Power state: " << static_cast<int>(current_power_state) << std::endl;
 
-        // Helper to get TDP ceiling for a power state from config
-        auto get_power_state_tdp = [&](PowerState::Source state) -> int {
-            switch (state) {
-                case PowerState::Source::Battery:
-                    return config.power_state_profiles.battery.tdp_max_w;
-                case PowerState::Source::UsbCSlow:
-                    return config.power_state_profiles.usb_c_slow.tdp_max_w;
-                case PowerState::Source::UsbCFast:
-                    return config.power_state_profiles.usb_c_fast.tdp_max_w;
-                case PowerState::Source::DcIn:
-                    return config.power_state_profiles.dc_in.tdp_max_w;
-                default:
-                    return 55; // Safe default for unknown state
-            }
-        };
-
         // If session_persist=true, apply settings from config
         if (config.session_persist) {
             std::cout << "Applying persisted settings..." << std::endl;
 
-            // Set initial power state TDP ceiling for adaptive controller
-            int initial_tdp_ceiling = get_power_state_tdp(current_power_state);
+            // Set initial power state TDP ceiling from hardcoded max
+            int initial_tdp_ceiling = power_state_max_tdp(current_power_state);
             adaptive->set_power_state_ceiling(initial_tdp_ceiling);
             std::cout << "Initial power state TDP ceiling: " << initial_tdp_ceiling << "W" << std::endl;
 
@@ -252,45 +236,34 @@ int main(int argc, char* argv[]) {
                 }
             }
 
-            // Get power state profile
-            std::string profile_slug;
-            int tdp_max_w = 55;  // OneXConsole default for Battery (normal)
-            switch (current_power_state) {
-                case PowerState::Source::Battery:
-                    profile_slug = config.power_state_profiles.battery.profile;
-                    tdp_max_w = config.power_state_profiles.battery.tdp_max_w;
+            // Find default profile assigned to current power state
+            const Profile* assigned = nullptr;
+            for (const auto& [slug, profile] : profiles.profiles) {
+                if (profile.power_state.has_value() && profile.power_state.value() == current_power_state
+                    && profile.is_default) {
+                    assigned = &profile;
                     break;
-                case PowerState::Source::UsbCSlow:
-                    profile_slug = config.power_state_profiles.usb_c_slow.profile;
-                    tdp_max_w = config.power_state_profiles.usb_c_slow.tdp_max_w;
-                    break;
-                case PowerState::Source::UsbCFast:
-                    profile_slug = config.power_state_profiles.usb_c_fast.profile;
-                    tdp_max_w = config.power_state_profiles.usb_c_fast.tdp_max_w;
-                    break;
-                case PowerState::Source::DcIn:
-                    profile_slug = config.power_state_profiles.dc_in.profile;
-                    tdp_max_w = config.power_state_profiles.dc_in.tdp_max_w;
-                    break;
-                default:
-                    break;
+                }
             }
 
-            // Apply profile if configured
-            if (!profile_slug.empty()) {
-                auto it = profiles.profiles.find(profile_slug);
-                if (it != profiles.profiles.end()) {
-                    const auto& profile = it->second;
+            if (assigned != nullptr) {
+                if (assigned->type == ProfileType::Adaptive) {
+                    // Activate adaptive controller
+                    TuningPreset preset = TuningPreset::Default;
+                    if (assigned->tuning == "silent") preset = TuningPreset::Silent;
+                    else if (assigned->tuning == "performance") preset = TuningPreset::Performance;
 
-                    // Apply TDP limits
-                    auto tdp_result = tdp->write_tdp(profile.stapm_w, profile.fast_w, profile.slow_w);
+                    adaptive->activate(preset, assigned->target_temp_c, assigned->tdp_max_w, assigned->fan_max_pct);
+                    std::cout << "Applied adaptive profile: " << assigned->name << std::endl;
+                } else {
+                    // Apply fixed profile
+                    auto tdp_result = tdp->write_tdp(assigned->stapm_w, assigned->fast_w, assigned->slow_w);
                     if (!tdp_result) {
                         std::cerr << "Failed to apply TDP limits" << std::endl;
                     }
 
-                    // Apply fan curve
-                    if (profile.fan_curve.has_value()) {
-                        auto curve_it = profiles.fan_curves.find(profile.fan_curve.value());
+                    if (assigned->fan_curve.has_value()) {
+                        auto curve_it = profiles.fan_curves.find(assigned->fan_curve.value());
                         if (curve_it != profiles.fan_curves.end()) {
                             (void)fan->set_mode(FanState::Mode::Curve);
                             fan->set_curve(curve_it->second);
@@ -299,19 +272,8 @@ int main(int argc, char* argv[]) {
                         (void)fan->set_mode(FanState::Mode::Auto);
                     }
 
-                    std::cout << "Applied profile: " << profile.name << std::endl;
+                    std::cout << "Applied profile: " << assigned->name << std::endl;
                 }
-            }
-
-            // Restore adaptive controller if was active
-            if (config.auto_tune.has_value() && config.auto_tune->enabled) {
-                const auto& at = config.auto_tune.value();
-                TuningPreset preset = TuningPreset::Default;
-                if (at.tuning == "silent") preset = TuningPreset::Silent;
-                else if (at.tuning == "performance") preset = TuningPreset::Performance;
-
-                adaptive->activate(preset, at.target_temp_c, at.tdp_max_w, at.fan_max_pct);
-                std::cout << "Restored adaptive controller: " << at.tuning << std::endl;
             }
         } else {
             std::cout << "Persist disabled -- hardware at BIOS defaults" << std::endl;
@@ -354,12 +316,49 @@ int main(int argc, char* argv[]) {
         }
 
         // Wire up callbacks
-        // Power state change → update adaptive controller TDP ceiling (if session_persist enabled)
+        // Power state change → auto-apply assigned profile (if session_persist enabled)
         power->on_state_change([&](PowerState::Source new_state, PowerState::Source /*old_state*/) {
             if (transport->is_session_persist()) {
-                int new_tdp_ceiling = get_power_state_tdp(new_state);
+                // Set power state TDP ceiling from hardcoded max
+                int new_tdp_ceiling = power_state_max_tdp(new_state);
                 adaptive->set_power_state_ceiling(new_tdp_ceiling);
                 std::cout << "[power] State changed, new TDP ceiling: " << new_tdp_ceiling << "W" << std::endl;
+
+                // Find default profile assigned to new power state
+                const Profile* assigned = nullptr;
+                for (const auto& [slug, profile] : profiles.profiles) {
+                    if (profile.power_state.has_value() && profile.power_state.value() == new_state
+                        && profile.is_default) {
+                        assigned = &profile;
+                        break;
+                    }
+                }
+
+                if (assigned != nullptr) {
+                    if (assigned->type == ProfileType::Adaptive) {
+                        TuningPreset preset = TuningPreset::Default;
+                        if (assigned->tuning == "silent") preset = TuningPreset::Silent;
+                        else if (assigned->tuning == "performance") preset = TuningPreset::Performance;
+
+                        adaptive->activate(preset, assigned->target_temp_c, assigned->tdp_max_w, assigned->fan_max_pct);
+                        std::cout << "[power] Auto-applied adaptive profile: " << assigned->name << std::endl;
+                    } else {
+                        (void)tdp->write_tdp(assigned->stapm_w, assigned->fast_w, assigned->slow_w);
+
+                        if (assigned->fan_curve.has_value()) {
+                            auto curve_it = profiles.fan_curves.find(assigned->fan_curve.value());
+                            if (curve_it != profiles.fan_curves.end()) {
+                                (void)fan->set_mode(FanState::Mode::Curve);
+                                fan->set_curve(curve_it->second);
+                            }
+                        } else {
+                            (void)fan->set_mode(FanState::Mode::Auto);
+                        }
+
+                        adaptive->deactivate();
+                        std::cout << "[power] Auto-applied fixed profile: " << assigned->name << std::endl;
+                    }
+                }
 
                 // Send power_mode_change event to frontend
                 Event evt;

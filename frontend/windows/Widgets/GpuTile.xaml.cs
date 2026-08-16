@@ -6,15 +6,9 @@ namespace XmaX.Widgets;
 /// <summary>
 /// GPU metric tile showing temperature, utilization, and power.
 /// </summary>
-public sealed partial class GpuTile : UserControl, IHomeWidget
+public sealed partial class GpuTile : UserControl
 {
     private readonly MetricsService _metricsService;
-
-    public string WidgetId => "gpu";
-    public WidgetConfig Config => WidgetConfig.TransparentTile;
-    public object Control => this;
-    public string? Title => null;
-    public int GetRequiredRows(int availableColumns) => Config.Rows;
 
     public GpuTile()
     {

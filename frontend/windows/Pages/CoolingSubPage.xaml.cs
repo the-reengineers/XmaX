@@ -7,17 +7,17 @@ using XmaX.ViewModels;
 namespace XmaX.Pages;
 
 /// <summary>
-/// Cooling page: fan curve CRUD.
+/// Cooling sub-page: fan curve CRUD.
+/// Navigated from Settings page drill-down.
 /// </summary>
-public sealed partial class CoolingPage : Page
+public sealed partial class CoolingSubPage : Page
 {
     private readonly CoolingViewModel _viewModel;
 
-    public CoolingPage()
+    public CoolingSubPage()
     {
         this.InitializeComponent();
 
-        // Localize XAML-defined elements
         FanCurvesTitle.Text = Loc.Title_FanCurves;
         CreateFanCurveBtn.Content = Loc.Button_CreateFanCurve;
 
@@ -30,6 +30,8 @@ public sealed partial class CoolingPage : Page
 
         RebuildFanCurvesList();
     }
+
+    private void OnBackClick(object sender, RoutedEventArgs e) => App.NavigateBack();
 
     // ===== Fan Curves List =====
 
@@ -50,8 +52,7 @@ public sealed partial class CoolingPage : Page
         {
             foreach (var curve in _viewModel.FanCurves)
             {
-                var card = BuildFanCurveCard(curve);
-                panel.Children.Add(card);
+                panel.Children.Add(BuildFanCurveCard(curve));
             }
         }
 

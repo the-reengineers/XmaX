@@ -7,28 +7,32 @@ using XmaX.WidgetFramework;
 namespace XmaX.Pages;
 
 /// <summary>
-/// Set2 page — testbed for the v2 widget framework with drag-reflow.
-/// Displays 7 colored placeholder widgets in a 3-column grid.
+/// Widget layout playground sub-page — testbed for the v2 widget framework with drag-reflow.
+/// Displays colored placeholder widgets in a 3-column grid.
+/// Navigated from Settings page drill-down.
 /// </summary>
-public sealed partial class Set2Page : Page
+public sealed partial class WidgetPlaygroundSubPage : Page
 {
     private static readonly Random _random = new();
 
-    public Set2Page()
+    public WidgetPlaygroundSubPage()
     {
         this.InitializeComponent();
+
+        PageTitle.Text = Loc.Title_WidgetPlayground;
         this.Loaded += OnPageLoaded;
     }
 
+    private void OnBackClick(object sender, RoutedEventArgs e) => App.NavigateBack();
+
     private void OnPageLoaded(object sender, RoutedEventArgs e)
     {
-        // Build placeholder widgets
         var widgets = new List<GridWidget>
         {
             CreatePlaceholder("w1", 1, 1, false, Colors.Red),
             CreatePlaceholder("w2", 1, 1, false, Colors.Green),
             CreatePlaceholder("w3", 1, 1, false, Colors.Blue),
-            CreatePlaceholder("w4", 3, 1, true,  Colors.Gold),       // Yellow
+            CreatePlaceholder("w4", 3, 1, true,  Colors.Gold),
             CreatePlaceholder("w5", 3, 2, true,  Colors.Purple),
             CreatePlaceholder("w6", 1, 2, false, Colors.Orange),
             CreatePlaceholder("w7", 1, 1, false, Colors.Cyan),
@@ -37,7 +41,6 @@ public sealed partial class Set2Page : Page
         GridHost.Columns = 3;
         GridHost.SetWidgets(widgets);
 
-        // Attach drag controller
         var controller = new DragReflowController(GridHost);
         GridHost.SetDragController(controller);
     }

@@ -11,20 +11,10 @@ namespace XmaX.Widgets;
 /// Uses ProfileCard component for each profile. Tap to apply.
 /// Active profile is visually highlighted.
 /// </summary>
-public sealed partial class ProfilesWidget : UserControl, IHomeWidget
+public sealed partial class ProfilesWidget : UserControl
 {
     private readonly ProfileService _profileService;
     private readonly WidgetService _widgetService;
-
-    public string WidgetId => "profiles";
-    public WidgetConfig Config => WidgetConfig.FlexibleTransparent(
-        minColumns: 1,
-        maxColumns: 4,
-        alwaysFillRow: true,
-        rows: 1);
-    public object Control => this;
-    public string? Title => Loc.Title_Profiles;
-    public int GetRequiredRows(int availableColumns) => Config.Rows;
 
     public ProfilesWidget()
     {
@@ -62,10 +52,8 @@ public sealed partial class ProfilesWidget : UserControl, IHomeWidget
 
         var profiles = _profileService.Profiles;
         var activeId = _profileService.ActiveProfileId;
-        // Use the widget's actual column span based on AlwaysFillRow setting
-        var columns = Config.AlwaysFillRow
-            ? _widgetService.Columns
-            : Math.Min(Config.MaxColumns, _widgetService.Columns);
+        // Always fill the full row width
+        var columns = _widgetService.Columns;
 
         if (profiles.Count == 0)
         {
@@ -107,6 +95,7 @@ public sealed partial class ProfilesWidget : UserControl, IHomeWidget
             {
                 ProfileId = profile.Id,
                 DisplayName = profile.Name,
+                IsAdaptive = profile.IsAdaptive,
                 Info = GetProfileInfo(profile),
                 FanCurveData = fanCurve,
                 IsSelected = isActive,
@@ -122,10 +111,15 @@ public sealed partial class ProfilesWidget : UserControl, IHomeWidget
     }
 
     /// <summary>
-    /// Get info text for a profile (TDP values only).
+    /// Get info text for a profile.
+    /// Fixed: TDP values. Adaptive: tuning type uppercase.
     /// </summary>
     private string GetProfileInfo(Profile profile)
     {
+        if (profile.IsAdaptive)
+        {
+            return profile.Tuning.ToUpper();
+        }
         return $"{profile.Tdp.Stapm}W · {profile.Tdp.Fast}W · {profile.Tdp.Slow}W";
     }
 

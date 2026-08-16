@@ -3,7 +3,6 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using XmaX.Services;
 using XmaX.WidgetFramework;
-using XmaX.Widgets;
 
 namespace XmaX.Pages;
 
@@ -30,16 +29,6 @@ public sealed partial class HomePage : Page
             if (gridWidget != null)
             {
                 _gridWidgets[id] = gridWidget;
-
-                // Register as IHomeWidget (backward compat for SetPage)
-                // Content may be the widget directly or wrapped in a ScrollViewer
-                var content = gridWidget.Content;
-                if (content is ScrollViewer sv)
-                    content = sv.Content;
-                if (content is IHomeWidget homeWidget)
-                {
-                    _widgetService.Register(homeWidget);
-                }
             }
         }
 
@@ -55,33 +44,23 @@ public sealed partial class HomePage : Page
         SetupWidgets();
     }
 
-    protected override void OnNavigatedTo(Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
-    {
-        base.OnNavigatedTo(e);
-        // Ensure critical widgets are always visible
-        _widgetService.SetVisible("power", true);
-        _widgetService.SetVisible("charge_limit", true);
-    }
-
     /// <summary>
     /// Build the widget list from stored GridWidgets, applying config-driven sizes.
-    /// Reuses the same widget instances created in the constructor (not new ones).
+    /// Uses config widget IDs if available, otherwise shows all defaults.
     /// </summary>
     private void SetupWidgets()
     {
-        bool hasConfig = _widgetService.VisibleWidgets.Count > 0;
-
+        var configIds = _widgetService.ConfigWidgetIds;
         var gridWidgets = new List<GridWidget>();
 
-        if (hasConfig)
+        if (configIds.Count > 0)
         {
-            // Use visible widgets from config (order set by WidgetService)
-            foreach (var homeWidget in _widgetService.VisibleWidgets)
+            // Use widget order and sizes from config
+            foreach (var id in configIds)
             {
-                if (_gridWidgets.TryGetValue(homeWidget.WidgetId, out var gw))
+                if (_gridWidgets.TryGetValue(id, out var gw))
                 {
-                    // Apply config-driven sizes
-                    var (colSpan, rowSpan) = _widgetService.GetWidgetSpan(homeWidget.WidgetId);
+                    var (colSpan, rowSpan) = _widgetService.GetWidgetSpan(id);
                     gw.ColumnSpan = colSpan;
                     gw.RowSpan = rowSpan;
                     gridWidgets.Add(gw);

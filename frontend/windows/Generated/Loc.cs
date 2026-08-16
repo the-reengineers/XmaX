@@ -29,6 +29,7 @@ public static class Loc
         ["button.revert_defaults"] = @"Revert to System Defaults",
         ["button.save"] = @"Save",
         ["button.silent"] = @"Silent",
+        ["dialog.error"] = @"Error",
         ["dialog.apply_failed"] = @"Apply Failed",
         ["dialog.create_failed"] = @"Create failed",
         ["dialog.create_fan_curve"] = @"Create Fan Curve",
@@ -43,6 +44,7 @@ public static class Loc
         ["empty.no_fan_curves_hint"] = @"No fan curves yet. Create one above.",
         ["empty.no_profiles"] = @"No profiles yet",
         ["empty.no_profiles_hint"] = @"No profiles yet. Create one above.",
+        ["info.no_adaptive_profiles"] = @"No adaptive profiles",
         ["error.fan_curve_in_use"] = @"Fan curve is used by profile '{0}'. Remove the reference first.",
         ["error.fan_curve_max_points"] = @"Fan curve must have at most 10 points",
         ["error.fan_curve_min_points"] = @"Fan curve must have at least 2 points",
@@ -50,17 +52,25 @@ public static class Loc
         ["error.fan_curve_speed_range"] = @"Fan speed must be between 0 and 100%",
         ["error.fan_curve_temp_range"] = @"Temperature must be between 0 and 100°C",
         ["error.profile_in_use"] = @"Profile is assigned to power state '{0}'. Remove the assignment first.",
+        ["error.power_state_in_use"] = @"Power state '{0}' is already assigned to profile '{1}'.",
         ["form.fan_curve"] = @"Fan Curve",
         ["form.fan_curve_name"] = @"Fan curve name",
+        ["form.fan_max"] = @"Fan Max (%)",
         ["form.fast"] = @"Fast (W)",
         ["form.name"] = @"Name",
         ["form.none"] = @"(none)",
+        ["form.power_state"] = @"Power State",
         ["form.profile_name"] = @"Profile name",
+        ["form.profile_type"] = @"Profile Type",
         ["form.slow"] = @"Slow (W)",
         ["form.speed"] = @"Speed (%)",
         ["form.stapm"] = @"STAPM (W)",
-        ["form.tdp_ceiling"] = @"TDP Ceiling",
+        ["form.target_temp"] = @"Target Temp (°C)",
+        ["form.tdp_max"] = @"TDP Max (W)",
         ["form.temp"] = @"Temp (°C)",
+        ["form.tuning"] = @"Tuning",
+        ["form.type_adaptive"] = @"Adaptive",
+        ["form.type_fixed"] = @"Fixed",
         ["format.fan_auto"] = @"auto",
         ["format.fan_curve_point"] = @"{0}°C
 {1}%",
@@ -82,8 +92,12 @@ public static class Loc
         ["metrics.vram_format"] = @"{0}/{1}G",
         ["nav.apply"] = @"Apply",
         ["nav.cooling"] = @"Cooling",
+        ["nav.cooling_desc"] = @"Create and edit fan curves",
         ["nav.home"] = @"Home",
+        ["nav.playground_desc"] = @"Test drag-reflow with placeholder widgets",
+        ["nav.power_states_desc"] = @"Assign profiles to power sources",
         ["nav.profiles"] = @"Profiles",
+        ["nav.profiles_desc"] = @"Manage TDP profiles and fan curves",
         ["nav.set"] = @"Set",
         ["nav.set2"] = @"Set2",
         ["nav.settings"] = @"Settings",
@@ -114,8 +128,9 @@ public static class Loc
         ["title.fan_curves"] = @"Fan Curves",
         ["title.metrics"] = @"Metrics",
         ["title.power"] = @"Power",
-        ["title.power_state_assignments"] = @"Power State Assignments",
+        ["title.power_state_assignments"] = @"Power Limits",
         ["title.profiles"] = @"Profiles",
+        ["title.widget_playground"] = @"Widget Layout Playground",
         ["widget.adaptive"] = @"Adaptive Controller",
         ["widget.apply_profile_tooltip"] = @"Apply profile: {0}",
         ["widget.charge_format"] = @"{0}%",
@@ -143,6 +158,7 @@ public static class Loc
         ["button.revert_defaults"] = @"还原为系统默认值",
         ["button.save"] = @"保存",
         ["button.silent"] = @"静音",
+        ["dialog.error"] = @"错误",
         ["dialog.apply_failed"] = @"应用失败",
         ["dialog.create_failed"] = @"创建失败",
         ["dialog.create_fan_curve"] = @"创建风扇曲线",
@@ -157,6 +173,7 @@ public static class Loc
         ["empty.no_fan_curves_hint"] = @"暂无风扇曲线。在上方创建一个。",
         ["empty.no_profiles"] = @"暂无配置",
         ["empty.no_profiles_hint"] = @"暂无配置。在上方创建一个。",
+        ["info.no_adaptive_profiles"] = @"暂无自适应配置",
         ["error.fan_curve_in_use"] = @"风扇曲线被配置 '{0}' 引用。请先移除引用。",
         ["error.fan_curve_max_points"] = @"风扇曲线最多 10 个点",
         ["error.fan_curve_min_points"] = @"风扇曲线至少需要 2 个点",
@@ -164,17 +181,25 @@ public static class Loc
         ["error.fan_curve_speed_range"] = @"风扇速度必须在 0 到 100% 之间",
         ["error.fan_curve_temp_range"] = @"温度必须在 0 到 100°C 之间",
         ["error.profile_in_use"] = @"配置已分配给电源状态 '{0}'。请先移除分配。",
+        ["error.power_state_in_use"] = @"电源状态 '{0}' 已分配给配置 '{1}'。",
         ["form.fan_curve"] = @"风扇曲线",
         ["form.fan_curve_name"] = @"风扇曲线名称",
+        ["form.fan_max"] = @"最大风扇 (%)",
         ["form.fast"] = @"快速 (W)",
         ["form.name"] = @"名称",
         ["form.none"] = @"(无)",
+        ["form.power_state"] = @"电源状态",
         ["form.profile_name"] = @"配置名称",
+        ["form.profile_type"] = @"配置类型",
         ["form.slow"] = @"慢速 (W)",
         ["form.speed"] = @"速度 (%)",
         ["form.stapm"] = @"STAPM (W)",
-        ["form.tdp_ceiling"] = @"TDP 上限",
+        ["form.target_temp"] = @"目标温度 (°C)",
+        ["form.tdp_max"] = @"最大 TDP (W)",
         ["form.temp"] = @"温度 (°C)",
+        ["form.tuning"] = @"调节",
+        ["form.type_adaptive"] = @"自适应",
+        ["form.type_fixed"] = @"固定",
         ["format.fan_auto"] = @"自动",
         ["format.fan_curve_point"] = @"{0}°C
 {1}%",
@@ -196,8 +221,12 @@ public static class Loc
         ["metrics.vram_format"] = @"{0}/{1}G",
         ["nav.apply"] = @"应用",
         ["nav.cooling"] = @"散热",
+        ["nav.cooling_desc"] = @"创建和编辑风扇曲线",
         ["nav.home"] = @"首页",
+        ["nav.playground_desc"] = @"使用占位小部件测试拖拽重排",
+        ["nav.power_states_desc"] = @"为电源分配配置",
         ["nav.profiles"] = @"配置",
+        ["nav.profiles_desc"] = @"管理 TDP 配置和风扇曲线",
         ["nav.set"] = @"自定义",
         ["nav.set2"] = @"设置2",
         ["nav.settings"] = @"设置",
@@ -228,8 +257,9 @@ public static class Loc
         ["title.fan_curves"] = @"风扇曲线",
         ["title.metrics"] = @"监控",
         ["title.power"] = @"电源",
-        ["title.power_state_assignments"] = @"电源状态分配",
+        ["title.power_state_assignments"] = @"功率限制",
         ["title.profiles"] = @"配置",
+        ["title.widget_playground"] = @"小部件布局测试场",
         ["widget.adaptive"] = @"自适应控制器",
         ["widget.apply_profile_tooltip"] = @"应用配置：{0}",
         ["widget.charge_format"] = @"{0}%",
@@ -332,6 +362,9 @@ public static class Loc
     /// <summary>dialog.delete_failed</summary>
     public static string Dialog_DeleteFailed => Get("dialog.delete_failed");
 
+    /// <summary>dialog.error</summary>
+    public static string Dialog_Error => Get("dialog.error");
+
     /// <summary>dialog.edit_fan_curve</summary>
     public static string Dialog_EditFanCurve => Get("dialog.edit_fan_curve");
 
@@ -359,6 +392,9 @@ public static class Loc
     /// <summary>empty.no_profiles_hint</summary>
     public static string Empty_NoProfilesHint => Get("empty.no_profiles_hint");
 
+    /// <summary>info.no_adaptive_profiles</summary>
+    public static string Info_NoAdaptiveProfiles => Get("info.no_adaptive_profiles");
+
     /// <summary>error.fan_curve_in_use</summary>
     public static string Error_FanCurveInUse => Get("error.fan_curve_in_use");
 
@@ -380,11 +416,17 @@ public static class Loc
     /// <summary>error.profile_in_use</summary>
     public static string Error_ProfileInUse => Get("error.profile_in_use");
 
+    /// <summary>error.power_state_in_use</summary>
+    public static string Error_PowerStateInUse => Get("error.power_state_in_use");
+
     /// <summary>form.fan_curve</summary>
     public static string Form_FanCurve => Get("form.fan_curve");
 
     /// <summary>form.fan_curve_name</summary>
     public static string Form_FanCurveName => Get("form.fan_curve_name");
+
+    /// <summary>form.fan_max</summary>
+    public static string Form_FanMax => Get("form.fan_max");
 
     /// <summary>form.fast</summary>
     public static string Form_Fast => Get("form.fast");
@@ -395,8 +437,14 @@ public static class Loc
     /// <summary>form.none</summary>
     public static string Form_None => Get("form.none");
 
+    /// <summary>form.power_state</summary>
+    public static string Form_PowerState => Get("form.power_state");
+
     /// <summary>form.profile_name</summary>
     public static string Form_ProfileName => Get("form.profile_name");
+
+    /// <summary>form.profile_type</summary>
+    public static string Form_ProfileType => Get("form.profile_type");
 
     /// <summary>form.slow</summary>
     public static string Form_Slow => Get("form.slow");
@@ -407,11 +455,23 @@ public static class Loc
     /// <summary>form.stapm</summary>
     public static string Form_Stapm => Get("form.stapm");
 
-    /// <summary>form.tdp_ceiling</summary>
-    public static string Form_TdpCeiling => Get("form.tdp_ceiling");
+    /// <summary>form.target_temp</summary>
+    public static string Form_TargetTemp => Get("form.target_temp");
+
+    /// <summary>form.tdp_max</summary>
+    public static string Form_TdpMax => Get("form.tdp_max");
 
     /// <summary>form.temp</summary>
     public static string Form_Temp => Get("form.temp");
+
+    /// <summary>form.tuning</summary>
+    public static string Form_Tuning => Get("form.tuning");
+
+    /// <summary>form.type_adaptive</summary>
+    public static string Form_TypeAdaptive => Get("form.type_adaptive");
+
+    /// <summary>form.type_fixed</summary>
+    public static string Form_TypeFixed => Get("form.type_fixed");
 
     /// <summary>format.fan_auto</summary>
     public static string Format_FanAuto => Get("format.fan_auto");
@@ -470,11 +530,23 @@ public static class Loc
     /// <summary>nav.cooling</summary>
     public static string Nav_Cooling => Get("nav.cooling");
 
+    /// <summary>nav.cooling_desc</summary>
+    public static string Nav_CoolingDesc => Get("nav.cooling_desc");
+
     /// <summary>nav.home</summary>
     public static string Nav_Home => Get("nav.home");
 
+    /// <summary>nav.playground_desc</summary>
+    public static string Nav_PlaygroundDesc => Get("nav.playground_desc");
+
+    /// <summary>nav.power_states_desc</summary>
+    public static string Nav_PowerStatesDesc => Get("nav.power_states_desc");
+
     /// <summary>nav.profiles</summary>
     public static string Nav_Profiles => Get("nav.profiles");
+
+    /// <summary>nav.profiles_desc</summary>
+    public static string Nav_ProfilesDesc => Get("nav.profiles_desc");
 
     /// <summary>nav.set</summary>
     public static string Nav_Set => Get("nav.set");
@@ -571,6 +643,9 @@ public static class Loc
 
     /// <summary>title.profiles</summary>
     public static string Title_Profiles => Get("title.profiles");
+
+    /// <summary>title.widget_playground</summary>
+    public static string Title_WidgetPlayground => Get("title.widget_playground");
 
     /// <summary>widget.adaptive</summary>
     public static string Widget_Adaptive => Get("widget.adaptive");

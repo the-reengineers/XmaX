@@ -19,8 +19,8 @@
 //
 // Auto-profile switching:
 //   When power state changes and persist=true:
-//   - If adaptive controller is inactive: apply power_state_profiles[state]
-//   - If adaptive controller is active: recalculate effective TDP ceiling
+//   - Find profile assigned to new power state and apply it
+//   - Set adaptive TDP ceiling from hardcoded power state max
 //   - Emit power_mode_change event to frontend
 //
 // Thread safety: all public methods are safe to call from any thread.

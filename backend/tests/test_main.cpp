@@ -316,13 +316,7 @@ TEST_F(ConfigTest, LoadValidConfig) {
         "theme": "dark",
         "persist": true,
         "charge_limit_pct": 85,
-        "auto_start": true,
-        "power_state_profiles": {
-            "battery": {"profile": "battery-saver", "tdp_max_w": 25},
-            "usb_c_slow": {"profile": "", "tdp_max_w": 35},
-            "usb_c_fast": {"profile": "", "tdp_max_w": 45},
-            "dc_in": {"profile": "performance", "tdp_max_w": 55}
-        }
+        "auto_start": true
     })";
     file.close();
 
@@ -332,8 +326,6 @@ TEST_F(ConfigTest, LoadValidConfig) {
     EXPECT_TRUE(config.persist);
     EXPECT_EQ(config.charge_limit_pct, 85);
     EXPECT_TRUE(config.auto_start);
-    EXPECT_EQ(config.power_state_profiles.battery.profile, "battery-saver");
-    EXPECT_EQ(config.power_state_profiles.dc_in.profile, "performance");
 }
 
 TEST_F(ConfigTest, LoadCorruptedJson) {
@@ -351,14 +343,12 @@ TEST_F(ConfigTest, ValidateConfig) {
     config.language = "invalid";
     config.theme = "invalid";
     config.charge_limit_pct = 150;
-    config.power_state_profiles.battery.tdp_max_w = 200;
 
     bool modified = validate_config(config);
     EXPECT_TRUE(modified);
     EXPECT_EQ(config.language, "auto");
     EXPECT_EQ(config.theme, "system");
     EXPECT_EQ(config.charge_limit_pct, 100);
-    EXPECT_EQ(config.power_state_profiles.battery.tdp_max_w, 25);
 }
 
 TEST_F(ConfigTest, ConfigRoundTrip) {
@@ -367,8 +357,6 @@ TEST_F(ConfigTest, ConfigRoundTrip) {
     original.theme = "light";
     original.persist = true;
     original.charge_limit_pct = 90;
-    original.power_state_profiles.battery.profile = "test-profile";
-    original.power_state_profiles.battery.tdp_max_w = 30;
 
     EXPECT_TRUE(save_config(config_path, original));
 
@@ -377,8 +365,6 @@ TEST_F(ConfigTest, ConfigRoundTrip) {
     EXPECT_EQ(loaded.theme, original.theme);
     EXPECT_EQ(loaded.persist, original.persist);
     EXPECT_EQ(loaded.charge_limit_pct, original.charge_limit_pct);
-    EXPECT_EQ(loaded.power_state_profiles.battery.profile, original.power_state_profiles.battery.profile);
-    EXPECT_EQ(loaded.power_state_profiles.battery.tdp_max_w, original.power_state_profiles.battery.tdp_max_w);
 }
 
 // ===== Profile Tests =====
@@ -468,13 +454,16 @@ TEST_F(ProfileTest, SaveAndLoadFanCurve) {
 
     auto error = save_fan_curve(storage, curve);
     EXPECT_FALSE(error.has_value());
-    EXPECT_EQ(storage.fan_curves.size(), 1);
-    EXPECT_EQ(storage.fan_curves.begin()->first, "quiet");
+    // Fan curves include builtin curves
+    auto user_curves = storage.fan_curves.size() - storage.builtin_curves.size();
+    EXPECT_EQ(user_curves, 1);
+    EXPECT_EQ(storage.fan_curves.count("quiet"), 1);
 
     EXPECT_TRUE(save_profiles(profiles_path, storage));
 
     ProfileStorage loaded = load_profiles(profiles_path);
-    EXPECT_EQ(loaded.fan_curves.size(), 1);
+    auto loaded_user_curves = loaded.fan_curves.size() - loaded.builtin_curves.size();
+    EXPECT_EQ(loaded_user_curves, 1);
     EXPECT_EQ(loaded.fan_curves["quiet"].name, "Quiet");
     EXPECT_EQ(loaded.fan_curves["quiet"].points.size(), 4);
 }
@@ -505,12 +494,19 @@ TEST_F(ProfileTest, DeleteFanCurveConstraint) {
 
 TEST_F(ProfileTest, SaveAndLoadProfile) {
     ProfileStorage storage;
+
+    // Add a fan curve first (mandatory for fixed profiles)
+    FanCurve curve;
+    curve.name = "Default";
+    curve.points = {{40, 20}, {80, 80}};
+    save_fan_curve(storage, curve);
+
     Profile profile;
     profile.name = "Performance";
     profile.stapm_w = 55;
     profile.fast_w = 65;
     profile.slow_w = 55;
-    profile.fan_curve = std::nullopt;
+    profile.fan_curve = "default";
 
     auto error = save_profile(storage, profile);
     EXPECT_FALSE(error.has_value());
@@ -535,6 +531,168 @@ TEST_F(ProfileTest, ProfileTdpValidation) {
     auto error = save_profile(storage, profile);
     EXPECT_TRUE(error.has_value());
     EXPECT_EQ(storage.profiles.size(), 0);
+}
+
+TEST_F(ProfileTest, FirstProfileWithPowerStateBecomesDefault) {
+    ProfileStorage storage;
+    FanCurve curve;
+    curve.name = "Default";
+    curve.points = {{40, 20}, {80, 80}};
+    save_fan_curve(storage, curve);
+
+    Profile profile;
+    profile.name = "Battery Profile";
+    profile.power_state = PowerState::Source::Battery;
+    profile.stapm_w = 25;
+    profile.fast_w = 30;
+    profile.slow_w = 25;
+    profile.fan_curve = "default";
+
+    auto error = save_profile(storage, profile);
+    EXPECT_FALSE(error.has_value());
+    EXPECT_TRUE(storage.profiles["battery-profile"].is_default);
+}
+
+TEST_F(ProfileTest, MultipleProfilesPerPowerState) {
+    ProfileStorage storage;
+    FanCurve curve;
+    curve.name = "Default";
+    curve.points = {{40, 20}, {80, 80}};
+    save_fan_curve(storage, curve);
+
+    // First profile auto-becomes default
+    Profile p1;
+    p1.name = "Battery Quiet";
+    p1.power_state = PowerState::Source::Battery;
+    p1.stapm_w = 15;
+    p1.fast_w = 20;
+    p1.slow_w = 15;
+    p1.fan_curve = "default";
+    save_profile(storage, p1);
+    EXPECT_TRUE(storage.profiles["battery-quiet"].is_default);
+
+    // Second profile for same state, is_default stays false
+    Profile p2;
+    p2.name = "Battery Performance";
+    p2.power_state = PowerState::Source::Battery;
+    p2.stapm_w = 25;
+    p2.fast_w = 30;
+    p2.slow_w = 25;
+    p2.fan_curve = "default";
+    save_profile(storage, p2);
+    EXPECT_FALSE(storage.profiles["battery-performance"].is_default);
+    EXPECT_TRUE(storage.profiles["battery-quiet"].is_default);  // Still default
+}
+
+TEST_F(ProfileTest, ExplicitlySetDefaultClearsOther) {
+    ProfileStorage storage;
+    FanCurve curve;
+    curve.name = "Default";
+    curve.points = {{40, 20}, {80, 80}};
+    save_fan_curve(storage, curve);
+
+    // First profile
+    Profile p1;
+    p1.name = "First";
+    p1.power_state = PowerState::Source::DcIn;
+    p1.stapm_w = 45;
+    p1.fast_w = 50;
+    p1.slow_w = 45;
+    p1.fan_curve = "default";
+    save_profile(storage, p1);
+    EXPECT_TRUE(storage.profiles["first"].is_default);
+
+    // Second profile, explicitly set as default
+    Profile p2;
+    p2.name = "Second";
+    p2.power_state = PowerState::Source::DcIn;
+    p2.is_default = true;
+    p2.stapm_w = 55;
+    p2.fast_w = 60;
+    p2.slow_w = 55;
+    p2.fan_curve = "default";
+    save_profile(storage, p2);
+    EXPECT_TRUE(storage.profiles["second"].is_default);
+    EXPECT_FALSE(storage.profiles["first"].is_default);  // Cleared
+}
+
+TEST_F(ProfileTest, DeleteDefaultPromotesAnother) {
+    ProfileStorage storage;
+    FanCurve curve;
+    curve.name = "Default";
+    curve.points = {{40, 20}, {80, 80}};
+    save_fan_curve(storage, curve);
+
+    // First profile (becomes default)
+    Profile p1;
+    p1.name = "First";
+    p1.power_state = PowerState::Source::Battery;
+    p1.stapm_w = 15;
+    p1.fast_w = 20;
+    p1.slow_w = 15;
+    p1.fan_curve = "default";
+    save_profile(storage, p1);
+    EXPECT_TRUE(storage.profiles["first"].is_default);
+
+    // Second profile
+    Profile p2;
+    p2.name = "Second";
+    p2.power_state = PowerState::Source::Battery;
+    p2.stapm_w = 25;
+    p2.fast_w = 30;
+    p2.slow_w = 25;
+    p2.fan_curve = "default";
+    save_profile(storage, p2);
+    EXPECT_FALSE(storage.profiles["second"].is_default);
+
+    // Delete the default → second should be promoted
+    auto err = delete_profile(storage, "first");
+    EXPECT_FALSE(err.has_value());
+    EXPECT_EQ(storage.profiles.size(), 1);
+    EXPECT_TRUE(storage.profiles["second"].is_default);
+}
+
+TEST_F(ProfileTest, NoPowerStateClearsIsDefault) {
+    ProfileStorage storage;
+    FanCurve curve;
+    curve.name = "Default";
+    curve.points = {{40, 20}, {80, 80}};
+    save_fan_curve(storage, curve);
+
+    Profile profile;
+    profile.name = "Standalone";
+    profile.is_default = true;  // Set by user, but no power_state
+    profile.stapm_w = 45;
+    profile.fast_w = 50;
+    profile.slow_w = 45;
+    profile.fan_curve = "default";
+    save_profile(storage, profile);
+
+    // No power_state → is_default cleared
+    EXPECT_FALSE(storage.profiles["standalone"].is_default);
+}
+
+TEST_F(ProfileTest, IsDefaultRoundTripJson) {
+    ProfileStorage storage;
+    FanCurve curve;
+    curve.name = "Default";
+    curve.points = {{40, 20}, {80, 80}};
+    save_fan_curve(storage, curve);
+
+    Profile p;
+    p.name = "DC Default";
+    p.power_state = PowerState::Source::DcIn;
+    p.stapm_w = 45;
+    p.fast_w = 50;
+    p.slow_w = 45;
+    p.fan_curve = "default";
+    save_profile(storage, p);
+    EXPECT_TRUE(storage.profiles["dc-default"].is_default);
+
+    // Save to file and reload
+    EXPECT_TRUE(save_profiles(profiles_path, storage));
+    ProfileStorage loaded = load_profiles(profiles_path);
+    EXPECT_TRUE(loaded.profiles["dc-default"].is_default);
 }
 
 // ===== FanController Tests =====
@@ -1726,8 +1884,13 @@ TEST_F(TransportServiceTest, GetProfilesEmpty) {
 }
 
 TEST_F(TransportServiceTest, SaveAndGetProfile) {
+    // First save a fan curve (mandatory for fixed profiles)
+    auto fc_cmd = make_command("save_fan_curve", "req_000",
+        R"({"name": "Default", "points": [{"temp_c": 40, "speed_pct": 20}, {"temp_c": 80, "speed_pct": 80}]})");
+    service_->dispatch(fc_cmd);
+
     auto save_cmd = make_command("save_profile", "req_001",
-        R"({"name": "Gaming", "stapm": 45, "fast": 50, "slow": 45})");
+        R"({"name": "Gaming", "type": "fixed", "stapm": 45, "fast": 50, "slow": 45, "fan_curve": "default"})");
     auto save_resp = service_->dispatch(save_cmd);
 
     EXPECT_TRUE(save_resp.ok);
@@ -1765,18 +1928,24 @@ TEST_F(TransportServiceTest, SetProfileNotFound) {
     EXPECT_EQ(resp.error.value(), ErrorCode::ProfileNotFound);
 }
 
-TEST_F(TransportServiceTest, DeleteProfileReferencedByPowerState) {
-    // Save a profile
-    profiles_.profiles["gaming"] = {"gaming", "Gaming", 45, 50, 45, std::nullopt};
-
-    // Reference it in power state
-    config_.power_state_profiles.dc_in.profile = "gaming";
+TEST_F(TransportServiceTest, DeleteProfileWithPowerState) {
+    // In the unified profile system, power_state is stored on the profile itself.
+    // Deleting a profile with a power_state assigned should succeed (state becomes unassigned).
+    Profile p;
+    p.id = "gaming";
+    p.name = "Gaming";
+    p.type = ProfileType::Fixed;
+    p.power_state = PowerState::Source::DcIn;
+    p.stapm_w = 45;
+    p.fast_w = 50;
+    p.slow_w = 45;
+    profiles_.profiles["gaming"] = p;
 
     auto cmd = make_command("delete_profile", "req_001", R"({"id": "gaming"})");
     auto resp = service_->dispatch(cmd);
 
-    EXPECT_FALSE(resp.ok);
-    EXPECT_EQ(resp.error.value(), ErrorCode::ProfileInUse);
+    EXPECT_TRUE(resp.ok);
+    EXPECT_EQ(profiles_.profiles.size(), 0);
 }
 
 TEST_F(TransportServiceTest, SaveAndGetFanCurve) {
@@ -1814,36 +1983,21 @@ TEST_F(TransportServiceTest, DeleteFanCurveInUse) {
         {{40, 30}, {80, 100}}};
 
     // Reference it from a profile
-    profiles_.profiles["gaming"] = {"gaming", "Gaming", 45, 50, 45, "aggressive"};
+    Profile p;
+    p.id = "gaming";
+    p.name = "Gaming";
+    p.type = ProfileType::Fixed;
+    p.stapm_w = 45;
+    p.fast_w = 50;
+    p.slow_w = 45;
+    p.fan_curve = "aggressive";
+    profiles_.profiles["gaming"] = p;
 
     auto cmd = make_command("delete_fan_curve", "req_001", R"({"id": "aggressive"})");
     auto resp = service_->dispatch(cmd);
 
     EXPECT_FALSE(resp.ok);
     EXPECT_EQ(resp.error.value(), ErrorCode::FanCurveInUse);
-}
-
-TEST_F(TransportServiceTest, GetPowerProfiles) {
-    config_.power_state_profiles.dc_in.profile = "performance";
-    config_.power_state_profiles.dc_in.tdp_max_w = 55;
-
-    auto cmd = make_command("get_power_profiles");
-    auto resp = service_->dispatch(cmd);
-
-    EXPECT_TRUE(resp.ok);
-    auto data = nlohmann::json::parse(resp.data.value());
-    EXPECT_EQ(data["dc_in"]["profile"], "performance");
-    EXPECT_EQ(data["dc_in"]["tdp_max_w"], 55);
-}
-
-TEST_F(TransportServiceTest, SetPowerProfile) {
-    auto cmd = make_command("set_power_profile", "req_001",
-        R"({"state": "battery", "profile": "battery-saver", "tdp_max_w": 25})");
-    auto resp = service_->dispatch(cmd);
-
-    EXPECT_TRUE(resp.ok);
-    EXPECT_EQ(config_.power_state_profiles.battery.profile, "battery-saver");
-    EXPECT_EQ(config_.power_state_profiles.battery.tdp_max_w, 25);
 }
 
 TEST_F(TransportServiceTest, GetChargeLimit) {
@@ -1876,46 +2030,6 @@ TEST_F(TransportServiceTest, SetChargeLimitInvalidRange) {
 
     EXPECT_FALSE(resp.ok);
     EXPECT_EQ(resp.error.value(), ErrorCode::ChargeLimitInvalid);
-}
-
-TEST_F(TransportServiceTest, GetAutoTune) {
-    auto cmd = make_command("get_auto_tune");
-    auto resp = service_->dispatch(cmd);
-
-    EXPECT_TRUE(resp.ok);
-    auto data = nlohmann::json::parse(resp.data.value());
-    EXPECT_FALSE(data["active"].get<bool>());
-    EXPECT_TRUE(data.contains("tuning"));
-    EXPECT_TRUE(data.contains("target_temp_c"));
-    EXPECT_TRUE(data.contains("tdp_max_w"));
-    EXPECT_TRUE(data.contains("effective_tdp_max_w"));
-    EXPECT_TRUE(data.contains("fan_max_pct"));
-}
-
-TEST_F(TransportServiceTest, SetAutoTunePersistDisabled) {
-    config_.persist = false;
-
-    auto cmd = make_command("set_auto_tune", "req_001",
-        R"({"tuning": "default", "target_temp_c": 85, "tdp_max_w": 55, "fan_max_pct": 100})");
-    auto resp = service_->dispatch(cmd);
-
-    EXPECT_FALSE(resp.ok);
-    EXPECT_EQ(resp.error.value(), ErrorCode::PersistDisabled);
-}
-
-TEST_F(TransportServiceTest, SetAutoTunePersistEnabled) {
-    config_.persist = true;
-    config_.session_persist = true;
-
-    auto cmd = make_command("set_auto_tune", "req_001",
-        R"({"tuning": "performance", "target_temp_c": 80, "tdp_max_w": 60, "fan_max_pct": 90})");
-    auto resp = service_->dispatch(cmd);
-
-    EXPECT_TRUE(resp.ok);
-    EXPECT_TRUE(adaptive_->is_active());
-    auto config = adaptive_->config();
-    EXPECT_EQ(config.tuning, TuningPreset::Performance);
-    EXPECT_EQ(config.target_temp_c, 80);
 }
 
 TEST_F(TransportServiceTest, GetConfig) {

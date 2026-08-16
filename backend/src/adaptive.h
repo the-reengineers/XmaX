@@ -25,7 +25,7 @@
 //   - Asymmetric temperature smoothing (fast rise, slow decay)
 //   - Power state TDP ceiling clamping
 //   - Safety overrides (critical temp, sensor failure)
-//   - Mutual exclusivity with profiles (activating adaptive deactivates profile)
+//   - Activated by adaptive profiles (deactivated when fixed profiles are applied)
 //
 // Thread safety: all public methods are safe to call from any thread.
 

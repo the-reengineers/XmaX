@@ -422,12 +422,8 @@ auto TransportService::dispatch(const Command& cmd) -> Response {
     if (cmd.method == "get_fan_curves") return handle_get_fan_curves(cmd);
     if (cmd.method == "save_fan_curve") return handle_save_fan_curve(cmd);
     if (cmd.method == "delete_fan_curve") return handle_delete_fan_curve(cmd);
-    if (cmd.method == "get_power_profiles") return handle_get_power_profiles(cmd);
-    if (cmd.method == "set_power_profile") return handle_set_power_profile(cmd);
     if (cmd.method == "get_charge_limit") return handle_get_charge_limit(cmd);
     if (cmd.method == "set_charge_limit") return handle_set_charge_limit(cmd);
-    if (cmd.method == "get_auto_tune") return handle_get_auto_tune(cmd);
-    if (cmd.method == "set_auto_tune") return handle_set_auto_tune(cmd);
     if (cmd.method == "get_config") return handle_get_config(cmd);
     if (cmd.method == "set_config") return handle_set_config(cmd);
     if (cmd.method == "set_session_persist") return handle_set_session_persist(cmd);
@@ -656,14 +652,34 @@ auto TransportService::handle_get_profiles(const Command& cmd) -> Response {
         json p;
         p["id"] = profile.id;
         p["name"] = profile.name;
-        p["tdp"]["stapm"] = profile.stapm_w;
-        p["tdp"]["fast"] = profile.fast_w;
-        p["tdp"]["slow"] = profile.slow_w;
-        if (profile.fan_curve.has_value()) {
-            p["fan_curve"] = profile.fan_curve.value();
+        p["type"] = (profile.type == ProfileType::Adaptive) ? "adaptive" : "fixed";
+
+        if (profile.power_state.has_value()) {
+            switch (profile.power_state.value()) {
+                case PowerState::Source::Battery:  p["power_state"] = "battery"; break;
+                case PowerState::Source::UsbCSlow: p["power_state"] = "usb_c_slow"; break;
+                case PowerState::Source::UsbCFast: p["power_state"] = "usb_c_fast"; break;
+                case PowerState::Source::DcIn:     p["power_state"] = "dc_in"; break;
+                default:                           p["power_state"] = nullptr; break;
+            }
         } else {
-            p["fan_curve"] = nullptr;
+            p["power_state"] = nullptr;
         }
+
+        p["is_default"] = profile.is_default;
+
+        if (profile.type == ProfileType::Fixed) {
+            p["tdp"]["stapm"] = profile.stapm_w;
+            p["tdp"]["fast"] = profile.fast_w;
+            p["tdp"]["slow"] = profile.slow_w;
+            p["fan_curve"] = profile.fan_curve.value_or("");
+        } else {
+            p["tuning"] = profile.tuning;
+            p["target_temp_c"] = profile.target_temp_c;
+            p["tdp_max_w"] = profile.tdp_max_w;
+            p["fan_max_pct"] = profile.fan_max_pct;
+        }
+
         profiles_array.push_back(p);
     }
 
@@ -699,38 +715,52 @@ auto TransportService::handle_set_profile(const Command& cmd) -> Response {
             profile = it->second;
         }
 
-        // Apply TDP limits
-        auto tdp_result = tdp_.write_tdp(profile.stapm_w, profile.fast_w, profile.slow_w);
-        if (!tdp_result) {
-            Response resp;
-            resp.id = cmd.id;
-            resp.ok = false;
-            resp.error = tdp_result.error();
-            return resp;
-        }
+        // Set power state ceiling from profile's assigned power state (or current state if unassigned)
+        int ceiling = profile.power_state.has_value()
+            ? power_state_max_tdp(profile.power_state.value())
+            : power_state_max_tdp(power_.current_state());
+        adaptive_.set_power_state_ceiling(ceiling);
 
-        // Apply fan curve
-        if (profile.fan_curve.has_value()) {
-            std::lock_guard lock(state_mutex_);
-            auto curve_it = profiles_.fan_curves.find(profile.fan_curve.value());
-            if (curve_it != profiles_.fan_curves.end()) {
-                (void)fan_.set_mode(FanState::Mode::Curve);
-                fan_.set_curve(curve_it->second);
+        if (profile.type == ProfileType::Adaptive) {
+            // Activate adaptive controller with profile's config
+            TuningPreset preset = TuningPreset::Default;
+            if (profile.tuning == "silent") preset = TuningPreset::Silent;
+            else if (profile.tuning == "performance") preset = TuningPreset::Performance;
+
+            adaptive_.activate(preset, profile.target_temp_c, profile.tdp_max_w, profile.fan_max_pct);
+        } else {
+            // Fixed profile: write TDP + fan curve, deactivate adaptive
+            auto tdp_result = tdp_.write_tdp(profile.stapm_w, profile.fast_w, profile.slow_w);
+            if (!tdp_result) {
+                Response resp;
+                resp.id = cmd.id;
+                resp.ok = false;
+                resp.error = tdp_result.error();
+                return resp;
+            }
+
+            if (profile.fan_curve.has_value()) {
+                std::lock_guard lock(state_mutex_);
+                auto curve_it = profiles_.fan_curves.find(profile.fan_curve.value());
+                if (curve_it != profiles_.fan_curves.end()) {
+                    (void)fan_.set_mode(FanState::Mode::Curve);
+                    fan_.set_curve(curve_it->second);
+                } else {
+                    (void)fan_.set_mode(FanState::Mode::Auto);
+                    fan_.set_curve(std::nullopt);
+                }
             } else {
                 (void)fan_.set_mode(FanState::Mode::Auto);
                 fan_.set_curve(std::nullopt);
             }
-        } else {
-            (void)fan_.set_mode(FanState::Mode::Auto);
-            fan_.set_curve(std::nullopt);
-        }
 
-        // Deactivate adaptive controller (mutually exclusive)
-        adaptive_.deactivate();
+            adaptive_.deactivate();
+        }
 
         json data;
         data["id"] = profile.id;
         data["name"] = profile.name;
+        data["type"] = (profile.type == ProfileType::Adaptive) ? "adaptive" : "fixed";
 
         Response resp;
         resp.id = cmd.id;
@@ -753,12 +783,37 @@ auto TransportService::handle_save_profile(const Command& cmd) -> Response {
         Profile profile;
         profile.id = payload.value("id", "");
         profile.name = payload.value("name", "");
-        profile.stapm_w = payload.value("stapm", 25);
-        profile.fast_w = payload.value("fast", 30);
-        profile.slow_w = payload.value("slow", 25);
 
-        if (payload.contains("fan_curve") && !payload["fan_curve"].is_null()) {
-            profile.fan_curve = payload["fan_curve"].get<std::string>();
+        // Parse type
+        std::string type_str = payload.value("type", "fixed");
+        profile.type = (type_str == "adaptive") ? ProfileType::Adaptive : ProfileType::Fixed;
+
+        // Parse power_state (optional)
+        if (payload.contains("power_state") && !payload["power_state"].is_null() && payload["power_state"].is_string()) {
+            std::string ps = payload["power_state"].get<std::string>();
+            if (ps == "battery") profile.power_state = PowerState::Source::Battery;
+            else if (ps == "usb_c_slow") profile.power_state = PowerState::Source::UsbCSlow;
+            else if (ps == "usb_c_fast") profile.power_state = PowerState::Source::UsbCFast;
+            else if (ps == "dc_in") profile.power_state = PowerState::Source::DcIn;
+        }
+
+        // Parse is_default (optional — client can explicitly set the default for a power state)
+        if (payload.contains("is_default") && payload["is_default"].is_boolean()) {
+            profile.is_default = payload["is_default"].get<bool>();
+        }
+
+        if (profile.type == ProfileType::Fixed) {
+            profile.stapm_w = payload.value("stapm", 25);
+            profile.fast_w = payload.value("fast", 30);
+            profile.slow_w = payload.value("slow", 25);
+            if (payload.contains("fan_curve") && !payload["fan_curve"].is_null()) {
+                profile.fan_curve = payload["fan_curve"].get<std::string>();
+            }
+        } else {
+            profile.tuning = payload.value("tuning", "default");
+            profile.target_temp_c = payload.value("target_temp_c", 85);
+            profile.tdp_max_w = payload.value("tdp_max_w", 55);
+            profile.fan_max_pct = payload.value("fan_max_pct", 100);
         }
 
         // Generate slug if id is empty
@@ -806,20 +861,6 @@ auto TransportService::handle_delete_profile(const Command& cmd) -> Response {
     try {
         auto payload = json::parse(cmd.payload);
         std::string id = payload.value("id", "");
-
-        // Check if profile is referenced by any power state
-        {
-            std::lock_guard lock(state_mutex_);
-            const auto& psp = config_.power_state_profiles;
-            if (psp.battery.profile == id || psp.usb_c_slow.profile == id ||
-                psp.usb_c_fast.profile == id || psp.dc_in.profile == id) {
-                Response resp;
-                resp.id = cmd.id;
-                resp.ok = false;
-                resp.error = ErrorCode::ProfileInUse;
-                return resp;
-            }
-        }
 
         // Delete
         {
@@ -990,73 +1031,6 @@ auto TransportService::handle_delete_fan_curve(const Command& cmd) -> Response {
     }
 }
 
-auto TransportService::handle_get_power_profiles(const Command& cmd) -> Response {
-    std::lock_guard lock(state_mutex_);
-
-    json data;
-    data["battery"]["profile"] = config_.power_state_profiles.battery.profile;
-    data["battery"]["tdp_max_w"] = config_.power_state_profiles.battery.tdp_max_w;
-    data["usb_c_slow"]["profile"] = config_.power_state_profiles.usb_c_slow.profile;
-    data["usb_c_slow"]["tdp_max_w"] = config_.power_state_profiles.usb_c_slow.tdp_max_w;
-    data["usb_c_fast"]["profile"] = config_.power_state_profiles.usb_c_fast.profile;
-    data["usb_c_fast"]["tdp_max_w"] = config_.power_state_profiles.usb_c_fast.tdp_max_w;
-    data["dc_in"]["profile"] = config_.power_state_profiles.dc_in.profile;
-    data["dc_in"]["tdp_max_w"] = config_.power_state_profiles.dc_in.tdp_max_w;
-
-    Response resp;
-    resp.id = cmd.id;
-    resp.ok = true;
-    resp.data = data.dump();
-    return resp;
-}
-
-auto TransportService::handle_set_power_profile(const Command& cmd) -> Response {
-    try {
-        auto payload = json::parse(cmd.payload);
-        std::string state = payload.value("state", "");
-        std::string profile = payload.value("profile", "");
-        int tdp_max_w = payload.value("tdp_max_w", 25);
-
-        {
-            std::lock_guard lock(state_mutex_);
-
-            if (state == "battery") {
-                config_.power_state_profiles.battery.profile = profile;
-                config_.power_state_profiles.battery.tdp_max_w = tdp_max_w;
-            } else if (state == "usb_c_slow") {
-                config_.power_state_profiles.usb_c_slow.profile = profile;
-                config_.power_state_profiles.usb_c_slow.tdp_max_w = tdp_max_w;
-            } else if (state == "usb_c_fast") {
-                config_.power_state_profiles.usb_c_fast.profile = profile;
-                config_.power_state_profiles.usb_c_fast.tdp_max_w = tdp_max_w;
-            } else if (state == "dc_in") {
-                config_.power_state_profiles.dc_in.profile = profile;
-                config_.power_state_profiles.dc_in.tdp_max_w = tdp_max_w;
-            } else {
-                Response resp;
-                resp.id = cmd.id;
-                resp.ok = false;
-                resp.error = ErrorCode::UnknownCommand;  // Invalid state
-                return resp;
-            }
-
-            save_config(config_path_, config_);
-        }
-
-        Response resp;
-        resp.id = cmd.id;
-        resp.ok = true;
-        resp.data = "{}";
-        return resp;
-    } catch (const json::exception&) {
-        Response resp;
-        resp.id = cmd.id;
-        resp.ok = false;
-        resp.error = ErrorCode::ParseError;
-        return resp;
-    }
-}
-
 auto TransportService::handle_get_charge_limit(const Command& cmd) -> Response {
     auto result = power_.read_charge_limit();
     if (!result) {
@@ -1139,81 +1113,6 @@ auto TransportService::handle_set_charge_limit(const Command& cmd) -> Response {
     }
 }
 
-auto TransportService::handle_get_auto_tune(const Command& cmd) -> Response {
-    auto config = adaptive_.config();
-
-    json data;
-    data["active"] = config.active;
-
-    std::string tuning_str;
-    switch (config.tuning) {
-        case TuningPreset::Silent: tuning_str = "silent"; break;
-        case TuningPreset::Default: tuning_str = "default"; break;
-        case TuningPreset::Performance: tuning_str = "performance"; break;
-    }
-    data["tuning"] = tuning_str;
-    data["target_temp_c"] = config.target_temp_c;
-    data["tdp_max_w"] = config.tdp_max_w;
-    data["effective_tdp_max_w"] = adaptive_.effective_tdp_max();
-    data["fan_max_pct"] = config.fan_max_pct;
-
-    Response resp;
-    resp.id = cmd.id;
-    resp.ok = true;
-    resp.data = data.dump();
-    return resp;
-}
-
-auto TransportService::handle_set_auto_tune(const Command& cmd) -> Response {
-    // Persist gate
-    if (auto blocked = check_persist(cmd.id)) return blocked.value();
-
-    try {
-        auto payload = json::parse(cmd.payload);
-
-        std::string tuning_str = payload.value("tuning", "default");
-        int target_temp_c = payload.value("target_temp_c", 85);
-        int tdp_max_w = payload.value("tdp_max_w", 55);
-        int fan_max_pct = payload.value("fan_max_pct", 100);
-
-        TuningPreset preset;
-        if (tuning_str == "silent") {
-            preset = TuningPreset::Silent;
-        } else if (tuning_str == "performance") {
-            preset = TuningPreset::Performance;
-        } else {
-            preset = TuningPreset::Default;
-        }
-
-        adaptive_.activate(preset, target_temp_c, tdp_max_w, fan_max_pct);
-
-        // Update config
-        {
-            std::lock_guard lock(state_mutex_);
-            AutoTuneConfig atc;
-            atc.enabled = true;
-            atc.tuning = tuning_str;
-            atc.target_temp_c = target_temp_c;
-            atc.tdp_max_w = tdp_max_w;
-            atc.fan_max_pct = fan_max_pct;
-            config_.auto_tune = atc;
-            save_config(config_path_, config_);
-        }
-
-        Response resp;
-        resp.id = cmd.id;
-        resp.ok = true;
-        resp.data = "{}";
-        return resp;
-    } catch (const json::exception&) {
-        Response resp;
-        resp.id = cmd.id;
-        resp.ok = false;
-        resp.error = ErrorCode::ParseError;
-        return resp;
-    }
-}
-
 auto TransportService::handle_get_config(const Command& cmd) -> Response {
     std::lock_guard lock(state_mutex_);
 
@@ -1224,29 +1123,6 @@ auto TransportService::handle_get_config(const Command& cmd) -> Response {
     data["session_persist"] = config_.session_persist;
     data["charge_limit_pct"] = config_.charge_limit_pct;
     data["auto_start"] = config_.auto_start;
-
-    if (config_.auto_tune.has_value()) {
-        json at;
-        at["enabled"] = config_.auto_tune->enabled;
-        at["tuning"] = config_.auto_tune->tuning;
-        at["target_temp_c"] = config_.auto_tune->target_temp_c;
-        at["tdp_max_w"] = config_.auto_tune->tdp_max_w;
-        at["fan_max_pct"] = config_.auto_tune->fan_max_pct;
-        data["auto_tune"] = at;
-    } else {
-        data["auto_tune"] = nullptr;
-    }
-
-    json psp;
-    psp["battery"]["profile"] = config_.power_state_profiles.battery.profile;
-    psp["battery"]["tdp_max_w"] = config_.power_state_profiles.battery.tdp_max_w;
-    psp["usb_c_slow"]["profile"] = config_.power_state_profiles.usb_c_slow.profile;
-    psp["usb_c_slow"]["tdp_max_w"] = config_.power_state_profiles.usb_c_slow.tdp_max_w;
-    psp["usb_c_fast"]["profile"] = config_.power_state_profiles.usb_c_fast.profile;
-    psp["usb_c_fast"]["tdp_max_w"] = config_.power_state_profiles.usb_c_fast.tdp_max_w;
-    psp["dc_in"]["profile"] = config_.power_state_profiles.dc_in.profile;
-    psp["dc_in"]["tdp_max_w"] = config_.power_state_profiles.dc_in.tdp_max_w;
-    data["power_state_profiles"] = psp;
 
     // Home layout
     json widgets_array = json::array();
@@ -1430,57 +1306,34 @@ void TransportService::apply_all_settings() {
     power_.update_power_state();
     auto current_power_state = power_.current_state();
 
-    // Set power state TDP ceiling for adaptive controller
-    int tdp_ceiling = 55;  // Safe default
-    switch (current_power_state) {
-        case PowerState::Source::Battery:
-            tdp_ceiling = config_.power_state_profiles.battery.tdp_max_w;
-            break;
-        case PowerState::Source::UsbCSlow:
-            tdp_ceiling = config_.power_state_profiles.usb_c_slow.tdp_max_w;
-            break;
-        case PowerState::Source::UsbCFast:
-            tdp_ceiling = config_.power_state_profiles.usb_c_fast.tdp_max_w;
-            break;
-        case PowerState::Source::DcIn:
-            tdp_ceiling = config_.power_state_profiles.dc_in.tdp_max_w;
-            break;
-        default:
-            break;
-    }
+    // Set power state TDP ceiling from hardcoded max
+    int tdp_ceiling = power_state_max_tdp(current_power_state);
     adaptive_.set_power_state_ceiling(tdp_ceiling);
 
-    // Get power state profile
-    std::string profile_slug;
-    switch (current_power_state) {
-        case PowerState::Source::Battery:
-            profile_slug = config_.power_state_profiles.battery.profile;
+    // Find default profile assigned to current power state
+    const Profile* assigned = nullptr;
+    for (const auto& [slug, profile] : profiles_.profiles) {
+        if (profile.power_state.has_value() && profile.power_state.value() == current_power_state
+            && profile.is_default) {
+            assigned = &profile;
             break;
-        case PowerState::Source::UsbCSlow:
-            profile_slug = config_.power_state_profiles.usb_c_slow.profile;
-            break;
-        case PowerState::Source::UsbCFast:
-            profile_slug = config_.power_state_profiles.usb_c_fast.profile;
-            break;
-        case PowerState::Source::DcIn:
-            profile_slug = config_.power_state_profiles.dc_in.profile;
-            break;
-        default:
-            break;
+        }
     }
 
-    // Apply profile if configured
-    if (!profile_slug.empty()) {
-        auto it = profiles_.profiles.find(profile_slug);
-        if (it != profiles_.profiles.end()) {
-            const auto& profile = it->second;
+    if (assigned != nullptr) {
+        if (assigned->type == ProfileType::Adaptive) {
+            // Activate adaptive controller
+            TuningPreset preset = TuningPreset::Default;
+            if (assigned->tuning == "silent") preset = TuningPreset::Silent;
+            else if (assigned->tuning == "performance") preset = TuningPreset::Performance;
 
-            // Apply TDP limits
-            (void)tdp_.write_tdp(profile.stapm_w, profile.fast_w, profile.slow_w);
+            adaptive_.activate(preset, assigned->target_temp_c, assigned->tdp_max_w, assigned->fan_max_pct);
+        } else {
+            // Apply fixed profile
+            (void)tdp_.write_tdp(assigned->stapm_w, assigned->fast_w, assigned->slow_w);
 
-            // Apply fan curve
-            if (profile.fan_curve.has_value()) {
-                auto curve_it = profiles_.fan_curves.find(profile.fan_curve.value());
+            if (assigned->fan_curve.has_value()) {
+                auto curve_it = profiles_.fan_curves.find(assigned->fan_curve.value());
                 if (curve_it != profiles_.fan_curves.end()) {
                     (void)fan_.set_mode(FanState::Mode::Curve);
                     fan_.set_curve(curve_it->second);
@@ -1489,15 +1342,5 @@ void TransportService::apply_all_settings() {
                 (void)fan_.set_mode(FanState::Mode::Auto);
             }
         }
-    }
-
-    // Restore adaptive controller if configured
-    if (config_.auto_tune.has_value() && config_.auto_tune->enabled) {
-        const auto& at = config_.auto_tune.value();
-        TuningPreset preset = TuningPreset::Default;
-        if (at.tuning == "silent") preset = TuningPreset::Silent;
-        else if (at.tuning == "performance") preset = TuningPreset::Performance;
-
-        adaptive_.activate(preset, at.target_temp_c, at.tdp_max_w, at.fan_max_pct);
     }
 }

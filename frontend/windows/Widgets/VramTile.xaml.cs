@@ -6,15 +6,9 @@ namespace XmaX.Widgets;
 /// <summary>
 /// VRAM metric tile showing GPU memory usage.
 /// </summary>
-public sealed partial class VramTile : UserControl, IHomeWidget
+public sealed partial class VramTile : UserControl
 {
     private readonly MetricsService _metricsService;
-
-    public string WidgetId => "vram";
-    public WidgetConfig Config => WidgetConfig.TransparentTile;
-    public object Control => this;
-    public string? Title => null;
-    public int GetRequiredRows(int availableColumns) => Config.Rows;
 
     public VramTile()
     {

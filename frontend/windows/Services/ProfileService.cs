@@ -47,7 +47,7 @@ public sealed class ProfileService : INotifyPropertyChanged, IDisposable
         }
     }
 
-    /// <summary>Slug of the currently active profile, or null if adaptive is active.</summary>
+    /// <summary>Slug of the currently active profile, or null if no profile is active.</summary>
     public string? ActiveProfileId
     {
         get => _activeProfileId;
@@ -58,6 +58,20 @@ public sealed class ProfileService : INotifyPropertyChanged, IDisposable
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ActiveProfileId)));
         }
     }
+
+    /// <summary>Whether an adaptive profile is currently active.</summary>
+    public bool IsAdaptiveActive
+    {
+        get => _isAdaptiveActive;
+        private set
+        {
+            if (_isAdaptiveActive == value) return;
+            _isAdaptiveActive = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsAdaptiveActive)));
+        }
+    }
+
+    private bool _isAdaptiveActive;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -105,11 +119,25 @@ public sealed class ProfileService : INotifyPropertyChanged, IDisposable
         {
             ["id"] = profile.Id,
             ["name"] = profile.Name,
-            ["stapm"] = profile.Tdp.Stapm,
-            ["fast"] = profile.Tdp.Fast,
-            ["slow"] = profile.Tdp.Slow,
-            ["fan_curve"] = profile.FanCurve
+            ["type"] = profile.Type,
+            ["power_state"] = profile.PowerState,
+            ["is_default"] = profile.IsDefault,
         };
+
+        if (profile.IsAdaptive)
+        {
+            payload["tuning"] = profile.Tuning;
+            payload["target_temp_c"] = profile.TargetTempC;
+            payload["tdp_max_w"] = profile.TdpMaxW;
+            payload["fan_max_pct"] = profile.FanMaxPercent;
+        }
+        else
+        {
+            payload["stapm"] = profile.Tdp.Stapm;
+            payload["fast"] = profile.Tdp.Fast;
+            payload["slow"] = profile.Tdp.Slow;
+            payload["fan_curve"] = profile.FanCurve;
+        }
 
         await _pipe.SendCommandAsync("save_profile", payload).ConfigureAwait(false);
         await RefreshAsync().ConfigureAwait(false);
@@ -183,17 +211,38 @@ public sealed class ProfileService : INotifyPropertyChanged, IDisposable
 
     private void OnEventReceived(string eventName, JsonObject data)
     {
-        // Profile/fan curve changes don't push events -- they're explicit CRUD.
-        // But auto_tune_state events may deactivate the active profile.
+        // Track adaptive controller state changes
         if (eventName == "auto_tune_state")
         {
             var active = data["active"]?.GetValue<bool>() ?? false;
+            IsAdaptiveActive = active;
             if (active)
             {
-                // Adaptive became active -- profile is deactivated
+                // Adaptive profile became active -- clear fixed profile ID
                 ActiveProfileId = null;
             }
         }
+        else if (eventName == "auto_tune_adjust")
+        {
+            // Adaptive controller is running -- ensure we're marked as active
+            IsAdaptiveActive = true;
+        }
+    }
+
+    /// <summary>
+    /// Find the default profile assigned to a specific power state.
+    /// </summary>
+    public Profile? GetDefaultProfileForPowerState(string powerState)
+    {
+        return Profiles.FirstOrDefault(p => p.PowerState == powerState && p.IsDefault);
+    }
+
+    /// <summary>
+    /// Get all profiles assigned to a specific power state.
+    /// </summary>
+    public IEnumerable<Profile> GetProfilesForPowerState(string powerState)
+    {
+        return Profiles.Where(p => p.PowerState == powerState);
     }
 
     private static List<T> DeserializeList<T>(JsonObject data, string key)

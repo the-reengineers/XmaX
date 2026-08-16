@@ -126,7 +126,7 @@ public class SettingsViewModelTests
         Assert.Equal(3, vm.Columns);
 
         vm.Columns = 10; // Above maximum
-        Assert.Equal(5, vm.Columns);
+        Assert.Equal(4, vm.Columns);
     }
 
     [Fact]

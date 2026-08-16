@@ -1,8 +1,11 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using XmaX.ViewModels;
 
 namespace XmaX.Pages;
+
 
 /// <summary>
 /// Settings page: language, theme, persist, auto-start, column count, widget layout, and revert.
@@ -17,6 +20,7 @@ public sealed partial class SettingsPage : Page
         this.InitializeComponent();
 
         // Apply localized text from Loc
+        SettingsTitle.Text = Loc.Nav_Settings;
         LanguageLabel.Text = Loc.Settings_Language;
         ThemeLabel.Text = Loc.Settings_Theme;
         PersistLabel.Text = Loc.Settings_Persist;
@@ -28,6 +32,9 @@ public sealed partial class SettingsPage : Page
         FactoryResetLabel.Text = Loc.Settings_RestoreDefaults;
         FactoryResetDescLabel.Text = Loc.Settings_RestoreDefaultsDesc;
         FactoryResetButton.Content = Loc.Settings_RestoreDefaults;
+
+        // Sub-page navigation labels are inside ControlTemplate — set after load
+        this.Loaded += OnPageLoaded;
 
         _viewModel = new SettingsViewModel(App.Pipe, App.WidgetService);
         _viewModel.PropertyChanged += OnViewModelChanged;
@@ -178,6 +185,72 @@ public sealed partial class SettingsPage : Page
                 // Factory reset failed — show error or ignore
             }
         }
+    }
+
+    // ===== Initialization =====
+
+    private void OnPageLoaded(object sender, RoutedEventArgs e)
+    {
+        // Set labels inside ControlTemplate (not accessible by x:Name in code-behind)
+        SetTextInTemplate("ProfilesNavLabel", Loc.Title_Profiles);
+        SetTextInTemplate("ProfilesNavDesc", Loc.Nav_ProfilesDesc);
+        SetTextInTemplate("CoolingNavLabel", Loc.Title_FanCurves);
+        SetTextInTemplate("CoolingNavDesc", Loc.Nav_CoolingDesc);
+        SetTextInTemplate("PowerStatesNavLabel", Loc.Title_PowerStateAssignments);
+        SetTextInTemplate("PowerStatesNavDesc", Loc.Nav_PowerStatesDesc);
+        SetTextInTemplate("PlaygroundNavLabel", Loc.Title_WidgetPlayground);
+        SetTextInTemplate("PlaygroundNavDesc", Loc.Nav_PlaygroundDesc);
+    }
+
+    private void SetTextInTemplate(string name, string text)
+    {
+        if (FindVisualChild<TextBlock>(this, name) is TextBlock tb)
+        {
+            tb.Text = text;
+        }
+    }
+
+    private static T? FindVisualChild<T>(DependencyObject parent, string name) where T : FrameworkElement
+    {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T fe && fe.Name == name)
+                return fe;
+            var result = FindVisualChild<T>(child, name);
+            if (result != null)
+                return result;
+        }
+        return null;
+    }
+
+    // ===== Navigation =====
+
+    private void OnBackClick(object sender, RoutedEventArgs e) => App.NavigateBack();
+
+    // ===== Sub-page navigation =====
+
+    private static readonly SlideNavigationTransitionInfo SlideFromRight =
+        new() { Effect = SlideNavigationTransitionEffect.FromRight };
+
+    private void OnNavigateProfiles(object sender, RoutedEventArgs e)
+    {
+        App.NavigateTo(typeof(ProfilesSubPage), SlideFromRight);
+    }
+
+    private void OnNavigateCooling(object sender, RoutedEventArgs e)
+    {
+        App.NavigateTo(typeof(CoolingSubPage), SlideFromRight);
+    }
+
+    private void OnNavigatePowerStates(object sender, RoutedEventArgs e)
+    {
+        App.NavigateTo(typeof(PowerStatesSubPage), SlideFromRight);
+    }
+
+    private void OnNavigatePlayground(object sender, RoutedEventArgs e)
+    {
+        App.NavigateTo(typeof(WidgetPlaygroundSubPage), SlideFromRight);
     }
 
     // ===== ViewModel sync =====

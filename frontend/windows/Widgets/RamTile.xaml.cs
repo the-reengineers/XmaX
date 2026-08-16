@@ -6,15 +6,9 @@ namespace XmaX.Widgets;
 /// <summary>
 /// RAM metric tile showing memory usage and load percentage.
 /// </summary>
-public sealed partial class RamTile : UserControl, IHomeWidget
+public sealed partial class RamTile : UserControl
 {
     private readonly MetricsService _metricsService;
-
-    public string WidgetId => "ram";
-    public WidgetConfig Config => WidgetConfig.TransparentTile;
-    public object Control => this;
-    public string? Title => null;
-    public int GetRequiredRows(int availableColumns) => Config.Rows;
 
     public RamTile()
     {

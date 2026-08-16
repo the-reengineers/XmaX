@@ -16,40 +16,55 @@
         <!-- Page content -->
         <Frame x:Name="RootFrame" Grid.Row="0" />
 
-        <!-- Bottom tab navigation -->
-        <Grid Grid.Row="1" Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}">
-            <StackPanel>
-                <!-- Test mode banner (shown when persist=false) -->
-                <Border x:Name="TestModeBanner"
-                        Visibility="Collapsed"
-                        Background="{ThemeResource SystemFillColorCautionBrush}"
-                        Padding="16,8">
-                    <Grid>
-                        <TextBlock x:Name="TestModeText"
-                                   VerticalAlignment="Center"
-                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-                        <ToggleSwitch x:Name="SessionPersistToggle"
-                                      HorizontalAlignment="Right"
-                                      VerticalAlignment="Center"
-                                      Toggled="OnSessionPersistToggled" />
-                    </Grid>
-                </Border>
+        <!-- Bottom bar: marquee + edit icon + settings icon -->
+        <Grid Grid.Row="1"
+              Background="{ThemeResource SmokeFillColorDefaultBrush}"
+              Padding="12,6"
+              Height="48">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
 
-                <NavigationView x:Name="NavView"
-                                PaneDisplayMode="Top"
-                                IsBackButtonVisible="Collapsed"
-                                IsSettingsVisible="False"
-                                SelectionChanged="OnNavSelectionChanged">
-                    <NavigationView.MenuItems>
-                        <NavigationViewItem Tag="home" />
-                        <NavigationViewItem Tag="profiles" />
-                        <NavigationViewItem Tag="cooling" />
-                        <NavigationViewItem Tag="set" />
-                        <NavigationViewItem Tag="set2" />
-                        <NavigationViewItem Tag="settings" />
-                    </NavigationView.MenuItems>
-                </NavigationView>
-            </StackPanel>
+            <!-- Marquee banner (fills available space) -->
+            <Grid x:Name="MarqueeContainer" Grid.Column="0" VerticalAlignment="Center">
+                <TextBlock x:Name="MarqueeText"
+                           VerticalAlignment="Center"
+                           TextWrapping="NoWrap"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Grid>
+
+            <!-- Edit icon (visual only for now) -->
+            <Button x:Name="EditButton"
+                    Grid.Column="1"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Padding="8"
+                    CornerRadius="4"
+                    VerticalAlignment="Center"
+                    Click="OnEditClick">
+                <FontIcon Glyph="&#xEB04;"
+                          FontFamily="/Assets/tabler-icons.ttf#tabler-icons"
+                          FontSize="20"
+                          Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Button>
+
+            <!-- Settings icon -->
+            <Button x:Name="SettingsButton"
+                    Grid.Column="2"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Padding="8"
+                    CornerRadius="4"
+                    VerticalAlignment="Center"
+                    Click="OnSettingsClick">
+                <FontIcon Glyph="&#xEB20;"
+                          FontFamily="/Assets/tabler-icons.ttf#tabler-icons"
+                          FontSize="18"
+                          Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Button>
         </Grid>
     </Grid>
 </Window>

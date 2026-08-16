@@ -130,12 +130,13 @@ public class ModelTests
     // ===== Profile deserialization =====
 
     [Fact]
-    public void Profile_WithFanCurve_DeserializesCorrectly()
+    public void Profile_Fixed_DeserializesCorrectly()
     {
         var json = """
         {
             "id": "gaming",
             "name": "Gaming",
+            "type": "fixed",
             "tdp": { "stapm": 45, "fast": 50, "slow": 45 },
             "fan_curve": "aggressive"
         }
@@ -146,10 +147,42 @@ public class ModelTests
         Assert.NotNull(profile);
         Assert.Equal("gaming", profile.Id);
         Assert.Equal("Gaming", profile.Name);
+        Assert.Equal("fixed", profile.Type);
+        Assert.False(profile.IsAdaptive);
         Assert.Equal(45, profile.Tdp.Stapm);
         Assert.Equal(50, profile.Tdp.Fast);
         Assert.Equal(45, profile.Tdp.Slow);
         Assert.Equal("aggressive", profile.FanCurve);
+    }
+
+    [Fact]
+    public void Profile_Adaptive_DeserializesCorrectly()
+    {
+        var json = """
+        {
+            "id": "quiet-adaptive",
+            "name": "Quiet Adaptive",
+            "type": "adaptive",
+            "power_state": "battery",
+            "tuning": "silent",
+            "target_temp_c": 75,
+            "tdp_max_w": 40,
+            "fan_max_pct": 80
+        }
+        """;
+
+        var profile = JsonSerializer.Deserialize<Profile>(json, JsonOptions);
+
+        Assert.NotNull(profile);
+        Assert.Equal("quiet-adaptive", profile.Id);
+        Assert.Equal("Quiet Adaptive", profile.Name);
+        Assert.Equal("adaptive", profile.Type);
+        Assert.True(profile.IsAdaptive);
+        Assert.Equal("battery", profile.PowerState);
+        Assert.Equal("silent", profile.Tuning);
+        Assert.Equal(75, profile.TargetTempC);
+        Assert.Equal(40, profile.TdpMaxW);
+        Assert.Equal(80, profile.FanMaxPercent);
     }
 
     [Fact]
@@ -159,6 +192,7 @@ public class ModelTests
         {
             "id": "max-perf",
             "name": "Max Performance",
+            "type": "fixed",
             "tdp": { "stapm": 55, "fast": 65, "slow": 55 },
             "fan_curve": null
         }
@@ -167,7 +201,7 @@ public class ModelTests
         var profile = JsonSerializer.Deserialize<Profile>(json, JsonOptions);
 
         Assert.NotNull(profile);
-        Assert.Equal("", profile.FanCurve); // Deserializes as empty string when null
+        Assert.Null(profile.FanCurve); // JSON null deserializes as null
     }
 
     [Fact]
@@ -175,6 +209,48 @@ public class ModelTests
     {
         var profile = new Profile { Id = "test", Name = "Test", Tdp = new TdpLimits { Stapm = 30, Fast = 35, Slow = 30 } };
         Assert.NotNull(profile.ToString());
+    }
+
+    [Fact]
+    public void Profile_IsDefault_DeserializesCorrectly()
+    {
+        var json = """
+        {
+            "id": "battery-default",
+            "name": "Battery Default",
+            "type": "fixed",
+            "power_state": "battery",
+            "is_default": true,
+            "tdp": { "stapm": 25, "fast": 30, "slow": 25 },
+            "fan_curve": "default"
+        }
+        """;
+
+        var profile = JsonSerializer.Deserialize<Profile>(json, JsonOptions);
+
+        Assert.NotNull(profile);
+        Assert.Equal("battery", profile.PowerState);
+        Assert.True(profile.IsDefault);
+    }
+
+    [Fact]
+    public void Profile_IsDefault_FalseByDefault()
+    {
+        var json = """
+        {
+            "id": "no-default",
+            "name": "No Default",
+            "type": "fixed",
+            "power_state": "dc_in",
+            "tdp": { "stapm": 45, "fast": 50, "slow": 45 },
+            "fan_curve": "default"
+        }
+        """;
+
+        var profile = JsonSerializer.Deserialize<Profile>(json, JsonOptions);
+
+        Assert.NotNull(profile);
+        Assert.False(profile.IsDefault); // Missing field → defaults to false
     }
 
     // ===== FanCurve deserialization =====
@@ -214,56 +290,6 @@ public class ModelTests
         Assert.Equal("60°C→50%", point.ToString());
     }
 
-    // ===== AutoTuneConfig deserialization =====
-
-    [Fact]
-    public void AutoTuneConfig_DeserializesCorrectly()
-    {
-        var json = """
-        {
-            "enabled": true,
-            "tuning": "performance",
-            "target_temp_c": 85,
-            "tdp_max_w": 55,
-            "fan_max_pct": 100
-        }
-        """;
-
-        var config = JsonSerializer.Deserialize<AutoTuneConfig>(json, JsonOptions);
-
-        Assert.NotNull(config);
-        Assert.True(config.Enabled);
-        Assert.Equal("performance", config.Tuning);
-        Assert.Equal(85, config.TargetTempC);
-        Assert.Equal(55, config.TdpMaxW);
-        Assert.Equal(100, config.FanMaxPercent);
-    }
-
-    [Fact]
-    public void AutoTuneState_DeserializesCorrectly()
-    {
-        var json = """
-        {
-            "active": true,
-            "tuning": "default",
-            "target_temp_c": 80,
-            "tdp_max_w": 50,
-            "effective_tdp_max_w": 45,
-            "fan_max_pct": 80
-        }
-        """;
-
-        var state = JsonSerializer.Deserialize<AutoTuneState>(json, JsonOptions);
-
-        Assert.NotNull(state);
-        Assert.True(state.Active);
-        Assert.Equal("default", state.Tuning);
-        Assert.Equal(80, state.TargetTempC);
-        Assert.Equal(50, state.TdpMaxW);
-        Assert.Equal(45, state.EffectiveTdpMaxW); // Clamped by power state
-        Assert.Equal(80, state.FanMaxPercent);
-    }
-
     // ===== AppConfig deserialization =====
 
     [Fact]
@@ -275,20 +301,7 @@ public class ModelTests
             "theme": "dark",
             "persist": true,
             "charge_limit_pct": 85,
-            "auto_start": true,
-            "auto_tune": {
-                "enabled": true,
-                "tuning": "performance",
-                "target_temp_c": 85,
-                "tdp_max_w": 55,
-                "fan_max_pct": 100
-            },
-            "power_state_profiles": {
-                "battery": { "profile": "battery-saver", "tdp_max_w": 25 },
-                "usb_c_slow": { "profile": "usb-c-efficient", "tdp_max_w": 35 },
-                "usb_c_fast": { "profile": "balanced", "tdp_max_w": 45 },
-                "dc_in": { "profile": "performance", "tdp_max_w": 55 }
-            }
+            "auto_start": true
         }
         """;
 
@@ -300,45 +313,6 @@ public class ModelTests
         Assert.True(config.Persist);
         Assert.Equal(85, config.ChargeLimitPercent);
         Assert.True(config.AutoStart);
-        Assert.NotNull(config.AutoTune);
-        Assert.True(config.AutoTune.Enabled);
-        Assert.Equal("performance", config.AutoTune.Tuning);
-        // Power state profiles
-        Assert.Equal("battery-saver", config.PowerStateProfiles.Battery.Profile);
-        Assert.Equal(25, config.PowerStateProfiles.Battery.TdpMaxW);
-        Assert.Equal("usb-c-efficient", config.PowerStateProfiles.UsbCSlow.Profile);
-        Assert.Equal(35, config.PowerStateProfiles.UsbCSlow.TdpMaxW);
-        Assert.Equal("balanced", config.PowerStateProfiles.UsbCFast.Profile);
-        Assert.Equal(45, config.PowerStateProfiles.UsbCFast.TdpMaxW);
-        Assert.Equal("performance", config.PowerStateProfiles.DcIn.Profile);
-        Assert.Equal(55, config.PowerStateProfiles.DcIn.TdpMaxW);
-    }
-
-    [Fact]
-    public void AppConfig_NullAutoTune_DeserializesAsNull()
-    {
-        var json = """
-        {
-            "language": "auto",
-            "theme": "system",
-            "persist": false,
-            "charge_limit_pct": 100,
-            "auto_start": false,
-            "auto_tune": null,
-            "power_state_profiles": {
-                "battery": { "profile": "", "tdp_max_w": 25 },
-                "usb_c_slow": { "profile": "", "tdp_max_w": 25 },
-                "usb_c_fast": { "profile": "", "tdp_max_w": 25 },
-                "dc_in": { "profile": "", "tdp_max_w": 25 }
-            }
-        }
-        """;
-
-        var config = JsonSerializer.Deserialize<AppConfig>(json, JsonOptions);
-
-        Assert.NotNull(config);
-        Assert.Null(config.AutoTune);
-        Assert.False(config.Persist);
     }
 
     [Fact]
@@ -354,7 +328,6 @@ public class ModelTests
         Assert.False(config.Persist);
         Assert.Equal(100, config.ChargeLimitPercent);
         Assert.False(config.AutoStart);
-        Assert.Null(config.AutoTune);
     }
 
     [Fact]

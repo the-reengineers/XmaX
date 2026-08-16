@@ -7,6 +7,26 @@
 
 using json = nlohmann::json;
 
+// Helper: parse power state string to enum
+static std::optional<PowerState::Source> parse_power_state(const std::string& s) {
+    if (s == "battery") return PowerState::Source::Battery;
+    if (s == "usb_c_slow") return PowerState::Source::UsbCSlow;
+    if (s == "usb_c_fast") return PowerState::Source::UsbCFast;
+    if (s == "dc_in") return PowerState::Source::DcIn;
+    return std::nullopt;
+}
+
+// Helper: convert power state enum to string
+static std::string power_state_to_string(PowerState::Source s) {
+    switch (s) {
+        case PowerState::Source::Battery:  return "battery";
+        case PowerState::Source::UsbCSlow: return "usb_c_slow";
+        case PowerState::Source::UsbCFast: return "usb_c_fast";
+        case PowerState::Source::DcIn:     return "dc_in";
+        default:                           return "";
+    }
+}
+
 ProfileStorage load_profiles(const std::filesystem::path& profiles_path) {
     ProfileStorage storage;
 
@@ -65,17 +85,50 @@ ProfileStorage load_profiles(const std::filesystem::path& profiles_path) {
                 if (profile_json.contains("name") && profile_json["name"].is_string()) {
                     profile.name = profile_json["name"].get<std::string>();
                 }
-                if (profile_json.contains("tdp") && profile_json["tdp"].is_object()) {
-                    auto& tdp = profile_json["tdp"];
-                    if (tdp.contains("stapm")) profile.stapm_w = tdp["stapm"].get<int>();
-                    if (tdp.contains("fast")) profile.fast_w = tdp["fast"].get<int>();
-                    if (tdp.contains("slow")) profile.slow_w = tdp["slow"].get<int>();
+
+                // Parse type (required)
+                if (profile_json.contains("type") && profile_json["type"].is_string()) {
+                    std::string type_str = profile_json["type"].get<std::string>();
+                    profile.type = (type_str == "adaptive") ? ProfileType::Adaptive : ProfileType::Fixed;
                 }
-                if (profile_json.contains("fan_curve")) {
-                    if (profile_json["fan_curve"].is_string()) {
+
+                // Parse power_state (optional)
+                if (profile_json.contains("power_state") && profile_json["power_state"].is_string()) {
+                    profile.power_state = parse_power_state(profile_json["power_state"].get<std::string>());
+                }
+
+                // Parse is_default (optional, defaults to false)
+                if (profile_json.contains("is_default") && profile_json["is_default"].is_boolean()) {
+                    profile.is_default = profile_json["is_default"].get<bool>();
+                }
+
+                if (profile.type == ProfileType::Fixed) {
+                    // Fixed profile fields
+                    if (profile_json.contains("tdp") && profile_json["tdp"].is_object()) {
+                        auto& tdp = profile_json["tdp"];
+                        if (tdp.contains("stapm")) profile.stapm_w = tdp["stapm"].get<int>();
+                        if (tdp.contains("fast")) profile.fast_w = tdp["fast"].get<int>();
+                        if (tdp.contains("slow")) profile.slow_w = tdp["slow"].get<int>();
+                    }
+                    if (profile_json.contains("fan_curve") && profile_json["fan_curve"].is_string()) {
                         profile.fan_curve = profile_json["fan_curve"].get<std::string>();
                     }
+                } else {
+                    // Adaptive profile fields
+                    if (profile_json.contains("tuning") && profile_json["tuning"].is_string()) {
+                        profile.tuning = profile_json["tuning"].get<std::string>();
+                    }
+                    if (profile_json.contains("target_temp_c") && profile_json["target_temp_c"].is_number_integer()) {
+                        profile.target_temp_c = profile_json["target_temp_c"].get<int>();
+                    }
+                    if (profile_json.contains("tdp_max_w") && profile_json["tdp_max_w"].is_number_integer()) {
+                        profile.tdp_max_w = profile_json["tdp_max_w"].get<int>();
+                    }
+                    if (profile_json.contains("fan_max_pct") && profile_json["fan_max_pct"].is_number_integer()) {
+                        profile.fan_max_pct = profile_json["fan_max_pct"].get<int>();
+                    }
                 }
+
                 storage.profiles[slug] = profile;
             }
         }
@@ -123,12 +176,30 @@ bool save_profiles(const std::filesystem::path& profiles_path, const ProfileStor
         for (auto& [slug, profile] : storage.profiles) {
             json profile_json;
             profile_json["name"] = profile.name;
-            profile_json["tdp"] = {{"stapm", profile.stapm_w}, {"fast", profile.fast_w}, {"slow", profile.slow_w}};
-            if (profile.fan_curve.has_value()) {
-                profile_json["fan_curve"] = profile.fan_curve.value();
+            profile_json["type"] = (profile.type == ProfileType::Adaptive) ? "adaptive" : "fixed";
+
+            if (profile.power_state.has_value()) {
+                profile_json["power_state"] = power_state_to_string(profile.power_state.value());
             } else {
-                profile_json["fan_curve"] = nullptr;
+                profile_json["power_state"] = nullptr;
             }
+
+            profile_json["is_default"] = profile.is_default;
+
+            if (profile.type == ProfileType::Fixed) {
+                profile_json["tdp"] = {{"stapm", profile.stapm_w}, {"fast", profile.fast_w}, {"slow", profile.slow_w}};
+                if (profile.fan_curve.has_value()) {
+                    profile_json["fan_curve"] = profile.fan_curve.value();
+                } else {
+                    profile_json["fan_curve"] = nullptr;
+                }
+            } else {
+                profile_json["tuning"] = profile.tuning;
+                profile_json["target_temp_c"] = profile.target_temp_c;
+                profile_json["tdp_max_w"] = profile.tdp_max_w;
+                profile_json["fan_max_pct"] = profile.fan_max_pct;
+            }
+
             profiles_json[slug] = profile_json;
         }
         j["profiles"] = profiles_json;
@@ -270,21 +341,84 @@ std::optional<std::string> delete_fan_curve(ProfileStorage& storage, const std::
 }
 
 std::optional<std::string> save_profile(ProfileStorage& storage, Profile profile) {
-    // Validate TDP values
-    if (profile.stapm_w < 6 || profile.stapm_w > 120 ||
-        profile.fast_w < 6 || profile.fast_w > 120 ||
-        profile.slow_w < 6 || profile.slow_w > 120) {
-        return "TDP values must be between 6 and 120W";
+    if (profile.type == ProfileType::Fixed) {
+        // Determine TDP ceiling: power state max if assigned, otherwise global max
+        int tdp_ceiling = profile.power_state.has_value()
+            ? power_state_max_tdp(profile.power_state.value())
+            : 120;
+
+        // Validate TDP values against ceiling
+        if (profile.stapm_w < 6 || profile.stapm_w > tdp_ceiling ||
+            profile.fast_w < 6 || profile.fast_w > tdp_ceiling ||
+            profile.slow_w < 6 || profile.slow_w > tdp_ceiling) {
+            return "TDP values must be between 6 and " + std::to_string(tdp_ceiling) + "W";
+        }
+
+        // Fan curve is mandatory for fixed profiles
+        if (!profile.fan_curve.has_value()) {
+            return "A fan curve is required for fixed profiles";
+        }
+
+        // Validate fan curve reference exists
+        if (storage.fan_curves.find(profile.fan_curve.value()) == storage.fan_curves.end()) {
+            return "Fan curve not found: " + profile.fan_curve.value();
+        }
+    } else {
+        // Adaptive profile validation
+        if (profile.tuning != "silent" && profile.tuning != "default" && profile.tuning != "performance") {
+            return "Tuning must be 'silent', 'default', or 'performance'";
+        }
+        if (profile.target_temp_c < 50 || profile.target_temp_c > 100) {
+            return "Target temperature must be between 50 and 100°C";
+        }
+
+        int tdp_ceiling = profile.power_state.has_value()
+            ? power_state_max_tdp(profile.power_state.value())
+            : 120;
+
+        if (profile.tdp_max_w < 6 || profile.tdp_max_w > tdp_ceiling) {
+            return "TDP max must be between 6 and " + std::to_string(tdp_ceiling) + "W";
+        }
+        if (profile.fan_max_pct < 0 || profile.fan_max_pct > 100) {
+            return "Fan max must be between 0 and 100%";
+        }
     }
 
-    // Fan curve is mandatory — FE must always provide one
-    if (!profile.fan_curve.has_value()) {
-        return "A fan curve is required for all profiles";
-    }
+    // Manage is_default for power state assignment
+    if (profile.power_state.has_value()) {
+        auto ps = profile.power_state.value();
 
-    // Validate fan curve reference exists
-    if (storage.fan_curves.find(profile.fan_curve.value()) == storage.fan_curves.end()) {
-        return "Fan curve not found: " + profile.fan_curve.value();
+        // Check if there's already a default for this power state
+        bool has_existing_default = false;
+        for (auto& [existing_slug, existing_profile] : storage.profiles) {
+            if (existing_slug == profile.id) continue;  // Skip self on update
+            if (existing_profile.power_state.has_value() &&
+                existing_profile.power_state.value() == ps &&
+                existing_profile.is_default) {
+                has_existing_default = true;
+                break;
+            }
+        }
+
+        // If no existing default, this profile becomes the default
+        if (!has_existing_default) {
+            profile.is_default = true;
+        }
+
+        // If this profile is being set as default, clear default from others with same power state
+        if (profile.is_default) {
+            for (auto& [existing_slug, existing_profile] : storage.profiles) {
+                if (existing_slug == profile.id) continue;
+                if (existing_profile.power_state.has_value() &&
+                    existing_profile.power_state.value() == ps &&
+                    existing_profile.is_default) {
+                    storage.profiles[existing_slug].is_default = false;
+                }
+            }
+        }
+    } else {
+        // No power state assigned — clear is_default
+        profile.is_default = false;
     }
 
     // Generate slug if creating new profile
@@ -302,12 +436,25 @@ std::optional<std::string> save_profile(ProfileStorage& storage, Profile profile
 
 std::optional<std::string> delete_profile(ProfileStorage& storage, const std::string& slug) {
     // Check if profile exists
-    if (storage.profiles.find(slug) == storage.profiles.end()) {
+    auto it = storage.profiles.find(slug);
+    if (it == storage.profiles.end()) {
         return "Profile not found";
     }
 
-    // Note: In a real implementation, we'd need to check power state references
-    // but that requires access to the Config, which is passed separately
+    // If deleting the default profile for a power state, promote another profile
+    auto& deleted = it->second;
+    if (deleted.power_state.has_value() && deleted.is_default) {
+        auto ps = deleted.power_state.value();
+        // Find another profile with the same power state to promote
+        for (auto& [existing_slug, existing_profile] : storage.profiles) {
+            if (existing_slug == slug) continue;
+            if (existing_profile.power_state.has_value() &&
+                existing_profile.power_state.value() == ps) {
+                storage.profiles[existing_slug].is_default = true;
+                break;  // Promote the first one found
+            }
+        }
+    }
 
     storage.profiles.erase(slug);
     return std::nullopt;

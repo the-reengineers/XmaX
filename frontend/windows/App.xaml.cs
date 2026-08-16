@@ -1,7 +1,10 @@
 using System.Text.Json;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media.Animation;
 using XmaX.Models;
 using XmaX.Services;
+using XmaX.ViewModels;
 
 namespace XmaX;
 
@@ -94,7 +97,6 @@ public partial class App : Application
         Pipe = new PipeClient();
         MetricsService = new MetricsService(Pipe);
         ProfileService = new ProfileService(Pipe);
-        AutoTuneService = new AutoTuneService(Pipe);
         WidgetService = new WidgetService(Pipe);
 
         // Connect to backend
@@ -104,7 +106,7 @@ public partial class App : Application
         m_window.Activate();
     }
 
-    private Window? m_window;
+    private static MainWindow? m_window;
 
     // ===== Service accessors =====
 
@@ -117,9 +119,29 @@ public partial class App : Application
     /// <summary>Profile and fan curve management service.</summary>
     public static ProfileService ProfileService { get; private set; } = null!;
 
-    /// <summary>Adaptive controller service.</summary>
-    public static AutoTuneService AutoTuneService { get; private set; } = null!;
-
     /// <summary>Widget layout management service.</summary>
     public static WidgetService WidgetService { get; private set; } = null!;
+
+    // ===== Shared ViewModel accessors =====
+
+    private static ProfilesViewModel? _profilesViewModel;
+
+    /// <summary>Get or create the shared ProfilesViewModel (used by Profiles and PowerStates sub-pages).</summary>
+    public static ProfilesViewModel GetProfilesViewModel()
+    {
+        _profilesViewModel ??= new ProfilesViewModel(ProfileService);
+        return _profilesViewModel;
+    }
+
+    /// <summary>Navigate the main frame to a page type with an optional transition.</summary>
+    public static void NavigateTo(Type pageType, NavigationTransitionInfo? transitionInfo = null)
+    {
+        m_window?.NavigateToPage(pageType, transitionInfo);
+    }
+
+    /// <summary>Navigate the main frame back to the previous page.</summary>
+    public static void NavigateBack()
+    {
+        m_window?.GoBack();
+    }
 }

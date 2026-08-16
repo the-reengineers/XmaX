@@ -1,5 +1,7 @@
 #pragma once
 
+#include "shared.h"
+
 #include <filesystem>
 #include <optional>
 #include <set>
@@ -20,14 +22,28 @@ struct FanCurve {
     std::vector<FanCurvePoint> points;
 };
 
+// Profile type
+enum class ProfileType { Fixed, Adaptive };
+
 // Profile definition
 struct Profile {
     std::string id;  // Slug
     std::string name;
-    int stapm_w;
-    int fast_w;
-    int slow_w;
+    ProfileType type = ProfileType::Fixed;
+    std::optional<PowerState::Source> power_state;  // Assigned power state (multiple profiles can share a state)
+    bool is_default = false;  // If true, this is the default profile for its power_state
+
+    // Fixed profile fields (used when type == Fixed)
+    int stapm_w = 0;
+    int fast_w = 0;
+    int slow_w = 0;
     std::optional<std::string> fan_curve;  // Slug reference or nullopt
+
+    // Adaptive profile fields (used when type == Adaptive)
+    std::string tuning = "default";     // "silent", "default", "performance"
+    int target_temp_c = 85;
+    int tdp_max_w = 55;
+    int fan_max_pct = 100;
 };
 
 // Profile storage

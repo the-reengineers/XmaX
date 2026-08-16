@@ -1,45 +1,44 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using XmaX.Models;
 using XmaX.Services;
 
 namespace XmaX.Widgets;
 
 /// <summary>
-/// Adaptive widget showing tuning preset cards in a grid layout.
-/// Each card uses 1 column width matching the home page column count.
-/// Uses ProfileCard component for each preset. Tap to apply.
-/// Active preset is visually highlighted.
+/// Adaptive widget showing adaptive profile cards in a grid layout.
+/// Each card represents an adaptive profile. Tap to apply.
+/// Active adaptive profile is visually highlighted.
 /// </summary>
-public sealed partial class AdaptiveWidget : UserControl, IHomeWidget
+public sealed partial class AdaptiveWidget : UserControl
 {
-    private readonly AutoTuneService _autoTuneService;
+    private readonly ProfileService _profileService;
     private readonly WidgetService _widgetService;
-
-    public string WidgetId => "adaptive";
-    public WidgetConfig Config => WidgetConfig.FixedTransparent(2, 3);  // 2-3 cols, transparent
-    public object Control => this;
-    public string? Title => Loc.Title_Adaptive;
-    public int GetRequiredRows(int availableColumns) => Config.Rows;
 
     public AdaptiveWidget()
     {
         this.InitializeComponent();
         TitleText.Text = Loc.Title_Adaptive;
-        _autoTuneService = App.AutoTuneService;
+        _profileService = App.ProfileService;
         _widgetService = App.WidgetService;
-        _autoTuneService.PropertyChanged += OnAutoTuneChanged;
+        _profileService.PropertyChanged += OnProfileServiceChanged;
         _widgetService.PropertyChanged += OnWidgetServiceChanged;
-        BuildPresetCards();
+        BuildProfileCards();
         UpdateDisplay();
     }
 
-    private void OnAutoTuneChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    private void OnProfileServiceChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(AutoTuneService.State) ||
-            e.PropertyName == nameof(AutoTuneService.IsActive) ||
-            e.PropertyName == nameof(AutoTuneService.Tuning))
+        if (e.PropertyName == nameof(ProfileService.Profiles) ||
+            e.PropertyName == nameof(ProfileService.ActiveProfileId) ||
+            e.PropertyName == nameof(ProfileService.IsAdaptiveActive))
         {
-            DispatcherQueue.TryEnqueue(UpdateDisplay);
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (e.PropertyName == nameof(ProfileService.Profiles))
+                    BuildProfileCards();
+                UpdateDisplay();
+            });
         }
     }
 
@@ -47,59 +46,70 @@ public sealed partial class AdaptiveWidget : UserControl, IHomeWidget
     {
         if (e.PropertyName == nameof(WidgetService.Columns))
         {
-            DispatcherQueue.TryEnqueue(BuildPresetCards);
+            DispatcherQueue.TryEnqueue(BuildProfileCards);
         }
     }
 
     /// <summary>
-    /// Build ProfileCards for each tuning preset (silent, default, performance) in a grid.
-    /// Each card uses 1 column width matching the widget's actual column span.
+    /// Build ProfileCards for each adaptive profile in a grid.
     /// </summary>
-    private void BuildPresetCards()
+    private void BuildProfileCards()
     {
         PresetGrid.Children.Clear();
         PresetGrid.ColumnDefinitions.Clear();
         PresetGrid.RowDefinitions.Clear();
 
-        var presets = new[]
+        var adaptiveProfiles = _profileService.Profiles
+            .Where(p => p.IsAdaptive)
+            .ToList();
+
+        if (adaptiveProfiles.Count == 0)
         {
-            new { Tuning = "silent", Name = Loc.Button_Silent, Info = "60°C" },
-            new { Tuning = "default", Name = Loc.Button_Default, Info = "80°C" },
-            new { Tuning = "performance", Name = Loc.Button_Performance, Info = "95°C" },
-        };
+            var placeholder = new TextBlock
+            {
+                Text = Loc.Info_NoAdaptiveProfiles,
+                TextWrapping = Microsoft.UI.Xaml.TextWrapping.WrapWholeWords,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            placeholder.SetValue(Grid.RowProperty, 0);
+            placeholder.SetValue(Grid.ColumnSpanProperty, Math.Max(1, _widgetService.Columns));
+            PresetGrid.Children.Add(placeholder);
+            return;
+        }
 
-        // Use the widget's actual column span (min of MaxColumns and home page columns)
-        var columns = Math.Min(Config.MaxColumns, _widgetService.Columns);
+        // Use columns matching widget's actual column span, up to the number of profiles
+        var columns = Math.Min(adaptiveProfiles.Count, _widgetService.Columns);
 
-        // Create columns matching the widget's column span
         for (int c = 0; c < columns; c++)
         {
             PresetGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         }
 
-        // Calculate rows needed
-        var rows = (presets.Length + columns - 1) / columns;
+        var rows = (adaptiveProfiles.Count + columns - 1) / columns;
         for (int r = 0; r < rows; r++)
         {
             PresetGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         }
 
-        // Add preset cards
-        for (int i = 0; i < presets.Length; i++)
+        for (int i = 0; i < adaptiveProfiles.Count; i++)
         {
-            var preset = presets[i];
+            var profile = adaptiveProfiles[i];
             var row = i / columns;
             var col = i % columns;
 
+            var info = $"{profile.Tuning}, {profile.TargetTempC}°C, ≤{profile.TdpMaxW}W";
+
             var card = new ProfileCard
             {
-                ProfileId = preset.Tuning,
-                DisplayName = preset.Name,
-                Info = preset.Info,
+                ProfileId = profile.Id,
+                DisplayName = profile.Name,
+                IsAdaptive = true,
+                Info = info,
                 VerticalAlignment = VerticalAlignment.Stretch,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
             };
-            card.CardTapped += OnPresetCardTapped;
+            card.CardTapped += OnProfileCardTapped;
             PresetGrid.Children.Add(card);
             Grid.SetRow(card, row);
             Grid.SetColumn(card, col);
@@ -108,29 +118,23 @@ public sealed partial class AdaptiveWidget : UserControl, IHomeWidget
 
     private void UpdateDisplay()
     {
-        var tuning = _autoTuneService.Tuning;
-        var isActive = _autoTuneService.IsActive;
+        var activeId = _profileService.ActiveProfileId;
+        var isAdaptive = _profileService.IsAdaptiveActive;
 
-        // Update card selection state
         foreach (var child in PresetGrid.Children)
         {
             if (child is ProfileCard card)
             {
-                card.IsSelected = card.ProfileId == tuning && isActive;
+                card.IsSelected = card.ProfileId == activeId && isAdaptive;
             }
         }
     }
 
-    private void OnPresetCardTapped(object? sender, EventArgs e)
+    private void OnProfileCardTapped(object? sender, EventArgs e)
     {
         if (sender is ProfileCard card && !string.IsNullOrEmpty(card.ProfileId))
         {
-            var state = _autoTuneService.State;
-            _ = _autoTuneService.SetAutoTuneAsync(
-                card.ProfileId,
-                state.TargetTempC,
-                state.TdpMaxW,
-                state.FanMaxPercent);
+            _ = _profileService.ApplyProfileAsync(card.ProfileId);
         }
     }
 }

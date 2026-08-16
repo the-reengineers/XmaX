@@ -39,7 +39,7 @@
 //   - Event queue: thread-safe queue for unsolicited events
 //
 // Persist gating:
-//   Hardware write commands (set_fan, set_profile, set_charge_limit, set_auto_tune)
+//   Hardware write commands (set_fan, set_profile, set_charge_limit)
 //   are rejected when config.persist is false. Read-only and disk-write commands
 //   are always allowed.
 //
@@ -121,12 +121,8 @@ private:
     auto handle_get_fan_curves(const Command& cmd) -> Response;
     auto handle_save_fan_curve(const Command& cmd) -> Response;
     auto handle_delete_fan_curve(const Command& cmd) -> Response;
-    auto handle_get_power_profiles(const Command& cmd) -> Response;
-    auto handle_set_power_profile(const Command& cmd) -> Response;
     auto handle_get_charge_limit(const Command& cmd) -> Response;
     auto handle_set_charge_limit(const Command& cmd) -> Response;
-    auto handle_get_auto_tune(const Command& cmd) -> Response;
-    auto handle_set_auto_tune(const Command& cmd) -> Response;
     auto handle_get_config(const Command& cmd) -> Response;
     auto handle_set_config(const Command& cmd) -> Response;
     auto handle_set_session_persist(const Command& cmd) -> Response;

@@ -6,15 +6,9 @@ namespace XmaX.Widgets;
 /// <summary>
 /// CPU metric tile showing temperature, utilization, and power.
 /// </summary>
-public sealed partial class CpuTile : UserControl, IHomeWidget
+public sealed partial class CpuTile : UserControl
 {
     private readonly MetricsService _metricsService;
-
-    public string WidgetId => "cpu";
-    public WidgetConfig Config => WidgetConfig.TransparentTile;
-    public object Control => this;
-    public string? Title => null;
-    public int GetRequiredRows(int availableColumns) => Config.Rows;
 
     public CpuTile()
     {

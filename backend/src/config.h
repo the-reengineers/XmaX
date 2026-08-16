@@ -8,26 +8,6 @@
 
 // Configuration structures
 
-struct AutoTuneConfig {
-    bool enabled = false;
-    std::string tuning = "default";  // "silent", "default", "performance"
-    int target_temp_c = 85;
-    int tdp_max_w = 55;
-    int fan_max_pct = 100;
-};
-
-struct PowerStateProfile {
-    std::string profile;  // Slug reference
-    int tdp_max_w = 55;   // OneXConsole default for Battery (normal)
-};
-
-struct PowerStateProfiles {
-    PowerStateProfile battery;
-    PowerStateProfile usb_c_slow;
-    PowerStateProfile usb_c_fast;
-    PowerStateProfile dc_in;
-};
-
 struct WidgetEntry {
     std::string id;
     int col_span = 1;
@@ -48,8 +28,6 @@ struct Config {
     bool session_persist = false;  // In-memory only, not serialized to JSON. Initialized from persist on startup.
     int charge_limit_pct = 100;
     bool auto_start = false;
-    std::optional<AutoTuneConfig> auto_tune;
-    PowerStateProfiles power_state_profiles;
     HomeLayout home_layout;
 };
 

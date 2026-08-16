@@ -9,19 +9,13 @@ namespace XmaX.Widgets;
 /// Charge limit widget - entire widget is clickable to cycle charge limits.
 /// Card background applied by HomePage (IsInteractiveCard = true).
 /// </summary>
-public sealed partial class ChargeLimitWidget : UserControl, IHomeWidget
+public sealed partial class ChargeLimitWidget : UserControl
 {
     /// <summary>Charge limit steps in percent, cycling order.</summary>
     private static readonly int[] ChargeSteps = { 75, 80, 85, 90, 95, 100 };
 
     private readonly MetricsService _metricsService;
     private readonly PipeClient _pipe;
-
-    public string WidgetId => "charge_limit";
-    public WidgetConfig Config => WidgetConfig.TransparentTile;  // 1x1, transparent (widget handles its own card background)
-    public object Control => this;
-    public string? Title => null;
-    public int GetRequiredRows(int availableColumns) => Config.Rows;
 
     public ChargeLimitWidget()
     {

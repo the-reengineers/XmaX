@@ -19,7 +19,14 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
             <StackPanel Spacing="4" Grid.Row="0">
-                <TextBlock x:Name="NameText" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock x:Name="TypeIcon"
+                               FontFamily="/Assets/tabler-icons.ttf#tabler-icons"
+                               FontSize="16"
+                               VerticalAlignment="Center" />
+                    <TextBlock x:Name="NameText" Style="{StaticResource BodyStrongTextBlockStyle}"
+                               VerticalAlignment="Center" />
+                </StackPanel>
                 <TextBlock x:Name="InfoText" Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </StackPanel>

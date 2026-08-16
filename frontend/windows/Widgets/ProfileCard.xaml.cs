@@ -30,6 +30,12 @@ public sealed partial class ProfileCard : UserControl
         set => NameText.Text = value;
     }
 
+    /// <summary>Whether this is an adaptive profile (controls the type icon).</summary>
+    public bool IsAdaptive
+    {
+        set => TypeIcon.Text = value ? "\U0000EFFE" : "\U0000EDDE";
+    }
+
     /// <summary>Additional info text (e.g., TDP values, temp target).</summary>
     public string Info
     {

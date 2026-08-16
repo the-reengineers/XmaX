@@ -19,13 +19,13 @@
         <TextBlock x:Name="StateText" Grid.Row="1" Style="{StaticResource SubtitleTextBlockStyle}" />
         <Grid x:Name="IconGrid" Grid.Row="2" Width="32" Height="32" VerticalAlignment="Center">
             <TextBlock x:Name="PrimaryIcon"
-                       FontFamily="/Assets/materialdesignicons-webfont.ttf#Material Design Icons"
+                       FontFamily="/Assets/tabler-icons.ttf#tabler-icons"
                        Text="&#xF008E;"
                        FontSize="32"
                        Foreground="White"
                        HorizontalAlignment="Center" VerticalAlignment="Center" />
             <TextBlock x:Name="SecondaryIcon"
-                       FontFamily="/Assets/materialdesignicons-webfont.ttf#Material Design Icons"
+                       FontFamily="/Assets/tabler-icons.ttf#tabler-icons"
                        Text="&#xF140B;"
                        FontSize="12"
                        Foreground="White"

@@ -80,3 +80,15 @@ enum class ErrorCode : uint32_t {
 };
 
 std::string error_code_to_string(ErrorCode code);
+
+// Hardcoded maximum TDP per power state (not user-configurable).
+// These represent the absolute maximum TDP the hardware can draw from each power source.
+inline int power_state_max_tdp(PowerState::Source source) {
+    switch (source) {
+        case PowerState::Source::Battery:  return 55;   // Battery: 55W
+        case PowerState::Source::UsbCSlow: return 20;   // USB-C 65W: 20W
+        case PowerState::Source::UsbCFast: return 55;   // USB-C 100W: 55W
+        case PowerState::Source::DcIn:     return 80;   // DC-In: 80W
+        default:                           return 55;   // Safe default for Unknown
+    }
+}

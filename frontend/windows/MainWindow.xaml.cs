@@ -5,7 +5,10 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
+using Windows.Foundation;
 using Windows.Graphics;
+using Windows.UI.ViewManagement;
 using XmaX.Pages;
 
 namespace XmaX;
@@ -23,6 +26,9 @@ public sealed partial class MainWindow : Window
     private const int GridPadding = 12;       // Each side (matches HomePage.xaml)
     private const int ColumnSpacing = 8;      // Between columns (matches HomePage.xaml)
 
+    // Marquee speed in pixels per second
+    private const int MarqueePixelsPerSecond = 50;
+
     // Win32 constants
     private const int GWL_EXSTYLE = -20;
     private const int GWL_STYLE = -16;
@@ -38,6 +44,13 @@ public sealed partial class MainWindow : Window
     // Suppress deactivation handler briefly when showing window
     private bool _suppressDeactivation;
     private DateTime _lastShowTime;
+
+    // Marquee animation state
+    private Storyboard? _marqueeStoryboard;
+
+    // System transparency effects detection
+    private readonly UISettings _uiSettings = new();
+    public bool TransparencyEffectsEnabled { get; private set; }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct MARGINS
@@ -106,7 +119,8 @@ public sealed partial class MainWindow : Window
         PositionBottomRight();
         SetupClickOutsideToHide();
         SetupBackendIntegration();
-        SetupNavigationLabels();
+        SetupTransparencyDetection();
+        SetupMarquee();
         SetupDynamicResizing();
 
         // Load config first (await to ensure layout is loaded before HomePage is created)
@@ -115,34 +129,103 @@ public sealed partial class MainWindow : Window
 
     private async Task InitializeAsync()
     {
-        // Load config and update test mode banner
-        await LoadConfigAndUpdateBannerAsync();
+        // Load config and apply home layout
+        await LoadConfigAsync();
 
         // Navigate to home page by default (after config is loaded)
         RootFrame.Navigate(typeof(HomePage));
-        NavView.SelectedItem = NavView.MenuItems[0];
     }
 
-    // ===== Navigation Labels =====
+    // ===== System Transparency Effects =====
 
-    private void SetupNavigationLabels()
+    private void SetupTransparencyDetection()
     {
-        // Set tab labels from Loc
-        var items = NavView.MenuItems;
-        if (items.Count >= 6)
+        TransparencyEffectsEnabled = _uiSettings.AdvancedEffectsEnabled;
+        _uiSettings.ColorValuesChanged += OnColorValuesChanged;
+    }
+
+    private void OnColorValuesChanged(UISettings sender, object args)
+    {
+        DispatcherQueue.TryEnqueue(() =>
         {
-            ((NavigationViewItem)items[0]).Content = Loc.Nav_Home;
-            ((NavigationViewItem)items[1]).Content = Loc.Nav_Profiles;
-            ((NavigationViewItem)items[2]).Content = Loc.Nav_Cooling;
-            ((NavigationViewItem)items[3]).Content = Loc.Nav_Set;
-            ((NavigationViewItem)items[4]).Content = Loc.Nav_Set2;
-            ((NavigationViewItem)items[5]).Content = Loc.Nav_Settings;
+            TransparencyEffectsEnabled = sender.AdvancedEffectsEnabled;
+        });
+    }
+
+    // ===== Marquee Banner =====
+
+    private void SetupMarquee()
+    {
+        MarqueeContainer.SizeChanged += (_, _) => UpdateMarqueeAnimation();
+        MarqueeContainer.Loaded += (_, _) => UpdateMarqueeAnimation();
+
+        // For now: show session mode message
+        MarqueeText.Text = Loc.Nav_TestMode;
+    }
+
+    private void UpdateMarqueeAnimation()
+    {
+        var containerWidth = MarqueeContainer.ActualWidth;
+        if (containerWidth <= 0) return;
+
+        // Measure text width
+        MarqueeText.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        var textWidth = MarqueeText.DesiredSize.Width;
+
+        // Apply clip to container
+        MarqueeContainer.Clip = new RectangleGeometry
+        {
+            Rect = new Rect(0, 0, containerWidth, MarqueeContainer.ActualHeight)
+        };
+
+        // Stop any existing animation
+        _marqueeStoryboard?.Stop();
+        _marqueeStoryboard = null;
+
+        if (textWidth <= containerWidth)
+        {
+            // Text fits — no animation, reset transform
+            MarqueeText.RenderTransform = null;
+            return;
         }
 
-        // Set test mode banner labels
-        TestModeText.Text = Loc.Nav_TestMode;
-        SessionPersistToggle.OnContent = Loc.Nav_Apply;
-        SessionPersistToggle.OffContent = "";
+        // Text overflows — animate marquee (scroll right-to-left)
+        var transform = new TranslateTransform();
+        MarqueeText.RenderTransform = transform;
+
+        var totalDistance = containerWidth + textWidth;
+        var duration = TimeSpan.FromSeconds(totalDistance / (double)MarqueePixelsPerSecond);
+
+        var animation = new DoubleAnimation
+        {
+            From = containerWidth,
+            To = -textWidth,
+            Duration = duration,
+            RepeatBehavior = RepeatBehavior.Forever,
+        };
+
+        Storyboard.SetTarget(animation, transform);
+        Storyboard.SetTargetProperty(animation, "X");
+
+        _marqueeStoryboard = new Storyboard();
+        _marqueeStoryboard.Children.Add(animation);
+        _marqueeStoryboard.Begin();
+    }
+
+    // ===== Bottom Bar Button Handlers =====
+
+    private void OnEditClick(object sender, RoutedEventArgs e)
+    {
+        // TODO: implement edit mode toggle
+    }
+
+    private void OnSettingsClick(object sender, RoutedEventArgs e)
+    {
+        if (RootFrame.CurrentSourcePageType != typeof(SettingsPage))
+        {
+            RootFrame.Navigate(typeof(SettingsPage));
+            ResizeWindowToCurrentConfig();
+        }
     }
 
     // ===== Dynamic Window Resizing =====
@@ -153,11 +236,11 @@ public sealed partial class MainWindow : Window
         App.WidgetService.PropertyChanged += OnWidgetServicePropertyChanged;
     }
 
-    private void OnWidgetServicePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    private void OnWidgetServicePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(XmaX.Services.WidgetService.Columns)
-            || e.PropertyName == nameof(XmaX.Services.WidgetService.ColumnWidth)
-            || e.PropertyName == nameof(XmaX.Services.WidgetService.WindowHeight))
+        if (e.PropertyName == nameof(Services.WidgetService.Columns)
+            || e.PropertyName == nameof(Services.WidgetService.ColumnWidth)
+            || e.PropertyName == nameof(Services.WidgetService.WindowHeight))
         {
             ResizeWindowToCurrentConfig();
         }
@@ -175,58 +258,29 @@ public sealed partial class MainWindow : Window
         PositionBottomRight();
     }
 
-    // ===== Test Mode Banner =====
+    // ===== Config Loading =====
 
-    private async Task LoadConfigAndUpdateBannerAsync()
+    private async Task LoadConfigAsync()
     {
         try
         {
             var data = await App.Pipe.SendCommandAsync("get_config").ConfigureAwait(true);
-            var config = System.Text.Json.JsonSerializer.Deserialize<XmaX.Models.AppConfig>(
+            var config = System.Text.Json.JsonSerializer.Deserialize<Models.AppConfig>(
                 data.ToJsonString(),
                 new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = false }
             );
 
-            if (config != null)
+            if (config?.HomeLayout != null)
             {
-                // Show banner only when persist=false
-                TestModeBanner.Visibility = config.Persist ? Visibility.Collapsed : Visibility.Visible;
-
-                // Update toggle state (without triggering event)
-                SessionPersistToggle.IsOn = config.SessionPersist;
-
-                // Apply home layout dimensions to WidgetService
-                if (config.HomeLayout != null)
-                {
-                    App.WidgetService.Columns = config.HomeLayout.Columns;
-                    App.WidgetService.ColumnWidth = config.HomeLayout.ColumnWidth;
-                    App.WidgetService.WindowHeight = config.HomeLayout.WindowHeight;
-                    App.WidgetService.LoadWidgetSpans(config.HomeLayout.Widgets);
-                }
+                App.WidgetService.Columns = config.HomeLayout.Columns;
+                App.WidgetService.ColumnWidth = config.HomeLayout.ColumnWidth;
+                App.WidgetService.WindowHeight = config.HomeLayout.WindowHeight;
+                App.WidgetService.LoadWidgetSpans(config.HomeLayout.Widgets);
             }
         }
         catch
         {
-            // Failed to load config — hide banner
-            TestModeBanner.Visibility = Visibility.Collapsed;
-        }
-    }
-
-    private async void OnSessionPersistToggled(object sender, RoutedEventArgs e)
-    {
-        var value = SessionPersistToggle.IsOn;
-        try
-        {
-            var payload = new System.Text.Json.Nodes.JsonObject
-            {
-                ["value"] = value
-            };
-            await App.Pipe.SendCommandAsync("set_session_persist", payload).ConfigureAwait(true);
-        }
-        catch
-        {
-            // Failed to send command — revert toggle
-            SessionPersistToggle.IsOn = !value;
+            // Failed to load config — use defaults
         }
     }
 
@@ -284,8 +338,7 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(null); // No custom title bar
 
-        // Set Mica backdrop for translucent effect
-        SystemBackdrop = new MicaBackdrop();
+        SystemBackdrop = new DesktopAcrylicBackdrop();
     }
 
     // ===== Positioning =====
@@ -348,65 +401,25 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    // ===== Navigation =====
+    // ===== Public Navigation Methods =====
 
-    private void OnNavSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
+    /// <summary>Navigate the main frame to a page type with an optional transition.</summary>
+    public void NavigateToPage(Type pageType, NavigationTransitionInfo? transitionInfo = null)
     {
-        if (args.SelectedItem is NavigationViewItem item && item.Tag is string tag)
+        if (transitionInfo != null)
+            RootFrame.Navigate(pageType, null, transitionInfo);
+        else
+            RootFrame.Navigate(pageType);
+    }
+
+    /// <summary>Navigate the main frame back to the previous page with a slide-from-left transition.</summary>
+    public void GoBack()
+    {
+        if (RootFrame.CanGoBack)
         {
-            var pageType = tag switch
-            {
-                "home" => typeof(HomePage),
-                "profiles" => typeof(ProfilesPage),
-                "cooling" => typeof(CoolingPage),
-                "set" => typeof(SetPage),
-                "set2" => typeof(Set2Page),
-                "settings" => typeof(SettingsPage),
-                _ => typeof(HomePage),
-            };
-
-            // Only navigate if different page
-            if (RootFrame.CurrentSourcePageType != pageType)
-            {
-                RootFrame.Navigate(pageType);
-
-                // Resize window based on page type
-                if (pageType == typeof(SetPage))
-                {
-                    ResizeWindowForSetPage();
-                }
-                else
-                {
-                    ResizeWindowToNormal();
-                }
-            }
+            var transition = new SlideNavigationTransitionInfo { Effect = SlideNavigationTransitionEffect.FromRight };
+            RootFrame.GoBack(transition);
         }
-    }
-
-    private void ResizeWindowForSetPage()
-    {
-        // Set page width = normal width + left panel width (3 columns)
-        var columns = App.WidgetService.Columns;
-        var columnWidth = App.WidgetService.ColumnWidth;
-        var windowHeight = App.WidgetService.WindowHeight;
-        var normalWidth = GetScaledWindowWidth(columns, columnWidth);
-
-        // Calculate left panel width (3 columns + spacing + padding, scaled)
-        var leftPanelWidth = (3 * columnWidth) + (2 * ColumnSpacing) + (2 * GridPadding);
-        var scale = GetDpiScale();
-        var scaledLeftPanelWidth = (int)(leftPanelWidth * scale);
-
-        var totalWidth = normalWidth + scaledLeftPanelWidth;
-        var height = GetScaledWindowHeight(windowHeight);
-
-        this.AppWindow.Resize(new SizeInt32(totalWidth, height));
-        PositionBottomRight();
-    }
-
-    private void ResizeWindowToNormal()
-    {
-        // Resize back to normal width
-        ResizeWindowToCurrentConfig();
     }
 
     // ===== Public Methods =====

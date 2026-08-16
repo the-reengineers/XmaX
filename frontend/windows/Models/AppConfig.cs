@@ -18,7 +18,7 @@ public sealed class AppConfig
     /// <summary>
     /// Whether to apply user-configured settings on startup.
     /// false = no hardware writes, hardware at BIOS defaults.
-    /// true = apply charge limit, power-state profile, adaptive config from config.json.
+    /// true = apply charge limit and assigned profile from config.json.
     /// </summary>
     [JsonPropertyName("persist")]
     public bool Persist { get; set; }
@@ -39,17 +39,6 @@ public sealed class AppConfig
     [JsonPropertyName("auto_start")]
     public bool AutoStart { get; set; }
 
-    /// <summary>Global adaptive controller config. Null if never configured.</summary>
-    [JsonPropertyName("auto_tune")]
-    public AutoTuneConfig? AutoTune { get; set; }
-
-    /// <summary>
-    /// Power state → profile + adaptive TDP ceiling mapping.
-    /// All four states are required (no nulls).
-    /// </summary>
-    [JsonPropertyName("power_state_profiles")]
-    public PowerStateProfiles PowerStateProfiles { get; set; } = new();
-
     /// <summary>Home page widget layout (order, visibility, columns).</summary>
     [JsonPropertyName("home_layout")]
     public HomeLayout HomeLayout { get; set; } = new();
@@ -57,47 +46,7 @@ public sealed class AppConfig
     public override string ToString() =>
         $"Config(lang:{Language}, theme:{Theme}, persist:{Persist}, sessionPersist:{SessionPersist}, " +
         $"chargeLimit:{ChargeLimitPercent}%, autoStart:{AutoStart}, " +
-        $"autoTune:{AutoTune?.ToString() ?? "none"}, " +
         $"layout:{HomeLayout})";
-}
-
-/// <summary>
-/// Maps each power state to a profile slug and adaptive TDP ceiling.
-/// All four states are required — no null values allowed.
-/// </summary>
-public sealed class PowerStateProfiles
-{
-    [JsonPropertyName("battery")]
-    public PowerStateAssignment Battery { get; set; } = new();
-
-    [JsonPropertyName("usb_c_slow")]
-    public PowerStateAssignment UsbCSlow { get; set; } = new();
-
-    [JsonPropertyName("usb_c_fast")]
-    public PowerStateAssignment UsbCFast { get; set; } = new();
-
-    [JsonPropertyName("dc_in")]
-    public PowerStateAssignment DcIn { get; set; } = new();
-
-    public override string ToString() =>
-        $"PowerStates(battery:{Battery.Profile}, usb_c_slow:{UsbCSlow.Profile}, " +
-        $"usb_c_fast:{UsbCFast.Profile}, dc_in:{DcIn.Profile})";
-}
-
-/// <summary>
-/// Assignment of a profile and adaptive TDP ceiling to a power state.
-/// </summary>
-public sealed class PowerStateAssignment
-{
-    /// <summary>Profile slug reference.</summary>
-    [JsonPropertyName("profile")]
-    public string Profile { get; set; } = "";
-
-    /// <summary>Adaptive TDP hard ceiling in watts for this power state.</summary>
-    [JsonPropertyName("tdp_max_w")]
-    public int TdpMaxW { get; set; } = 25;
-
-    public override string ToString() => $"{Profile} (TDP≤{TdpMaxW}W)";
 }
 
 /// <summary>

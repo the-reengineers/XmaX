@@ -5,7 +5,7 @@ using XmaX.Services;
 namespace XmaX.Tests;
 
 /// <summary>
-/// Tests for MetricsService, ProfileService, AutoTuneService.
+/// Tests for MetricsService and ProfileService.
 /// These test the service logic without a real backend pipe.
 /// </summary>
 public class ServiceTests
@@ -115,33 +115,6 @@ public class ServiceTests
             service.RefreshAsync().GetAwaiter().GetResult());
     }
 
-    // ===== AutoTuneService tests =====
-
-    [Fact]
-    public void AutoTuneService_InitialState_HasDefaultState()
-    {
-        using var pipe = new PipeClient();
-        using var service = new AutoTuneService(pipe);
-
-        Assert.NotNull(service.State);
-        Assert.False(service.IsActive);
-        Assert.Equal("default", service.Tuning);
-        Assert.Equal(0, service.EffectiveTdpMaxW);
-    }
-
-    [Fact]
-    public void AutoTuneService_Dispose_UnsubscribesFromEvents()
-    {
-        using var pipe = new PipeClient();
-        var service = new AutoTuneService(pipe);
-
-        service.Dispose();
-        service.Dispose(); // Double-dispose should not throw
-
-        Assert.Throws<ObjectDisposedException>(() =>
-            service.RefreshAsync().GetAwaiter().GetResult());
-    }
-
     // ===== Integration-style tests (no real pipe) =====
 
     [Fact]
@@ -173,11 +146,12 @@ public class ServiceTests
     public void ProfileModel_DeserializesFromGetProfiles()
     {
         // Simulate a single profile from the get_profiles response
-        // Backend returns: { "profiles": [ { "id": "slug", "tdp": {...}, ... } ] }
+        // Backend returns: { "profiles": [ { "id": "slug", "type": "fixed", "tdp": {...}, ... } ] }
         var profileJson = """
         {
             "id": "gaming",
             "name": "Gaming",
+            "type": "fixed",
             "tdp": { "stapm": 45, "fast": 50, "slow": 45 },
             "fan_curve": "aggressive"
         }
@@ -187,30 +161,37 @@ public class ServiceTests
 
         Assert.NotNull(profile);
         Assert.Equal("Gaming", profile.Name);
+        Assert.Equal("fixed", profile.Type);
+        Assert.False(profile.IsAdaptive);
         Assert.Equal(45, profile.Tdp.Stapm);
         Assert.Equal("aggressive", profile.FanCurve);
     }
 
     [Fact]
-    public void AutoTuneState_DeserializesFromGetAutoTune()
+    public void ProfileModel_Adaptive_DeserializesFromGetProfiles()
     {
-        // Simulate a get_auto_tune response
-        var stateJson = """
+        var profileJson = """
         {
-            "active": true,
-            "tuning": "performance",
-            "target_temp_c": 80,
-            "tdp_max_w": 55,
-            "effective_tdp_max_w": 50,
-            "fan_max_pct": 100
+            "id": "eco",
+            "name": "Eco",
+            "type": "adaptive",
+            "power_state": "battery",
+            "tuning": "silent",
+            "target_temp_c": 70,
+            "tdp_max_w": 35,
+            "fan_max_pct": 75
         }
         """;
 
-        var state = System.Text.Json.JsonSerializer.Deserialize<AutoTuneState>(stateJson);
+        var profile = System.Text.Json.JsonSerializer.Deserialize<Profile>(profileJson);
 
-        Assert.NotNull(state);
-        Assert.True(state.Active);
-        Assert.Equal("performance", state.Tuning);
-        Assert.Equal(50, state.EffectiveTdpMaxW); // Clamped by power state
+        Assert.NotNull(profile);
+        Assert.True(profile.IsAdaptive);
+        Assert.Equal("battery", profile.PowerState);
+        Assert.Equal("silent", profile.Tuning);
+        Assert.Equal(70, profile.TargetTempC);
+        Assert.Equal(35, profile.TdpMaxW);
+        Assert.Equal(75, profile.FanMaxPercent);
     }
+
 }

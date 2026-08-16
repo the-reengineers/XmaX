@@ -16,6 +16,7 @@ struct WidgetEntry {
 
 struct HomeLayout {
     std::vector<WidgetEntry> widgets;
+    std::vector<std::string> hidden_widgets;  // Widget IDs not shown on home page
     int columns = 3;  // 3-4 columns
     int column_width = 140;  // Base column width in pixels (at 100% DPI)
     int window_height = 600;  // Window height in pixels (at 100% DPI)

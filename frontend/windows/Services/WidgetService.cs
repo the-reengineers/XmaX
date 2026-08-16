@@ -21,6 +21,7 @@ public sealed class WidgetService : INotifyPropertyChanged
     // Layout state populated from config or drag/resize operations
     private readonly Dictionary<string, (int colSpan, int rowSpan)> _widgetSpans = new();
     private List<string> _configWidgetIds = new();
+    private List<string> _hiddenWidgetIds = new();
     private int _columns = MinColumns;
     private int _columnWidth = DefaultColumnWidth;
     private int _windowHeight = DefaultWindowHeight;
@@ -37,6 +38,11 @@ public sealed class WidgetService : INotifyPropertyChanged
     /// Set by MainWindow during config load via LoadWidgetSpans.
     /// </summary>
     public IReadOnlyList<string> ConfigWidgetIds => _configWidgetIds.AsReadOnly();
+
+    /// <summary>
+    /// Hidden widget IDs (shown in editor window, not on home page).
+    /// </summary>
+    public IReadOnlyList<string> HiddenWidgetIds => _hiddenWidgetIds.AsReadOnly();
 
     /// <summary>Current column count (3-4).</summary>
     public int Columns
@@ -85,7 +91,7 @@ public sealed class WidgetService : INotifyPropertyChanged
     /// Load widget span data from config (called by MainWindow during config load).
     /// Stores col_span/row_span for each widget and the ordered widget ID list.
     /// </summary>
-    public void LoadWidgetSpans(IEnumerable<WidgetEntry> widgets)
+    public void LoadWidgetSpans(IEnumerable<WidgetEntry> widgets, IEnumerable<string>? hiddenWidgets = null)
     {
         _widgetSpans.Clear();
         _configWidgetIds.Clear();
@@ -93,6 +99,12 @@ public sealed class WidgetService : INotifyPropertyChanged
         {
             _widgetSpans[w.Id] = (w.ColSpan, w.RowSpan);
             _configWidgetIds.Add(w.Id);
+        }
+
+        _hiddenWidgetIds.Clear();
+        if (hiddenWidgets != null)
+        {
+            _hiddenWidgetIds.AddRange(hiddenWidgets);
         }
     }
 
@@ -114,6 +126,38 @@ public sealed class WidgetService : INotifyPropertyChanged
         {
             _configWidgetIds.Add(id);
             _widgetSpans[id] = (colSpan, rowSpan);
+        }
+    }
+
+    /// <summary>
+    /// Hide a widget (move from visible to hidden list).
+    /// </summary>
+    public void HideWidget(string widgetId)
+    {
+        // Remove from visible widgets
+        _configWidgetIds.Remove(widgetId);
+        _widgetSpans.Remove(widgetId);
+
+        // Add to hidden widgets if not already there
+        if (!_hiddenWidgetIds.Contains(widgetId))
+        {
+            _hiddenWidgetIds.Add(widgetId);
+        }
+    }
+
+    /// <summary>
+    /// Show a hidden widget (move from hidden to visible list with default size).
+    /// </summary>
+    public void ShowWidget(string widgetId)
+    {
+        // Remove from hidden widgets
+        _hiddenWidgetIds.Remove(widgetId);
+
+        // Add to visible widgets with default size (1x1)
+        if (!_configWidgetIds.Contains(widgetId))
+        {
+            _configWidgetIds.Add(widgetId);
+            _widgetSpans[widgetId] = (1, 1);
         }
     }
 
@@ -143,9 +187,16 @@ public sealed class WidgetService : INotifyPropertyChanged
                 });
             }
 
+            var hiddenWidgetsArray = new JsonArray();
+            foreach (var id in _hiddenWidgetIds)
+            {
+                hiddenWidgetsArray.Add(id);
+            }
+
             var homeLayoutObj = new JsonObject
             {
                 ["widgets"] = widgetsArray,
+                ["hidden_widgets"] = hiddenWidgetsArray,
                 ["columns"] = _columns,
                 ["column_width"] = _columnWidth,
                 ["window_height"] = _windowHeight,

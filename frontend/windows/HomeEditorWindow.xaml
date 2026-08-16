@@ -4,6 +4,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:wf="using:XmaX.WidgetFramework"
         mc:Ignorable="d"
         Title="Home Editor">
 
@@ -39,13 +40,7 @@
             </Button>
         </Grid>
 
-        <!-- Content area (placeholder) -->
-        <Grid Grid.Row="1" Background="Transparent">
-            <TextBlock Text="Content will be added later"
-                       HorizontalAlignment="Center"
-                       VerticalAlignment="Center"
-                       Style="{StaticResource BodyTextBlockStyle}"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-        </Grid>
+        <!-- Content area: hidden widgets using WidgetGridHost -->
+        <wf:WidgetGridHost x:Name="HiddenWidgetsHost" Grid.Row="1" />
     </Grid>
 </Window>

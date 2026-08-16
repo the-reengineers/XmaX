@@ -1133,8 +1133,15 @@ auto TransportService::handle_get_config(const Command& cmd) -> Response {
             {"row_span", w.row_span}
         });
     }
+
+    json hidden_widgets_array = json::array();
+    for (const auto& id : config_.home_layout.hidden_widgets) {
+        hidden_widgets_array.push_back(id);
+    }
+
     data["home_layout"] = {
         {"widgets", widgets_array},
+        {"hidden_widgets", hidden_widgets_array},
         {"columns", config_.home_layout.columns},
         {"column_width", config_.home_layout.column_width},
         {"window_height", config_.home_layout.window_height}
@@ -1208,6 +1215,14 @@ auto TransportService::handle_set_config(const Command& cmd) -> Response {
                     int wh = hl["window_height"].get<int>();
                     if (wh > 0) {
                         config_.home_layout.window_height = wh;
+                    }
+                }
+                if (hl.contains("hidden_widgets") && hl["hidden_widgets"].is_array()) {
+                    config_.home_layout.hidden_widgets.clear();
+                    for (const auto& item : hl["hidden_widgets"]) {
+                        if (item.is_string()) {
+                            config_.home_layout.hidden_widgets.push_back(item.get<std::string>());
+                        }
                     }
                 }
             }

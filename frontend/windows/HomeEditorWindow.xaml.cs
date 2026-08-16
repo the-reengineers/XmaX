@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Windows.Graphics;
 
 namespace XmaX;
@@ -69,6 +70,90 @@ public sealed partial class HomeEditorWindow : Window
         this.InitializeComponent();
         ConfigureWindow();
         SetupClickOutsideToHide();
+    }
+
+    /// <summary>
+    /// Load and display hidden widgets with "+" buttons using WidgetGridHost.
+    /// </summary>
+    private void LoadHiddenWidgets()
+    {
+        var hiddenIds = App.WidgetService.HiddenWidgetIds;
+        var gridWidgets = new List<WidgetFramework.GridWidget>();
+
+        foreach (var widgetId in hiddenIds)
+        {
+            var widget = WidgetFramework.HomeWidgetFactory.CreateWidget(widgetId);
+            if (widget == null) continue;
+
+            var content = widget.Content as FrameworkElement;
+            if (content == null) continue;
+
+            // Create "+" button (top-right corner)
+            var addButton = new Button
+            {
+                Width = 24,
+                Height = 24,
+                Padding = new Thickness(0),
+                CornerRadius = new CornerRadius(12),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, 6, 6, 0),
+                Content = new FontIcon
+                {
+                    Glyph = "",  // Segoe MDL2 Assets Add icon
+                    FontSize = 10,
+                },
+            };
+            addButton.Click += (_, _) => OnAddWidgetClick(widgetId);
+
+            // Wrap content + button in a Grid
+            var containerGrid = new Grid
+            {
+                Children = { content, addButton },
+            };
+
+            // Create a new GridWidget with the wrapped content
+            var editorWidget = new WidgetFramework.GridWidget(widgetId, 1, 1, false)
+            {
+                Content = containerGrid,
+                MinColumnSpan = 1,
+                MaxColumnSpan = 1,
+                MinRowSpan = 1,
+                MaxRowSpan = 1,
+            };
+
+            gridWidgets.Add(editorWidget);
+        }
+
+        // Set widgets in the grid host (3 columns for editor window)
+        HiddenWidgetsHost.Columns = 3;
+        HiddenWidgetsHost.SetWidgets(gridWidgets);
+    }
+
+    /// <summary>
+    /// Refresh the hidden widgets display (called when widgets are hidden from home page).
+    /// </summary>
+    public void RefreshHiddenWidgets()
+    {
+        LoadHiddenWidgets();
+    }
+
+
+    /// <summary>
+    /// Called when "+" button is clicked on a hidden widget.
+    /// Moves widget from hidden to visible list.
+    /// </summary>
+    private async void OnAddWidgetClick(string widgetId)
+    {
+        // Show widget in service
+        App.WidgetService.ShowWidget(widgetId);
+        await App.WidgetService.SaveLayoutAsync();
+
+        // Refresh home page to show the new widget
+        App.MainWindow?.RefreshHomePage();
+
+        // Reload hidden widgets in editor
+        LoadHiddenWidgets();
     }
 
     // Get DPI scale factor for this window
@@ -250,6 +335,9 @@ public sealed partial class HomeEditorWindow : Window
     public void ShowWindow()
     {
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+
+        // Load hidden widgets when window is shown (not in constructor)
+        LoadHiddenWidgets();
 
         // Suppress deactivation handler briefly while showing
         _suppressDeactivation = true;

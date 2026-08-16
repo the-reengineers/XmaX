@@ -20,12 +20,19 @@ public sealed partial class WidgetGridHost : UserControl
     private const double WidgetCornerRadius = 8.0;
     private const int AnimationDurationMs = 200;
 
+    private const double CloseButtonSize = 24.0;
+    private const double CloseButtonMargin = 6.0;
+
     private readonly List<GridWidget> _widgets = new();
     private readonly Dictionary<string, Border> _containers = new();
+    private readonly Dictionary<string, Button> _closeButtons = new();
     private List<WidgetPosition> _currentPositions = new();
     private DragReflowController? _dragController;
 
     public int Columns { get; set; } = 3;
+
+    /// <summary>Fired when the user clicks the close button on a widget (edit mode only).</summary>
+    public event Action<string>? WidgetCloseClicked;
 
     /// <summary>Computed cell width based on canvas width and column count.</summary>
     public double CellWidth => ComputeCellWidth();
@@ -69,6 +76,26 @@ public sealed partial class WidgetGridHost : UserControl
     /// Get the ordered widget list (mutable — drag controller can reorder).
     /// </summary>
     public List<GridWidget> Widgets => _widgets;
+
+    /// <summary>
+    /// Remove a widget from the grid (both data and visual container).
+    /// </summary>
+    public void RemoveWidget(string widgetId)
+    {
+        // Remove from internal list
+        var widget = _widgets.FirstOrDefault(w => w.Id == widgetId);
+        if (widget != null)
+        {
+            _widgets.Remove(widget);
+        }
+
+        // Remove visual container from canvas
+        if (_containers.TryGetValue(widgetId, out var container))
+        {
+            HostCanvas.Children.Remove(container);
+            _containers.Remove(widgetId);
+        }
+    }
 
     /// <summary>
     /// Get the container Border for a widget (for drag controller to manipulate).
@@ -164,6 +191,26 @@ public sealed partial class WidgetGridHost : UserControl
         _dragController = controller;
     }
 
+    /// <summary>
+    /// Toggle edit mode: show/hide close buttons on all widgets.
+    /// </summary>
+    public void SetEditMode(bool isEditMode)
+    {
+        var visibility = isEditMode ? Visibility.Visible : Visibility.Collapsed;
+        foreach (var btn in _closeButtons.Values)
+        {
+            btn.Visibility = visibility;
+        }
+    }
+
+    /// <summary>
+    /// Scroll to the top of the widget grid.
+    /// </summary>
+    public void ScrollToTop()
+    {
+        HostScrollViewer.ChangeView(0, 0, null, true);
+    }
+
     // ===== Pointer event handlers (delegated to DragReflowController) =====
 
     private void OnCanvasPointerPressed(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
@@ -214,13 +261,39 @@ public sealed partial class WidgetGridHost : UserControl
     {
         var content = widget.Content as FrameworkElement;
 
+        // Close button (hidden by default, shown in edit mode)
+        var closeButton = new Button
+        {
+            Width = CloseButtonSize,
+            Height = CloseButtonSize,
+            Padding = new Thickness(0),
+            CornerRadius = new CornerRadius(CloseButtonSize / 2),
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, CloseButtonMargin, CloseButtonMargin, 0),
+            Visibility = Visibility.Collapsed,
+            Content = new FontIcon
+            {
+                Glyph = "",
+                FontSize = 10,
+            },
+        };
+        closeButton.Click += (_, _) => WidgetCloseClicked?.Invoke(widget.Id);
+
+        // Wrap content + close button in a Grid
+        var containerGrid = new Grid
+        {
+            Children = { content!, closeButton },
+        };
+
         var border = new Border
         {
             CornerRadius = new CornerRadius(WidgetCornerRadius),
-            Child = content,
+            Child = containerGrid,
             RenderTransform = new CompositeTransform(),
         };
 
+        _closeButtons[widget.Id] = closeButton;
         return border;
     }
 

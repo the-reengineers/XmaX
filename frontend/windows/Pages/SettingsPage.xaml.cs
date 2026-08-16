@@ -36,12 +36,52 @@ public sealed partial class SettingsPage : Page
         BreadcrumbBar.ItemsSource = _breadcrumbItems;
 
         SubPageFrame.Navigated += OnSubPageNavigated;
+        this.KeyDown += OnKeyDown;
 
         // Navigate to the settings content initially
         SubPageFrame.Navigate(typeof(SettingsContent));
     }
 
     // ===== Navigation =====
+
+    private void OnKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        // Backspace or Alt+Left: Go back
+        if (e.Key == Windows.System.VirtualKey.Back ||
+            (e.Key == Windows.System.VirtualKey.Left && e.KeyStatus.IsMenuKeyDown))
+        {
+            HandleGoBack();
+            e.Handled = true;
+        }
+        // Alt+Right: Go forward
+        else if (e.Key == Windows.System.VirtualKey.Right && e.KeyStatus.IsMenuKeyDown)
+        {
+            HandleGoForward();
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>
+    /// Navigate back in the sub-page frame (called from MainWindow keyboard handler).
+    /// </summary>
+    public void HandleGoBack()
+    {
+        if (SubPageFrame.CanGoBack)
+        {
+            SubPageFrame.GoBack();
+        }
+    }
+
+    /// <summary>
+    /// Navigate forward in the sub-page frame (called from MainWindow keyboard handler).
+    /// </summary>
+    public void HandleGoForward()
+    {
+        if (SubPageFrame.CanGoForward)
+        {
+            SubPageFrame.GoForward();
+        }
+    }
 
     private void OnNavigateHome() => App.NavigateTo(typeof(HomePage));
 

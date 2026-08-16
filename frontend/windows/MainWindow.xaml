@@ -7,7 +7,7 @@
         mc:Ignorable="d"
         Title="XmaX">
 
-    <Grid Background="Transparent">
+    <Grid Background="Transparent" KeyDown="OnGridKeyDown">
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
@@ -61,7 +61,8 @@
                     CornerRadius="4"
                     VerticalAlignment="Center"
                     Click="OnSettingsClick">
-                <FontIcon Glyph="&#xEB20;"
+                <FontIcon x:Name="SettingsIcon"
+                          Glyph="&#xEB20;"
                           FontFamily="/Assets/tabler-icons.ttf#tabler-icons"
                           FontSize="18"
                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />

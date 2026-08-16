@@ -87,6 +87,16 @@ Config load_config(const std::filesystem::path& config_path) {
             if (hl.contains("window_height") && hl["window_height"].is_number_integer()) {
                 config.home_layout.window_height = hl["window_height"].get<int>();
             }
+
+            // Parse hidden widgets array
+            if (hl.contains("hidden_widgets") && hl["hidden_widgets"].is_array()) {
+                config.home_layout.hidden_widgets.clear();
+                for (const auto& item : hl["hidden_widgets"]) {
+                    if (item.is_string()) {
+                        config.home_layout.hidden_widgets.push_back(item.get<std::string>());
+                    }
+                }
+            }
         }
 
         // Initialize session_persist from persist (session_persist is in-memory only)
@@ -125,8 +135,15 @@ bool save_config(const std::filesystem::path& config_path, const Config& config)
                 {"row_span", w.row_span}
             });
         }
+
+        json hidden_widgets_array = json::array();
+        for (const auto& id : config.home_layout.hidden_widgets) {
+            hidden_widgets_array.push_back(id);
+        }
+
         j["home_layout"] = {
             {"widgets", widgets_array},
+            {"hidden_widgets", hidden_widgets_array},
             {"columns", config.home_layout.columns},
             {"column_width", config.home_layout.column_width},
             {"window_height", config.home_layout.window_height}

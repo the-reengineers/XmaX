@@ -216,6 +216,29 @@ public sealed partial class MainWindow : Window
         _marqueeStoryboard.Begin();
     }
 
+    // ===== Keyboard Navigation =====
+
+    private void OnGridKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        // Forward keyboard events to SettingsPage if it's the current page
+        if (RootFrame.Content is Pages.SettingsPage settingsPage)
+        {
+            // Backspace or Alt+Left: Go back
+            if (e.Key == Windows.System.VirtualKey.Back ||
+                (e.Key == Windows.System.VirtualKey.Left && e.KeyStatus.IsMenuKeyDown))
+            {
+                settingsPage.HandleGoBack();
+                e.Handled = true;
+            }
+            // Alt+Right: Go forward
+            else if (e.Key == Windows.System.VirtualKey.Right && e.KeyStatus.IsMenuKeyDown)
+            {
+                settingsPage.HandleGoForward();
+                e.Handled = true;
+            }
+        }
+    }
+
     // ===== Bottom Bar Button Handlers =====
 
     private void OnEditClick(object sender, RoutedEventArgs e)
@@ -236,6 +259,12 @@ public sealed partial class MainWindow : Window
         _isEditMode = true;
         EditIcon.Glyph = "ﯿ";  // Change to close/done icon
         App.ShowEditorWindow();
+
+        // Notify HomePage to show close buttons on widgets
+        if (RootFrame.Content is Pages.HomePage homePage)
+        {
+            homePage.SetEditMode(true);
+        }
     }
 
     /// <summary>Exit edit mode: hide the home editor window.</summary>
@@ -244,13 +273,28 @@ public sealed partial class MainWindow : Window
         _isEditMode = false;
         EditIcon.Glyph = "";  // Change back to pencil icon
         App.HideEditorWindow();
+
+        // Notify HomePage to hide close buttons on widgets
+        if (RootFrame.Content is Pages.HomePage homePage)
+        {
+            homePage.SetEditMode(false);
+        }
     }
 
     private void OnSettingsClick(object sender, RoutedEventArgs e)
     {
         if (RootFrame.CurrentSourcePageType != typeof(SettingsPage))
         {
+            // Navigate to settings page
             RootFrame.Navigate(typeof(SettingsPage));
+            SettingsIcon.Glyph = "";  // Home icon (F02C)
+            ResizeWindowToCurrentConfig();
+        }
+        else
+        {
+            // Navigate back to home page
+            RootFrame.Navigate(typeof(Pages.HomePage));
+            SettingsIcon.Glyph = "";  // Settings icon (EB20)
             ResizeWindowToCurrentConfig();
         }
     }
@@ -302,7 +346,7 @@ public sealed partial class MainWindow : Window
                 App.WidgetService.Columns = config.HomeLayout.Columns;
                 App.WidgetService.ColumnWidth = config.HomeLayout.ColumnWidth;
                 App.WidgetService.WindowHeight = config.HomeLayout.WindowHeight;
-                App.WidgetService.LoadWidgetSpans(config.HomeLayout.Widgets);
+                App.WidgetService.LoadWidgetSpans(config.HomeLayout.Widgets, config.HomeLayout.HiddenWidgets);
             }
         }
         catch
@@ -451,6 +495,17 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    /// <summary>Refresh the home page widgets (called from editor window).</summary>
+    public void RefreshHomePage()
+    {
+        if (RootFrame.Content is Pages.HomePage homePage)
+        {
+            homePage.RefreshWidgets();
+            // Reapply edit mode to show close buttons
+            homePage.SetEditMode(_isEditMode);
+        }
+    }
+
     // ===== Public Methods =====
 
     /// <summary>
@@ -479,6 +534,36 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
+    /// Reset the window to its default state: home page, not in edit mode, scrolled to top.
+    /// </summary>
+    private void ResetToDefaultState()
+    {
+        // Exit edit mode if in edit mode
+        if (_isEditMode)
+        {
+            ExitEditMode();
+        }
+
+        // Hide editor window if visible
+        App.HideEditorWindow();
+
+        // Navigate to home page if not already there
+        if (RootFrame.CurrentSourcePageType != typeof(Pages.HomePage))
+        {
+            RootFrame.Navigate(typeof(Pages.HomePage));
+            // Reset settings icon back to settings icon
+            SettingsIcon.Glyph = "";
+            ResizeWindowToCurrentConfig();
+        }
+
+        // Scroll home page to top
+        if (RootFrame.Content is Pages.HomePage homePage)
+        {
+            homePage.ScrollToTop();
+        }
+    }
+
+    /// <summary>
     /// Hide the window.
     /// </summary>
     public void HideWindow()
@@ -486,8 +571,8 @@ public sealed partial class MainWindow : Window
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         ShowWindow(hwnd, SW_HIDE);
 
-        // Also hide the home editor window and exit edit mode
-        ExitEditMode();
+        // Reset to default state while hidden (so it's ready for next show)
+        ResetToDefaultState();
 
         // Suppress metrics UI updates while hidden (data still collected)
         App.MetricsService.SuppressNotifications = true;

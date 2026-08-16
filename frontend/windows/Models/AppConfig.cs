@@ -75,6 +75,10 @@ public sealed class HomeLayout
     [JsonPropertyName("widgets")]
     public List<WidgetEntry> Widgets { get; set; } = new();
 
+    /// <summary>Hidden widget IDs (shown in editor window, not on home page).</summary>
+    [JsonPropertyName("hidden_widgets")]
+    public List<string> HiddenWidgets { get; set; } = new();
+
     /// <summary>Number of columns in the home page grid (3–4).</summary>
     [JsonPropertyName("columns")]
     public int Columns { get; set; } = 3;
@@ -88,5 +92,5 @@ public sealed class HomeLayout
     public int WindowHeight { get; set; } = 600;
 
     public override string ToString() =>
-        $"HomeLayout(widgets:[{string.Join(",", Widgets)}], cols:{Columns}, colWidth:{ColumnWidth}, height:{WindowHeight})";
+        $"HomeLayout(widgets:[{string.Join(",", Widgets)}], hidden:[{string.Join(",", HiddenWidgets)}], cols:{Columns}, colWidth:{ColumnWidth}, height:{WindowHeight})";
 }

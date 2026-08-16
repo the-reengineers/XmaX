@@ -53,16 +53,21 @@ public sealed partial class HomePage : Page
         var configIds = _widgetService.ConfigWidgetIds;
         var gridWidgets = new List<GridWidget>();
 
+        // Clear old widgets to avoid visual tree conflicts
+        _gridWidgets.Clear();
+
         if (configIds.Count > 0)
         {
             // Use widget order and sizes from config
             foreach (var id in configIds)
             {
-                if (_gridWidgets.TryGetValue(id, out var gw))
+                var gw = HomeWidgetFactory.CreateWidget(id);
+                if (gw != null)
                 {
                     var (colSpan, rowSpan) = _widgetService.GetWidgetSpan(id);
                     gw.ColumnSpan = colSpan;
                     gw.RowSpan = rowSpan;
+                    _gridWidgets[id] = gw;
                     gridWidgets.Add(gw);
                 }
             }
@@ -72,8 +77,10 @@ public sealed partial class HomePage : Page
             // First run or no config — show all widgets with default sizes
             foreach (var id in HomeWidgetFactory.DefaultOrder)
             {
-                if (_gridWidgets.TryGetValue(id, out var gw))
+                var gw = HomeWidgetFactory.CreateWidget(id);
+                if (gw != null)
                 {
+                    _gridWidgets[id] = gw;
                     gridWidgets.Add(gw);
                 }
             }
@@ -82,10 +89,63 @@ public sealed partial class HomePage : Page
         GridHost.Columns = _widgetService.Columns;
         GridHost.SetWidgets(gridWidgets);
 
-        // Attach drag controller
-        _dragController = new DragReflowController(GridHost);
-        _dragController.LayoutChanged += OnLayoutChanged;
-        GridHost.SetDragController(_dragController);
+        // Attach drag controller (only once)
+        if (_dragController == null)
+        {
+            _dragController = new DragReflowController(GridHost);
+            _dragController.LayoutChanged += OnLayoutChanged;
+            GridHost.SetDragController(_dragController);
+
+            // Handle widget close button (edit mode)
+            GridHost.WidgetCloseClicked += OnWidgetCloseClicked;
+        }
+    }
+
+    /// <summary>
+    /// Refresh the widget display (called when widgets are shown/hidden from editor).
+    /// </summary>
+    public void RefreshWidgets()
+    {
+        SetupWidgets();
+    }
+
+    /// <summary>
+    /// Toggle edit mode on the widget grid (shows/hides close buttons and enables drag/resize).
+    /// Called by MainWindow when entering/exiting edit mode.
+    /// </summary>
+    public void SetEditMode(bool isEditMode)
+    {
+        GridHost.SetEditMode(isEditMode);
+        if (_dragController != null)
+        {
+            _dragController.IsEditMode = isEditMode;
+        }
+    }
+
+    /// <summary>
+    /// Scroll the widget grid to the top.
+    /// </summary>
+    public void ScrollToTop()
+    {
+        GridHost.ScrollToTop();
+    }
+
+    /// <summary>
+    /// Called when the user clicks the close button on a widget in edit mode.
+    /// Hides the widget (moves to hidden list) and saves the layout.
+    /// </summary>
+    private async void OnWidgetCloseClicked(string widgetId)
+    {
+        // Remove widget from grid (both data and visual)
+        GridHost.RemoveWidget(widgetId);
+        GridHost.LayoutWidgets(animate: true);
+
+        // Hide widget in service and save
+        _widgetService.HideWidget(widgetId);
+        await _widgetService.SaveLayoutAsync();
+
+        // Refresh editor window to show the newly hidden widget
+        App.EditorWindow?.RefreshHiddenWidgets();
     }
 
     private void OnWidgetServiceChanged(object? sender, PropertyChangedEventArgs e)

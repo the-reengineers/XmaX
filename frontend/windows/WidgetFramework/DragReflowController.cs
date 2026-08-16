@@ -31,7 +31,7 @@ public class DragReflowController
     private const double ShadowDepth = 16.0;
     private const double DragScale = 1.05;
     private const double DragThreshold = 5.0;   // pixels before a press becomes a drag
-    private const double EdgeThreshold = 8.0;    // pixels from edge to trigger resize
+    private const double EdgeThreshold = 16.0;    // pixels from edge to trigger resize
 
     private readonly WidgetGridHost _host;
     private Border? _draggedContainer;
@@ -59,6 +59,9 @@ public class DragReflowController
         _host = host;
     }
 
+    /// <summary>Whether drag and resize operations are allowed. Must be true for interactions to work.</summary>
+    public bool IsEditMode { get; set; }
+
     /// <summary>Whether a drag or resize operation is in progress.</summary>
     public bool IsDragging => _isDragging || _isResizing;
 
@@ -69,6 +72,7 @@ public class DragReflowController
 
     public void OnPointerPressed(object sender, PointerRoutedEventArgs e)
     {
+        if (!IsEditMode) return;
         if (_isDragging || _isPendingDrag || _isResizing) return;
 
         var canvas = sender as UIElement;

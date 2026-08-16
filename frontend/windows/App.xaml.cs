@@ -107,6 +107,29 @@ public partial class App : Application
     }
 
     private static MainWindow? m_window;
+    private static HomeEditorWindow? m_editorWindow;
+
+    /// <summary>Main application window.</summary>
+    public static MainWindow? MainWindow => m_window;
+
+    /// <summary>Home editor window (shown in edit mode).</summary>
+    public static HomeEditorWindow? EditorWindow => m_editorWindow;
+
+    /// <summary>Create and show the home editor window.</summary>
+    public static void ShowEditorWindow()
+    {
+        if (m_editorWindow == null)
+        {
+            m_editorWindow = new HomeEditorWindow();
+        }
+        m_editorWindow.ShowWindow();
+    }
+
+    /// <summary>Hide the home editor window.</summary>
+    public static void HideEditorWindow()
+    {
+        m_editorWindow?.HideWindow();
+    }
 
     // ===== Service accessors =====
 

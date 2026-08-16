@@ -18,7 +18,6 @@ public sealed partial class CoolingSubPage : Page
     {
         this.InitializeComponent();
 
-        FanCurvesTitle.Text = Loc.Title_FanCurves;
         CreateFanCurveBtn.Content = Loc.Button_CreateFanCurve;
 
         _viewModel = new CoolingViewModel(App.ProfileService);
@@ -30,8 +29,6 @@ public sealed partial class CoolingSubPage : Page
 
         RebuildFanCurvesList();
     }
-
-    private void OnBackClick(object sender, RoutedEventArgs e) => App.NavigateBack();
 
     // ===== Fan Curves List =====
 

@@ -27,8 +27,6 @@ public sealed partial class PowerStatesSubPage : Page
     {
         this.InitializeComponent();
 
-        PageTitle.Text = Loc.Title_PowerStateAssignments;
-
         _profileService = App.ProfileService;
         _profileService.PropertyChanged += (s, e) =>
         {
@@ -38,8 +36,6 @@ public sealed partial class PowerStatesSubPage : Page
 
         BuildPowerStateUI();
     }
-
-    private void OnBackClick(object sender, RoutedEventArgs e) => App.NavigateBack();
 
     private void BuildPowerStateUI()
     {

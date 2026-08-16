@@ -1,273 +1,113 @@
+using System.Collections.ObjectModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
-using XmaX.ViewModels;
+using Microsoft.UI.Xaml.Navigation;
 
 namespace XmaX.Pages;
 
+/// <summary>
+/// Breadcrumb item model: can display either an icon or text.
+/// </summary>
+public class BreadcrumbItem
+{
+    public string? Text { get; set; }
+    public string? IconGlyph { get; set; }
+    public Visibility IconVisibility => IconGlyph != null ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility TextVisibility => Text != null ? Visibility.Visible : Visibility.Collapsed;
+}
 
 /// <summary>
-/// Settings page: language, theme, persist, auto-start, column count, widget layout, and revert.
+/// Settings page container: manages breadcrumb header and sub-page navigation.
+/// The settings content is hosted in SettingsContent page within SubPageFrame.
 /// </summary>
 public sealed partial class SettingsPage : Page
 {
-    private readonly SettingsViewModel _viewModel;
-    private bool _isInitializing = true;  // Prevent slider events during initialization
+    private readonly ObservableCollection<BreadcrumbItem> _breadcrumbItems = new();
 
     public SettingsPage()
     {
         this.InitializeComponent();
 
-        // Apply localized text from Loc
-        SettingsTitle.Text = Loc.Nav_Settings;
-        LanguageLabel.Text = Loc.Settings_Language;
-        ThemeLabel.Text = Loc.Settings_Theme;
-        PersistLabel.Text = Loc.Settings_Persist;
-        PersistDescLabel.Text = Loc.Settings_PersistDesc;
-        AutoStartLabel.Text = Loc.Settings_AutoStart;
-        AutoStartDescLabel.Text = Loc.Settings_AutoStartDesc;
-        ColumnsLabel.Text = Loc.Settings_Columns;
-        RevertButton.Content = Loc.Button_RevertDefaults;
-        FactoryResetLabel.Text = Loc.Settings_RestoreDefaults;
-        FactoryResetDescLabel.Text = Loc.Settings_RestoreDefaultsDesc;
-        FactoryResetButton.Content = Loc.Settings_RestoreDefaults;
+        // Initialize breadcrumb with Home (icon) and Settings (text)
+        _breadcrumbItems.Add(new BreadcrumbItem { IconGlyph = "" });
+        _breadcrumbItems.Add(new BreadcrumbItem { Text = Loc.Nav_Settings });
 
-        // Sub-page navigation labels are inside ControlTemplate — set after load
-        this.Loaded += OnPageLoaded;
+        BreadcrumbBar.ItemsSource = _breadcrumbItems;
 
-        _viewModel = new SettingsViewModel(App.Pipe, App.WidgetService);
-        _viewModel.PropertyChanged += OnViewModelChanged;
+        SubPageFrame.Navigated += OnSubPageNavigated;
 
-        InitializeLanguageDropdown();
-        InitializeThemeDropdown();
-        InitializeColumnsSlider();
-    }
-
-    // ===== Initialization =====
-
-    private void InitializeLanguageDropdown()
-    {
-        LanguageCombo.Items.Clear();
-        LanguageCombo.Items.Add(new ComboBoxItem { Content = Loc.Settings_LangAuto, Tag = "auto" });
-        LanguageCombo.Items.Add(new ComboBoxItem { Content = Loc.Settings_LangEn, Tag = "en" });
-        LanguageCombo.Items.Add(new ComboBoxItem { Content = Loc.Settings_LangZh, Tag = "zh" });
-
-        // Select current
-        var current = _viewModel.Language;
-        for (int i = 0; i < LanguageCombo.Items.Count; i++)
-        {
-            if (LanguageCombo.Items[i] is ComboBoxItem item && (string)item.Tag == current)
-            {
-                LanguageCombo.SelectedIndex = i;
-                break;
-            }
-        }
-    }
-
-    private void InitializeThemeDropdown()
-    {
-        ThemeCombo.Items.Clear();
-        ThemeCombo.Items.Add(new ComboBoxItem { Content = Loc.Settings_ThemeSystem, Tag = "system" });
-        ThemeCombo.Items.Add(new ComboBoxItem { Content = Loc.Settings_ThemeLight, Tag = "light" });
-        ThemeCombo.Items.Add(new ComboBoxItem { Content = Loc.Settings_ThemeDark, Tag = "dark" });
-
-        // Select current
-        var current = _viewModel.Theme;
-        for (int i = 0; i < ThemeCombo.Items.Count; i++)
-        {
-            if (ThemeCombo.Items[i] is ComboBoxItem item && (string)item.Tag == current)
-            {
-                ThemeCombo.SelectedIndex = i;
-                break;
-            }
-        }
-    }
-
-    private void InitializeColumnsSlider()
-    {
-        _isInitializing = true;
-        ColumnsSlider.Minimum = 3;
-        ColumnsSlider.Maximum = 4;
-        ColumnsSlider.Value = _viewModel.Columns;
-        ColumnsValue.Text = _viewModel.Columns.ToString();
-        _isInitializing = false;
-    }
-
-    // ===== Event handlers =====
-
-    private void OnLanguageChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (LanguageCombo.SelectedItem is ComboBoxItem item && item.Tag is string lang)
-        {
-            _viewModel.Language = lang;
-        }
-    }
-
-    private void OnThemeChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (ThemeCombo.SelectedItem is ComboBoxItem item && item.Tag is string theme)
-        {
-            _viewModel.Theme = theme;
-        }
-    }
-
-    private void OnPersistToggled(object sender, RoutedEventArgs e)
-    {
-        _viewModel.Persist = PersistToggle.IsOn;
-    }
-
-    private void OnAutoStartToggled(object sender, RoutedEventArgs e)
-    {
-        _viewModel.AutoStart = AutoStartToggle.IsOn;
-    }
-
-    private void OnColumnsChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
-    {
-        if (_isInitializing) return;
-
-        var value = (int)ColumnsSlider.Value;
-        ColumnsValue.Text = value.ToString();
-        _viewModel.Columns = value;
-    }
-
-    private async void OnRevertClick(object sender, RoutedEventArgs e)
-    {
-        var dialog = new ContentDialog
-        {
-            Title = Loc.Dialog_RevertTitle,
-            Content = Loc.Dialog_RevertMessage,
-            PrimaryButtonText = Loc.Button_Revert,
-            CloseButtonText = Loc.Button_Cancel,
-            DefaultButton = ContentDialogButton.Close,
-            XamlRoot = this.XamlRoot,
-        };
-
-        var result = await dialog.ShowAsync();
-        if (result == ContentDialogResult.Primary)
-        {
-            await _viewModel.RevertToDefaultsAsync();
-        }
-    }
-
-    private async void OnFactoryResetClick(object sender, RoutedEventArgs e)
-    {
-        var dialog = new ContentDialog
-        {
-            Title = Loc.Settings_RestoreDefaults,
-            Content = Loc.Settings_RestoreDefaultsConfirm,
-            PrimaryButtonText = Loc.Button_Ok,
-            CloseButtonText = Loc.Button_Cancel,
-            DefaultButton = ContentDialogButton.Close,
-            XamlRoot = this.XamlRoot,
-        };
-
-        var result = await dialog.ShowAsync();
-        if (result == ContentDialogResult.Primary)
-        {
-            try
-            {
-                await App.Pipe.SendCommandAsync("restore_defaults").ConfigureAwait(true);
-                // Reload config after reset
-                await _viewModel.LoadConfigAsync().ConfigureAwait(true);
-                // Update UI
-                DispatcherQueue.TryEnqueue(() =>
-                {
-                    InitializeLanguageDropdown();
-                    InitializeThemeDropdown();
-                    PersistToggle.IsOn = _viewModel.Persist;
-                    AutoStartToggle.IsOn = _viewModel.AutoStart;
-                    InitializeColumnsSlider();
-                });
-            }
-            catch
-            {
-                // Factory reset failed — show error or ignore
-            }
-        }
-    }
-
-    // ===== Initialization =====
-
-    private void OnPageLoaded(object sender, RoutedEventArgs e)
-    {
-        // Set labels inside ControlTemplate (not accessible by x:Name in code-behind)
-        SetTextInTemplate("ProfilesNavLabel", Loc.Title_Profiles);
-        SetTextInTemplate("ProfilesNavDesc", Loc.Nav_ProfilesDesc);
-        SetTextInTemplate("CoolingNavLabel", Loc.Title_FanCurves);
-        SetTextInTemplate("CoolingNavDesc", Loc.Nav_CoolingDesc);
-        SetTextInTemplate("PowerStatesNavLabel", Loc.Title_PowerStateAssignments);
-        SetTextInTemplate("PowerStatesNavDesc", Loc.Nav_PowerStatesDesc);
-        SetTextInTemplate("PlaygroundNavLabel", Loc.Title_WidgetPlayground);
-        SetTextInTemplate("PlaygroundNavDesc", Loc.Nav_PlaygroundDesc);
-    }
-
-    private void SetTextInTemplate(string name, string text)
-    {
-        if (FindVisualChild<TextBlock>(this, name) is TextBlock tb)
-        {
-            tb.Text = text;
-        }
-    }
-
-    private static T? FindVisualChild<T>(DependencyObject parent, string name) where T : FrameworkElement
-    {
-        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
-        {
-            var child = VisualTreeHelper.GetChild(parent, i);
-            if (child is T fe && fe.Name == name)
-                return fe;
-            var result = FindVisualChild<T>(child, name);
-            if (result != null)
-                return result;
-        }
-        return null;
+        // Navigate to the settings content initially
+        SubPageFrame.Navigate(typeof(SettingsContent));
     }
 
     // ===== Navigation =====
 
-    private void OnBackClick(object sender, RoutedEventArgs e) => App.NavigateBack();
+    private void OnNavigateHome() => App.NavigateTo(typeof(HomePage));
 
-    // ===== Sub-page navigation =====
-
-    private static readonly SlideNavigationTransitionInfo SlideFromRight =
-        new() { Effect = SlideNavigationTransitionEffect.FromRight };
-
-    private void OnNavigateProfiles(object sender, RoutedEventArgs e)
+    private void OnNavigateSettings()
     {
-        App.NavigateTo(typeof(ProfilesSubPage), SlideFromRight);
-    }
-
-    private void OnNavigateCooling(object sender, RoutedEventArgs e)
-    {
-        App.NavigateTo(typeof(CoolingSubPage), SlideFromRight);
-    }
-
-    private void OnNavigatePowerStates(object sender, RoutedEventArgs e)
-    {
-        App.NavigateTo(typeof(PowerStatesSubPage), SlideFromRight);
-    }
-
-    private void OnNavigatePlayground(object sender, RoutedEventArgs e)
-    {
-        App.NavigateTo(typeof(WidgetPlaygroundSubPage), SlideFromRight);
-    }
-
-    // ===== ViewModel sync =====
-
-    private void OnViewModelChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(SettingsViewModel.Config))
+        // Remove all items after Settings to go back to settings content
+        while (_breadcrumbItems.Count > 2)
         {
-            // Config loaded — update UI
-            DispatcherQueue.TryEnqueue(() =>
-            {
-                InitializeLanguageDropdown();
-                InitializeThemeDropdown();
-                PersistToggle.IsOn = _viewModel.Persist;
-                AutoStartToggle.IsOn = _viewModel.AutoStart;
-                InitializeColumnsSlider();
-            });
+            _breadcrumbItems.RemoveAt(_breadcrumbItems.Count - 1);
+        }
+        SubPageFrame.Navigate(typeof(SettingsContent));
+    }
+
+    private void OnBreadcrumbItemClicked(BreadcrumbBar sender, BreadcrumbBarItemClickedEventArgs args)
+    {
+        // Index 0 = Home, Index 1 = Settings, Index 2+ = Sub-pages
+        if (args.Index == 0)
+        {
+            OnNavigateHome();
+        }
+        else if (args.Index == 1)
+        {
+            OnNavigateSettings();
+        }
+    }
+
+    public void NavigateToSubPage(Type pageType, NavigationTransitionInfo? transitionInfo = null)
+    {
+        if (transitionInfo != null)
+            SubPageFrame.Navigate(pageType, null, transitionInfo);
+        else
+            SubPageFrame.Navigate(pageType);
+    }
+
+    private void OnSubPageNavigated(object sender, NavigationEventArgs e)
+    {
+        UpdateBreadcrumb(e.SourcePageType);
+    }
+
+    private void UpdateBreadcrumb(Type pageType)
+    {
+        // Remove any existing sub-page items (keep Home and Settings)
+        while (_breadcrumbItems.Count > 2)
+        {
+            _breadcrumbItems.RemoveAt(_breadcrumbItems.Count - 1);
+        }
+
+        // SettingsContent: Home > Settings (already in the collection)
+        if (pageType == typeof(SettingsContent))
+        {
+            return;
+        }
+
+        // Sub-pages: Home > Settings > [Page Name]
+        string? pageName = pageType switch
+        {
+            var t when t == typeof(ProfilesSubPage) => Loc.Title_Profiles,
+            var t when t == typeof(CoolingSubPage) => Loc.Title_FanCurves,
+            var t when t == typeof(PowerStatesSubPage) => Loc.Title_PowerStateAssignments,
+            var t when t == typeof(WidgetPlaygroundSubPage) => Loc.Title_WidgetPlayground,
+            _ => null
+        };
+
+        if (pageName != null)
+        {
+            _breadcrumbItems.Add(new BreadcrumbItem { Text = pageName });
         }
     }
 }

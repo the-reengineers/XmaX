@@ -45,7 +45,8 @@
                     CornerRadius="4"
                     VerticalAlignment="Center"
                     Click="OnEditClick">
-                <FontIcon Glyph="&#xEB04;"
+                <FontIcon x:Name="EditIcon"
+                          Glyph="&#xEB04;"
                           FontFamily="/Assets/tabler-icons.ttf#tabler-icons"
                           FontSize="20"
                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />

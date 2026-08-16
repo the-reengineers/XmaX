@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
+using Microsoft.UI.Xaml.Navigation;
 using Windows.Foundation;
 using Windows.Graphics;
 using Windows.UI.ViewManagement;
@@ -44,6 +45,9 @@ public sealed partial class MainWindow : Window
     // Suppress deactivation handler briefly when showing window
     private bool _suppressDeactivation;
     private DateTime _lastShowTime;
+
+    // Edit mode state
+    private bool _isEditMode;
 
     // Marquee animation state
     private Storyboard? _marqueeStoryboard;
@@ -216,7 +220,30 @@ public sealed partial class MainWindow : Window
 
     private void OnEditClick(object sender, RoutedEventArgs e)
     {
-        // TODO: implement edit mode toggle
+        if (_isEditMode)
+        {
+            ExitEditMode();
+        }
+        else
+        {
+            EnterEditMode();
+        }
+    }
+
+    /// <summary>Enter edit mode: show the home editor window.</summary>
+    public void EnterEditMode()
+    {
+        _isEditMode = true;
+        EditIcon.Glyph = "ﯿ";  // Change to close/done icon
+        App.ShowEditorWindow();
+    }
+
+    /// <summary>Exit edit mode: hide the home editor window.</summary>
+    public void ExitEditMode()
+    {
+        _isEditMode = false;
+        EditIcon.Glyph = "";  // Change back to pencil icon
+        App.HideEditorWindow();
     }
 
     private void OnSettingsClick(object sender, RoutedEventArgs e)
@@ -377,9 +404,11 @@ public sealed partial class MainWindow : Window
         // If window is being deactivated, hide it (unless suppressed during show
         // or the window was shown less than 500ms ago — prevents focus-stealing
         // from immediately hiding the window after a tray/button toggle).
+        // Don't hide if in edit mode (home editor window is visible).
         if (e.WindowActivationState == WindowActivationState.Deactivated
             && !_suppressDeactivation
-            && (DateTime.Now - _lastShowTime).TotalMilliseconds > 500)
+            && (DateTime.Now - _lastShowTime).TotalMilliseconds > 500
+            && !_isEditMode)
         {
             HideWindow();
         }
@@ -456,6 +485,9 @@ public sealed partial class MainWindow : Window
     {
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         ShowWindow(hwnd, SW_HIDE);
+
+        // Also hide the home editor window and exit edit mode
+        ExitEditMode();
 
         // Suppress metrics UI updates while hidden (data still collected)
         App.MetricsService.SuppressNotifications = true;

@@ -9,22 +9,6 @@
     <ScrollViewer Padding="24,16" VerticalScrollBarVisibility="Auto">
         <StackPanel Spacing="16" MaxWidth="600">
 
-            <!-- Header -->
-            <Grid ColumnSpacing="12" Margin="0,0,0,8">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <Button x:Name="BackBtn" Click="OnBackClick"
-                        VerticalAlignment="Center" Padding="8"
-                        Background="Transparent" BorderThickness="0">
-                    <FontIcon Glyph="&#xE72B;" FontSize="14" />
-                </Button>
-                <TextBlock x:Name="PageTitle" Grid.Column="1"
-                           Style="{StaticResource SubtitleTextBlockStyle}"
-                           VerticalAlignment="Center" />
-            </Grid>
-
             <Button x:Name="CreateProfileBtn" Click="OnCreateProfileClick"
                     Style="{StaticResource AccentButtonStyle}" HorizontalAlignment="Left" />
 

@@ -18,7 +18,6 @@ public sealed partial class ProfilesSubPage : Page
     {
         this.InitializeComponent();
 
-        PageTitle.Text = Loc.Title_Profiles;
         CreateProfileBtn.Content = Loc.Button_CreateProfile;
 
         _viewModel = App.GetProfilesViewModel();
@@ -30,8 +29,6 @@ public sealed partial class ProfilesSubPage : Page
 
         RebuildProfilesList();
     }
-
-    private void OnBackClick(object sender, RoutedEventArgs e) => App.NavigateBack();
 
     private void RebuildProfilesList()
     {

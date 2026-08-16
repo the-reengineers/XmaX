@@ -38,6 +38,7 @@ public static class HomeWidgetFactory
             return null;
 
         var widget = new GridWidget(id, def.colSpan, def.rowSpan, def.alwaysFillRow);
+        ApplySizeConstraints(widget, id);
         widget.Content = CreateContent(id);
         return widget;
     }
@@ -52,8 +53,30 @@ public static class HomeWidgetFactory
             return null;
 
         var widget = new GridWidget(id, colSpan, rowSpan, def.alwaysFillRow);
+        ApplySizeConstraints(widget, id);
         widget.Content = CreateContent(id);
         return widget;
+    }
+
+    /// <summary>
+    /// Apply min/max size constraints for each widget type.
+    /// Default: 1x1 single cell tile.
+    /// Profiles: AlwaysFillRow=true, MinRowSpan=1, MaxRowSpan=int.MaxValue.
+    /// </summary>
+    private static void ApplySizeConstraints(GridWidget widget, string id)
+    {
+        // Default: all widgets are 1x1 single cell tiles
+        widget.MinColumnSpan = 1;
+        widget.MaxColumnSpan = 1;
+        widget.MinRowSpan = 1;
+        widget.MaxRowSpan = 1;
+
+        // Profiles widget: AlwaysFillRow, can expand vertically
+        if (id == "profiles")
+        {
+            widget.MinRowSpan = 1;
+            widget.MaxRowSpan = int.MaxValue;
+        }
     }
 
     /// <summary>

@@ -19,11 +19,8 @@ public sealed partial class WidgetPlaygroundSubPage : Page
     {
         this.InitializeComponent();
 
-        PageTitle.Text = Loc.Title_WidgetPlayground;
         this.Loaded += OnPageLoaded;
     }
-
-    private void OnBackClick(object sender, RoutedEventArgs e) => App.NavigateBack();
 
     private void OnPageLoaded(object sender, RoutedEventArgs e)
     {

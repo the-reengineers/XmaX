@@ -85,9 +85,9 @@ public sealed partial class MainWindow : Window
     // Marquee animation state
     private Storyboard? _marqueeStoryboard;
 
-    // Window show/hide animation state
-    private DispatcherTimer? _showAnimationTimer;
-    private DispatcherTimer? _hideAnimationTimer;
+    // Window show/hide animation state (uses CompositionTarget.Rendering for smooth frame sync)
+    private bool _isAnimating;
+    private bool _isHidingAnimation;
     private DateTime _animationStartTime;
     private int _animationStartY;
     private int _animationTargetY;
@@ -1104,7 +1104,7 @@ public sealed partial class MainWindow : Window
 
     /// <summary>
     /// Start the fly-in animation from bottom.
-    /// Uses an easing function similar to Windows Quick Settings flyout.
+    /// Uses CompositionTarget.Rendering for smooth frame-synced animation.
     /// </summary>
     private void StartShowAnimation(int x, int startY, int targetY)
     {
@@ -1112,18 +1112,11 @@ public sealed partial class MainWindow : Window
         _animationStartY = startY;
         _animationTargetY = targetY;
         _animationStartTime = DateTime.Now;
+        _isHidingAnimation = false;
+        _isAnimating = true;
 
-        // Stop any existing animation
-        _showAnimationTimer?.Stop();
-        _hideAnimationTimer?.Stop();
-
-        // Create timer for animation (~60fps)
-        _showAnimationTimer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(16)
-        };
-        _showAnimationTimer.Tick += OnShowAnimationTick;
-        _showAnimationTimer.Start();
+        // Subscribe to rendering event for frame-synced updates
+        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += OnAnimationRendering;
     }
 
     /// <summary>
@@ -1136,31 +1129,36 @@ public sealed partial class MainWindow : Window
         _animationStartY = pos.Y;
         _animationTargetY = pos.Y + ShowAnimationOffsetPixels;
         _animationStartTime = DateTime.Now;
+        _isHidingAnimation = true;
+        _isAnimating = true;
 
-        // Stop any existing animation
-        _showAnimationTimer?.Stop();
-        _hideAnimationTimer?.Stop();
-
-        // Create timer for animation (~60fps)
-        _hideAnimationTimer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(16)
-        };
-        _hideAnimationTimer.Tick += OnHideAnimationTick;
-        _hideAnimationTimer.Start();
+        // Subscribe to rendering event for frame-synced updates
+        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += OnAnimationRendering;
     }
 
     /// <summary>
-    /// Animation tick handler for show. Moves window from start Y to target Y with easing.
-    /// Uses cubic ease-out for smooth deceleration like Quick Settings.
+    /// Frame-synced animation handler using CompositionTarget.Rendering.
+    /// Syncs to display refresh rate for smooth animation.
     /// </summary>
-    private void OnShowAnimationTick(object? sender, object e)
+    private void OnAnimationRendering(object? sender, object e)
     {
+        if (!_isAnimating) return;
+
         var elapsed = (DateTime.Now - _animationStartTime).TotalMilliseconds;
         var progress = Math.Min(1.0, elapsed / ShowAnimationDurationMs);
 
-        // Cubic ease-out: 1 - (1 - t)^3
-        var easedProgress = 1.0 - Math.Pow(1.0 - progress, 3);
+        // Apply easing based on animation type
+        double easedProgress;
+        if (_isHidingAnimation)
+        {
+            // Cubic ease-in for hide: t^3 (accelerates out)
+            easedProgress = Math.Pow(progress, 3);
+        }
+        else
+        {
+            // Cubic ease-out for show: 1 - (1 - t)^3 (decelerates in)
+            easedProgress = 1.0 - Math.Pow(1.0 - progress, 3);
+        }
 
         // Calculate current Y position
         var deltaY = _animationTargetY - _animationStartY;
@@ -1174,38 +1172,14 @@ public sealed partial class MainWindow : Window
         // Stop animation when complete
         if (progress >= 1.0)
         {
-            _showAnimationTimer?.Stop();
-            _showAnimationTimer = null;
-        }
-    }
+            _isAnimating = false;
+            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnAnimationRendering;
 
-    /// <summary>
-    /// Animation tick handler for hide. Moves window down then hides.
-    /// Uses cubic ease-in for smooth acceleration.
-    /// </summary>
-    private void OnHideAnimationTick(object? sender, object e)
-    {
-        var elapsed = (DateTime.Now - _animationStartTime).TotalMilliseconds;
-        var progress = Math.Min(1.0, elapsed / ShowAnimationDurationMs);
-
-        // Cubic ease-in: t^3
-        var easedProgress = Math.Pow(progress, 3);
-
-        // Calculate current Y position
-        var deltaY = _animationTargetY - _animationStartY;
-        var currentY = (int)(_animationStartY + deltaY * easedProgress);
-
-        // Move window
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        SetWindowPos(hwnd, IntPtr.Zero, _animationX, currentY, 0, 0,
-            (uint)(SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE));
-
-        // Stop animation and hide when complete
-        if (progress >= 1.0)
-        {
-            _hideAnimationTimer?.Stop();
-            _hideAnimationTimer = null;
-            FinishHide();
+            // If this was a hide animation, finish hiding
+            if (_isHidingAnimation)
+            {
+                FinishHide();
+            }
         }
     }
 
@@ -1263,11 +1237,12 @@ public sealed partial class MainWindow : Window
     /// </summary>
     public void HideWindow()
     {
-        // Stop any ongoing show animation
-        _showAnimationTimer?.Stop();
-        _showAnimationTimer = null;
-        _hideAnimationTimer?.Stop();
-        _hideAnimationTimer = null;
+        // Stop any ongoing animation
+        if (_isAnimating)
+        {
+            _isAnimating = false;
+            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnAnimationRendering;
+        }
 
         // Check if system animations are enabled
         if (_uiSettings.AnimationsEnabled)

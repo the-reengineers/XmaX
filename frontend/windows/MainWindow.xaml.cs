@@ -52,6 +52,7 @@ public sealed partial class MainWindow : Window
 
     // Resize handle constants
     private const int IDC_SIZENS = 32515;
+    private const int IDC_SIZEWE = 32644;
     private const int IDC_ARROW = 32512;
 
     // Suppress deactivation handler briefly when showing window
@@ -62,6 +63,11 @@ public sealed partial class MainWindow : Window
     private bool _isResizing;
     private int _resizeStartScreenY;
     private int _resizeStartHeightPhysical;
+
+    // Left-edge resize state (edit mode only)
+    private bool _isResizingWidth;
+    private int _resizeStartScreenX;
+    private int _resizeStartWidthPhysical;
 
     // Edit mode state
     private bool _isEditMode;
@@ -385,6 +391,7 @@ public sealed partial class MainWindow : Window
     {
         _isEditMode = true;
         ResizeHandle.Visibility = Visibility.Visible;
+        ResizeHandleLeft.Visibility = Visibility.Visible;
         EditIcon.Glyph = "ﯿ";  // Change to close/done icon
         App.ShowEditorWindow();
 
@@ -400,6 +407,7 @@ public sealed partial class MainWindow : Window
     {
         _isEditMode = false;
         ResizeHandle.Visibility = Visibility.Collapsed;
+        ResizeHandleLeft.Visibility = Visibility.Collapsed;
         EditIcon.Glyph = "";  // Change back to pencil icon
         App.HideEditorWindow();
 
@@ -747,6 +755,104 @@ public sealed partial class MainWindow : Window
             // Restore arrow cursor when leaving the handle (not during drag)
             SetCursor(LoadCursor(IntPtr.Zero, IDC_ARROW));
         }
+    }
+
+    // ===== Left-edge resize (column width) handlers =====
+
+    private void OnWidthResizePointerPressed(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        ((Microsoft.UI.Xaml.UIElement)sender).CapturePointer(e.Pointer);
+        GetCursorPos(out var cursorPos);
+        _isResizingWidth = true;
+        _resizeStartScreenX = cursorPos.X;
+        _resizeStartWidthPhysical = this.AppWindow.Size.Width;
+        e.Handled = true;
+    }
+
+    private void OnWidthResizePointerMoved(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        // Set horizontal resize cursor while over the handle
+        SetCursor(LoadCursor(IntPtr.Zero, IDC_SIZEWE));
+
+        if (!_isResizingWidth) return;
+        if (!GetCursorPos(out var cursorPos)) return;
+
+        var dpiScale = GetDpiScale();
+
+        // Delta in physical pixels: dragging left = negative cursor delta = window grows
+        // (left handle: dragging left extends the left edge outward)
+        var deltaPhysical = _resizeStartScreenX - cursorPos.X;
+        var rawWidthPhysical = _resizeStartWidthPhysical + deltaPhysical;
+
+        // Snap to column count
+        var rawWidthDIPs = rawWidthPhysical / dpiScale;
+        var columns = WidthDIPsToColumns(rawWidthDIPs);
+
+        // Update column count in memory immediately so the widget grid uses the
+        // correct count when it re-layouts in response to SizeChanged. The setter
+        // is idempotent — it only fires PropertyChanged when the value changes.
+        // Config persistence happens on pointer release, not here.
+        App.WidgetService.Columns = columns;
+
+        var snappedWidthPhysical = GetScaledWindowWidth(columns, App.WidgetService.ColumnWidth);
+
+        // Resize window keeping right edge fixed
+        var posY = this.AppWindow.Position.Y;
+        var windowSize = this.AppWindow.Size;
+        var rightEdge = this.AppWindow.Position.X + windowSize.Width;
+        var newX = rightEdge - snappedWidthPhysical;
+        this.AppWindow.Resize(new SizeInt32(snappedWidthPhysical, windowSize.Height));
+        this.AppWindow.Move(new PointInt32(newX, posY));
+
+        e.Handled = true;
+    }
+
+    private void OnWidthResizePointerReleased(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        ((Microsoft.UI.Xaml.UIElement)sender).ReleasePointerCapture(e.Pointer);
+
+        if (_isResizingWidth)
+        {
+            _isResizingWidth = false;
+
+            // Compute column count from current width and save
+            var dpiScale = GetDpiScale();
+            var widthDIPs = this.AppWindow.Size.Width / dpiScale;
+            var columns = WidthDIPsToColumns(widthDIPs);
+            App.WidgetService.Columns = columns;
+
+            // Persist to config.json
+            _ = App.WidgetService.SaveLayoutAsync();
+
+            // Reposition editor window to match new main window width
+            App.EditorWindow?.PositionRelativeToMainWindow();
+        }
+    }
+
+    private void OnWidthResizePointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        if (!_isResizingWidth)
+        {
+            // Restore arrow cursor when leaving the handle (not during drag)
+            SetCursor(LoadCursor(IntPtr.Zero, IDC_ARROW));
+        }
+    }
+
+    /// <summary>
+    /// Convert a raw width (DIPs) to the nearest column count.
+    /// windowWidth(DIPs) = columns * columnWidth + (columns - 1) * spacing + 2 * gridPadding
+    ///                   = columns * (columnWidth + spacing) - spacing + 2 * gridPadding
+    /// columns = (widthDIPs + spacing - 2 * gridPadding) / (columnWidth + spacing)
+    /// </summary>
+    private int WidthDIPsToColumns(double widthDIPs)
+    {
+        var columnWidth = (double)App.WidgetService.ColumnWidth;
+        var spacing = (double)ColumnSpacing;
+        var padding = (double)GridPadding;
+
+        var rawColumns = (widthDIPs + spacing - 2 * padding) / (columnWidth + spacing);
+        var columns = (int)Math.Round(rawColumns);
+        return Math.Clamp(columns, Services.WidgetService.MinColumns, Services.WidgetService.MaxColumns);
     }
 
     /// <summary>

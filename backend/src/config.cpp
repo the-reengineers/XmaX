@@ -84,8 +84,8 @@ Config load_config(const std::filesystem::path& config_path) {
             if (hl.contains("column_width") && hl["column_width"].is_number_integer()) {
                 config.home_layout.column_width = hl["column_width"].get<int>();
             }
-            if (hl.contains("window_height") && hl["window_height"].is_number_integer()) {
-                config.home_layout.window_height = hl["window_height"].get<int>();
+            if (hl.contains("window_height_rows") && hl["window_height_rows"].is_number_integer()) {
+                config.home_layout.window_height_rows = hl["window_height_rows"].get<int>();
             }
 
             // Parse hidden widgets array
@@ -146,7 +146,7 @@ bool save_config(const std::filesystem::path& config_path, const Config& config)
             {"hidden_widgets", hidden_widgets_array},
             {"columns", config.home_layout.columns},
             {"column_width", config.home_layout.column_width},
-            {"window_height", config.home_layout.window_height}
+            {"window_height_rows", config.home_layout.window_height_rows}
         };
 
         // Ensure directory exists

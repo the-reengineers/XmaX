@@ -11,8 +11,8 @@ namespace XmaX.Services;
 /// </summary>
 public sealed class WidgetService : INotifyPropertyChanged
 {
-    public const int MinColumns = 3;
-    public const int MaxColumns = 4;
+    public const int MinColumns = 2;
+    public const int MaxColumns = 5;
     public const int DefaultColumnWidth = 140;
     public const int DefaultWindowHeightRows = 4;
     public const int MinWindowHeightRows = 1;

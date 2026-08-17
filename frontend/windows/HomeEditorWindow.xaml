@@ -12,6 +12,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <!-- Title bar with close button -->
@@ -42,5 +43,10 @@
 
         <!-- Content area: hidden widgets using WidgetGridHost -->
         <wf:WidgetGridHost x:Name="HiddenWidgetsHost" Grid.Row="1" />
+
+        <!-- Bottom spacer matching MainWindow's bottom bar height,
+             so both windows have the same widget-area proportions
+             and the same number of visible rows at the same total height. -->
+        <Border Grid.Row="2" Height="50" />
     </Grid>
 </Window>

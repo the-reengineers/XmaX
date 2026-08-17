@@ -8,23 +8,23 @@
         Title="XmaX">
 
     <Grid Background="Transparent" KeyDown="OnGridKeyDown">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
 
-        <!-- Resize handle (visible only in edit mode) -->
-        <Border x:Name="ResizeHandle"
-                Grid.Row="0"
-                Height="10"
+        <!-- Left resize handle (visible only in edit mode) -->
+        <Border x:Name="ResizeHandleLeft"
+                Grid.Column="0"
+                Grid.RowSpan="3"
+                Width="10"
                 Background="Transparent"
                 Visibility="Collapsed"
-                PointerPressed="OnResizePointerPressed"
-                PointerMoved="OnResizePointerMoved"
-                PointerReleased="OnResizePointerReleased"
-                PointerExited="OnResizePointerExited">
-            <StackPanel Orientation="Horizontal"
+                PointerPressed="OnWidthResizePointerPressed"
+                PointerMoved="OnWidthResizePointerMoved"
+                PointerReleased="OnWidthResizePointerReleased"
+                PointerExited="OnWidthResizePointerExited">
+            <StackPanel Orientation="Vertical"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center"
                         Spacing="4">
@@ -37,61 +37,93 @@
             </StackPanel>
         </Border>
 
-        <!-- Page content -->
-        <Frame x:Name="RootFrame" Grid.Row="1" />
+        <!-- Main content area (right of left handle) -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-        <!-- Bottom bar: marquee + edit icon + settings icon -->
-        <Grid x:Name="BottomBar" Grid.Row="2"
-              BorderThickness="0,0.5,0,0"
-              BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
-              Padding="12,6"
-              Height="50">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
+            <!-- Top resize handle (visible only in edit mode) -->
+            <Border x:Name="ResizeHandle"
+                    Grid.Row="0"
+                    Height="10"
+                    Background="Transparent"
+                    Visibility="Collapsed"
+                    PointerPressed="OnResizePointerPressed"
+                    PointerMoved="OnResizePointerMoved"
+                    PointerReleased="OnResizePointerReleased"
+                    PointerExited="OnResizePointerExited">
+                <StackPanel Orientation="Horizontal"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Spacing="4">
+                    <Ellipse Width="3" Height="3"
+                             Fill="{ThemeResource TextFillColorTertiaryBrush}" />
+                    <Ellipse Width="3" Height="3"
+                             Fill="{ThemeResource TextFillColorTertiaryBrush}" />
+                    <Ellipse Width="3" Height="3"
+                             Fill="{ThemeResource TextFillColorTertiaryBrush}" />
+                </StackPanel>
+            </Border>
 
-            <!-- Marquee banner (fills available space) -->
-            <Grid x:Name="MarqueeContainer" Grid.Column="0" VerticalAlignment="Center">
-                <TextBlock x:Name="MarqueeText"
-                           VerticalAlignment="Center"
-                           TextWrapping="NoWrap"
-                           Style="{StaticResource CaptionTextBlockStyle}"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <!-- Page content -->
+            <Frame x:Name="RootFrame" Grid.Row="1" />
+
+            <!-- Bottom bar: marquee + edit icon + settings icon -->
+            <Grid x:Name="BottomBar" Grid.Row="2"
+                  BorderThickness="0,0.5,0,0"
+                  BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                  Padding="12,6"
+                  Height="50">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Marquee banner (fills available space) -->
+                <Grid x:Name="MarqueeContainer" Grid.Column="0" VerticalAlignment="Center">
+                    <TextBlock x:Name="MarqueeText"
+                               VerticalAlignment="Center"
+                               TextWrapping="NoWrap"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </Grid>
+
+                <!-- Edit icon (visual only for now) -->
+                <Button x:Name="EditButton"
+                        Grid.Column="1"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Padding="8"
+                        CornerRadius="4"
+                        VerticalAlignment="Center"
+                        Click="OnEditClick">
+                    <FontIcon x:Name="EditIcon"
+                              Glyph="&#xEB04;"
+                              FontFamily="/Assets/tabler-icons-300.ttf#tabler-icons"
+                              FontSize="20"
+                              Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </Button>
+
+                <!-- Settings icon -->
+                <Button x:Name="SettingsButton"
+                        Grid.Column="2"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Padding="8"
+                        CornerRadius="4"
+                        VerticalAlignment="Center"
+                        Click="OnSettingsClick">
+                    <FontIcon x:Name="SettingsIcon"
+                              Glyph="&#xEB20;"
+                              FontFamily="/Assets/tabler-icons-300.ttf#tabler-icons"
+                              FontSize="18"
+                              Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </Button>
             </Grid>
-
-            <!-- Edit icon (visual only for now) -->
-            <Button x:Name="EditButton"
-                    Grid.Column="1"
-                    Background="Transparent"
-                    BorderThickness="0"
-                    Padding="8"
-                    CornerRadius="4"
-                    VerticalAlignment="Center"
-                    Click="OnEditClick">
-                <FontIcon x:Name="EditIcon"
-                          Glyph="&#xEB04;"
-                          FontFamily="/Assets/tabler-icons-300.ttf#tabler-icons"
-                          FontSize="20"
-                          Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-            </Button>
-
-            <!-- Settings icon -->
-            <Button x:Name="SettingsButton"
-                    Grid.Column="2"
-                    Background="Transparent"
-                    BorderThickness="0"
-                    Padding="8"
-                    CornerRadius="4"
-                    VerticalAlignment="Center"
-                    Click="OnSettingsClick">
-                <FontIcon x:Name="SettingsIcon"
-                          Glyph="&#xEB20;"
-                          FontFamily="/Assets/tabler-icons-300.ttf#tabler-icons"
-                          FontSize="18"
-                          Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-            </Button>
         </Grid>
     </Grid>
 </Window>

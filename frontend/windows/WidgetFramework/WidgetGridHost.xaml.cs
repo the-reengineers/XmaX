@@ -283,7 +283,10 @@ public sealed partial class WidgetGridHost : UserControl
 
     private double ComputeCellWidth()
     {
-        var availableWidth = HostCanvas.ActualWidth - (2 * GridPadding);
+        // Use ViewportWidth instead of HostCanvas.ActualWidth because ActualWidth
+        // is stale during SizeChanged handlers — it only updates after layout completes.
+        // ViewportWidth reflects the current scroll viewer size immediately on resize.
+        var availableWidth = HostScrollViewer.ViewportWidth - (2 * GridPadding);
         if (availableWidth <= 0 || Columns <= 0) return 100; // Fallback
         return (availableWidth - ((Columns - 1) * Spacing)) / Columns;
     }

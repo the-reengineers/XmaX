@@ -1144,7 +1144,7 @@ auto TransportService::handle_get_config(const Command& cmd) -> Response {
         {"hidden_widgets", hidden_widgets_array},
         {"columns", config_.home_layout.columns},
         {"column_width", config_.home_layout.column_width},
-        {"window_height", config_.home_layout.window_height}
+        {"window_height_rows", config_.home_layout.window_height_rows}
     };
 
     Response resp;
@@ -1211,10 +1211,10 @@ auto TransportService::handle_set_config(const Command& cmd) -> Response {
                         config_.home_layout.column_width = cw;
                     }
                 }
-                if (hl.contains("window_height") && hl["window_height"].is_number_integer()) {
-                    int wh = hl["window_height"].get<int>();
-                    if (wh > 0) {
-                        config_.home_layout.window_height = wh;
+                if (hl.contains("window_height_rows") && hl["window_height_rows"].is_number_integer()) {
+                    int whr = hl["window_height_rows"].get<int>();
+                    if (whr > 0) {
+                        config_.home_layout.window_height_rows = whr;
                     }
                 }
                 if (hl.contains("hidden_widgets") && hl["hidden_widgets"].is_array()) {

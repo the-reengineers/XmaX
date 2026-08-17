@@ -178,7 +178,11 @@ public sealed partial class HomeEditorWindow : Window
         return (int)(baseWidth * scale);
     }
 
-    /// <summary>Compute window height in DIPs from row count (mirrors MainWindow).</summary>
+    /// <summary>
+    /// Compute window height in DIPs from row count.
+    /// Uses the same formula as MainWindow so both windows have the same
+    /// total height and the widget grid areas align identically.
+    /// </summary>
     private double ComputeWindowHeightDIPs(int rows)
     {
         const double bottomBarHeight = 50.0;

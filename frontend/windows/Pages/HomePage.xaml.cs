@@ -131,6 +131,15 @@ public sealed partial class HomePage : Page
     }
 
     /// <summary>
+    /// Force the widget grid to re-measure and re-layout at its current size.
+    /// Used during window resize drags to keep the grid in sync with the window.
+    /// </summary>
+    public void ForceGridLayout()
+    {
+        GridHost.UpdateLayout();
+    }
+
+    /// <summary>
     /// Called when the user clicks the close button on a widget in edit mode.
     /// Hides the widget (moves to hidden list) and saves the layout.
     /// </summary>

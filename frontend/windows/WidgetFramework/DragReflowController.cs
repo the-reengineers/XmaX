@@ -29,7 +29,7 @@ public enum ResizeEdge
 public class DragReflowController
 {
     private const double ShadowDepth = 16.0;
-    private const double DragScale = 1.05;
+    private const double DragScale = 1.0;
     private const double DragThreshold = 5.0;   // pixels before a press becomes a drag
     private const double EdgeThreshold = 16.0;    // pixels from edge to trigger resize
 
@@ -88,11 +88,10 @@ public class DragReflowController
         var container = _host.GetContainer(widgetId);
         if (widget == null || container == null) return;
 
-        // Check if pointer is near an edge → resize mode
-        var edge = DetectResizeEdge(position, container, widget);
-        if (edge != ResizeEdge.None)
+        // Check if pointer is over the resize button → resize mode
+        if (_host.IsPointerOverResizeButton(widgetId, position))
         {
-            StartResize(widget, container, position, edge);
+            StartResize(widget, container, position, ResizeEdge.Bottom | ResizeEdge.Right);
             canvas.CapturePointer(e.Pointer);
             return;
         }
@@ -257,46 +256,20 @@ public class DragReflowController
 
         int newColSpan = _originalColSpan;
         int newRowSpan = _originalRowSpan;
-        int newColumn = _originalColumn;
-        int newRow = _originalRow;
 
-        // Horizontal resize
-        if (_resizeEdge.HasFlag(ResizeEdge.Right))
+        // Only handle bottom-right resize (drag right = increase width, drag down = increase height)
+        // Horizontal resize (only if widget can be resized horizontally)
+        if (_draggedWidget.MinColumnSpan != _draggedWidget.MaxColumnSpan)
         {
             var deltaCells = (int)Math.Round((position.X - _resizeStartPixelX) / (cellW + spacing));
-            newColSpan = Math.Max(1, Math.Min(_host.Columns, _originalColSpan + deltaCells));
-        }
-        else if (_resizeEdge.HasFlag(ResizeEdge.Left))
-        {
-            var deltaCells = (int)Math.Round((_resizeStartPixelX - position.X) / (cellW + spacing));
-            var maxExpand = Math.Min(_originalColumn, _originalColSpan - 1);
-            var expand = Math.Max(0, Math.Min(deltaCells, maxExpand + (_originalColSpan - 1)));
-            newColSpan = Math.Max(1, _originalColSpan + expand);
-            newColumn = _originalColumn - (newColSpan - _originalColSpan);
-            if (newColumn < 0) { newColSpan += newColumn; newColumn = 0; }
+            newColSpan = Math.Max(_draggedWidget.MinColumnSpan, Math.Min(_draggedWidget.MaxColumnSpan, _originalColSpan + deltaCells));
         }
 
-        // Vertical resize
-        if (_resizeEdge.HasFlag(ResizeEdge.Bottom))
+        // Vertical resize (only if widget can be resized vertically)
+        if (_draggedWidget.MinRowSpan != _draggedWidget.MaxRowSpan)
         {
             var deltaCells = (int)Math.Round((position.Y - _resizeStartPixelY) / (cellH + spacing));
-            newRowSpan = Math.Max(1, _originalRowSpan + deltaCells);
-        }
-        else if (_resizeEdge.HasFlag(ResizeEdge.Top))
-        {
-            var deltaCells = (int)Math.Round((_resizeStartPixelY - position.Y) / (cellH + spacing));
-            var maxExpand = _originalRow;
-            var expand = Math.Max(0, Math.Min(deltaCells, maxExpand));
-            newRowSpan = Math.Max(1, _originalRowSpan + expand);
-            newRow = _originalRow - (newRowSpan - _originalRowSpan);
-            if (newRow < 0) { newRowSpan += newRow; newRow = 0; }
-        }
-
-        // AlwaysFillRow widgets: lock column span to grid width
-        if (_draggedWidget.AlwaysFillRow)
-        {
-            newColSpan = _host.Columns;
-            newColumn = 0;
+            newRowSpan = Math.Max(_draggedWidget.MinRowSpan, _originalRowSpan + deltaCells);
         }
 
         // Apply size change only if something changed
@@ -324,37 +297,6 @@ public class DragReflowController
     }
 
     // ===== Hit-testing =====
-
-    /// <summary>
-    /// Detect which edge(s) of a container the pointer is near.
-    /// Returns ResizeEdge.None if the pointer is not within EdgeThreshold of any edge.
-    /// </summary>
-    private ResizeEdge DetectResizeEdge(Point pointerPos, Border container, GridWidget widget)
-    {
-        var x = GetTranslateX(container);
-        var y = GetTranslateY(container);
-        var w = container.Width;
-        var h = container.Height;
-
-        // Must be inside the widget bounds
-        if (pointerPos.X < x || pointerPos.X > x + w
-            || pointerPos.Y < y || pointerPos.Y > y + h)
-            return ResizeEdge.None;
-
-        var edge = ResizeEdge.None;
-
-        if (pointerPos.X >= x + w - EdgeThreshold)
-            edge |= ResizeEdge.Right;
-        else if (pointerPos.X <= x + EdgeThreshold && !widget.AlwaysFillRow)
-            edge |= ResizeEdge.Left;
-
-        if (pointerPos.Y >= y + h - EdgeThreshold)
-            edge |= ResizeEdge.Bottom;
-        else if (pointerPos.Y <= y + EdgeThreshold)
-            edge |= ResizeEdge.Top;
-
-        return edge;
-    }
 
     private string? HitTest(Point pointerPos)
     {
@@ -384,6 +326,10 @@ public class DragReflowController
         Canvas.SetZIndex(container, 1000);
         container.Shadow = new ThemeShadow { };
 
+        // Add 1px accent color border
+        container.BorderThickness = new Thickness(1);
+        container.BorderBrush = Application.Current.Resources["SystemControlHighlightAccentBrush"] as Brush;
+
         if (container.RenderTransform is CompositeTransform transform)
         {
             transform.ScaleX = DragScale;
@@ -395,6 +341,10 @@ public class DragReflowController
     {
         Canvas.SetZIndex(container, 0);
         container.Shadow = null;
+
+        // Remove border
+        container.BorderThickness = new Thickness(0);
+        container.BorderBrush = null;
 
         if (container.RenderTransform is CompositeTransform transform)
         {

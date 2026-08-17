@@ -21,7 +21,7 @@
                     <Grid VerticalAlignment="Center" Margin="8,0">
                         <!-- Icon for Home -->
                         <FontIcon x:Name="IconElement" Glyph="{Binding IconGlyph}"
-                                  FontFamily="/Assets/tabler-icons.ttf#tabler-icons"
+                                  FontFamily="/Assets/tabler-icons-300.ttf#tabler-icons"
                                   FontSize="20"
                                   Visibility="{Binding IconVisibility}" />
                         <!-- Text for other items -->

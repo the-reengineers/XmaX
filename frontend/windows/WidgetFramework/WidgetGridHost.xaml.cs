@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
+using Windows.Foundation;
 
 namespace XmaX.WidgetFramework;
 
@@ -22,10 +23,13 @@ public sealed partial class WidgetGridHost : UserControl
 
     private const double CloseButtonSize = 24.0;
     private const double CloseButtonMargin = 6.0;
+    private const double ResizeButtonSize = 24.0;
+    private const double ResizeButtonMargin = 6.0;
 
     private readonly List<GridWidget> _widgets = new();
     private readonly Dictionary<string, Border> _containers = new();
     private readonly Dictionary<string, Button> _closeButtons = new();
+    private readonly Dictionary<string, Button> _resizeButtons = new();
     private List<WidgetPosition> _currentPositions = new();
     private DragReflowController? _dragController;
 
@@ -119,6 +123,31 @@ public sealed partial class WidgetGridHost : UserControl
     }
 
     /// <summary>
+    /// Check if a pointer position is over the resize button for a widget.
+    /// Returns true if the pointer is within the resize button area.
+    /// </summary>
+    public bool IsPointerOverResizeButton(string widgetId, Point pointerPos)
+    {
+        if (!_containers.TryGetValue(widgetId, out var container)) return false;
+        if (!_resizeButtons.TryGetValue(widgetId, out var resizeBtn)) return false;
+        if (resizeBtn.Visibility != Visibility.Visible) return false;
+
+        // Get widget position and size
+        var x = container.RenderTransform is CompositeTransform t ? t.TranslateX : 0;
+        var y = container.RenderTransform is CompositeTransform t2 ? t2.TranslateY : 0;
+        var w = container.Width;
+        var h = container.Height;
+
+        // Resize button is in bottom-right corner
+        var btnX = x + w - ResizeButtonMargin - ResizeButtonSize;
+        var btnY = y + h - ResizeButtonMargin - ResizeButtonSize;
+
+        // Check if pointer is within button bounds
+        return pointerPos.X >= btnX && pointerPos.X <= btnX + ResizeButtonSize
+            && pointerPos.Y >= btnY && pointerPos.Y <= btnY + ResizeButtonSize;
+    }
+
+    /// <summary>
     /// Pack and arrange all widgets. Call after widget order changes.
     /// </summary>
     public void LayoutWidgets(bool animate = true)
@@ -192,7 +221,7 @@ public sealed partial class WidgetGridHost : UserControl
     }
 
     /// <summary>
-    /// Toggle edit mode: show/hide close buttons on all widgets.
+    /// Toggle edit mode: show/hide close buttons on all widgets, and resize buttons on resizable widgets.
     /// </summary>
     public void SetEditMode(bool isEditMode)
     {
@@ -200,6 +229,15 @@ public sealed partial class WidgetGridHost : UserControl
         foreach (var btn in _closeButtons.Values)
         {
             btn.Visibility = visibility;
+        }
+
+        // Show resize buttons only for resizable widgets
+        foreach (var widget in _widgets)
+        {
+            if (_resizeButtons.TryGetValue(widget.Id, out var resizeBtn))
+            {
+                resizeBtn.Visibility = isEditMode && widget.IsResizable ? Visibility.Visible : Visibility.Collapsed;
+            }
         }
     }
 
@@ -280,10 +318,31 @@ public sealed partial class WidgetGridHost : UserControl
         };
         closeButton.Click += (_, _) => WidgetCloseClicked?.Invoke(widget.Id);
 
-        // Wrap content + close button in a Grid
+        // Resize button (hidden by default, shown in edit mode for resizable widgets)
+        var resizeButton = new Button
+        {
+            Width = ResizeButtonSize,
+            Height = ResizeButtonSize,
+            Padding = new Thickness(0),
+            CornerRadius = new CornerRadius(ResizeButtonSize / 2),
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(0, 0, ResizeButtonMargin, ResizeButtonMargin),
+            Visibility = Visibility.Collapsed,
+            IsHitTestVisible = false,
+            Background = Application.Current.Resources["SystemControlBackgroundChromeMediumBrush"] as Microsoft.UI.Xaml.Media.Brush,
+            Content = new FontIcon
+            {
+                Glyph = "",
+                FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("/Assets/tabler-icons-300.ttf#tabler-icons"),
+                FontSize = 12,
+            },
+        };
+
+        // Wrap content + buttons in a Grid
         var containerGrid = new Grid
         {
-            Children = { content!, closeButton },
+            Children = { content!, closeButton, resizeButton },
         };
 
         var border = new Border
@@ -294,6 +353,7 @@ public sealed partial class WidgetGridHost : UserControl
         };
 
         _closeButtons[widget.Id] = closeButton;
+        _resizeButtons[widget.Id] = resizeButton;
         return border;
     }
 

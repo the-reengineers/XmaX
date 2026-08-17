@@ -44,6 +44,11 @@ public class GridWidget
     /// </summary>
     public bool AlwaysFillRow { get; }
 
+    /// <summary>
+    /// Whether this widget can be resized (has different min/max for width or height).
+    /// </summary>
+    public bool IsResizable => MinColumnSpan != MaxColumnSpan || MinRowSpan != MaxRowSpan;
+
     /// <summary>The UI element to display. Set by the page/host.</summary>
     public object Content { get; set; } = null!;
 

@@ -37,7 +37,7 @@
 
   <ItemGroup>
     <Content Include="Assets\**" />
-    <Content Include="Assets\tabler-icons.ttf">
+    <Content Include="Assets\tabler-icons-300.ttf">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>

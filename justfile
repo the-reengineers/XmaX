@@ -34,7 +34,7 @@ default:
 generate-assets:
     python scripts/generate_icon.py shared/assets/logo.png backend/logo.ico
     python scripts/generate_icon.py shared/assets/logo.png frontend/windows/Assets/logo.ico
-    {{ if _os == "windows" { "Copy-Item -Path 'frontend/assets/materialdesignicons-webfont.ttf' -Destination 'frontend/windows/Assets/' -Force" } else { "cp frontend/assets/materialdesignicons-webfont.ttf frontend/windows/Assets/" } }}
+    {{ if _os == "windows" { "Copy-Item -Path 'frontend/assets/tabler-icons-300.ttf' -Destination 'frontend/windows/Assets/' -Force" } else { "cp frontend/assets/tabler-icons-300.ttf frontend/windows/Assets/" } }}
 
 # Build backend
 build-be: generate-assets

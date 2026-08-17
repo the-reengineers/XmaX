@@ -17,10 +17,11 @@
         <Frame x:Name="RootFrame" Grid.Row="0" />
 
         <!-- Bottom bar: marquee + edit icon + settings icon -->
-        <Grid Grid.Row="1"
-              Background="{ThemeResource SmokeFillColorDefaultBrush}"
+        <Grid x:Name="BottomBar" Grid.Row="1"
+              BorderThickness="0,0.5,0,0"
+              BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
               Padding="12,6"
-              Height="48">
+              Height="50">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
@@ -47,7 +48,7 @@
                     Click="OnEditClick">
                 <FontIcon x:Name="EditIcon"
                           Glyph="&#xEB04;"
-                          FontFamily="/Assets/tabler-icons.ttf#tabler-icons"
+                          FontFamily="/Assets/tabler-icons-300.ttf#tabler-icons"
                           FontSize="20"
                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </Button>
@@ -63,7 +64,7 @@
                     Click="OnSettingsClick">
                 <FontIcon x:Name="SettingsIcon"
                           Glyph="&#xEB20;"
-                          FontFamily="/Assets/tabler-icons.ttf#tabler-icons"
+                          FontFamily="/Assets/tabler-icons-300.ttf#tabler-icons"
                           FontSize="18"
                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </Button>

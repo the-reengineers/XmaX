@@ -21,7 +21,7 @@
             <StackPanel Spacing="4" Grid.Row="0">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                     <TextBlock x:Name="TypeIcon"
-                               FontFamily="/Assets/tabler-icons.ttf#tabler-icons"
+                               FontFamily="/Assets/tabler-icons-300.ttf#tabler-icons"
                                FontSize="16"
                                VerticalAlignment="Center" />
                     <TextBlock x:Name="NameText" Style="{StaticResource BodyStrongTextBlockStyle}"

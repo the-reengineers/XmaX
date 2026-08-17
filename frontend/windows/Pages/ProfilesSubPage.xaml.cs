@@ -72,7 +72,7 @@ public sealed partial class ProfilesSubPage : Page
         // Type icon (adaptive: effe, fixed: edde)
         var icon = new TextBlock
         {
-            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("/Assets/tabler-icons.ttf#tabler-icons"),
+            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("/Assets/tabler-icons-300.ttf#tabler-icons"),
             Text = profile.IsAdaptive ? "\U0000EFFE" : "\U0000EDDE",
             FontSize = 20,
             VerticalAlignment = VerticalAlignment.Center,

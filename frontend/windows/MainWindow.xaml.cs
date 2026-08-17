@@ -30,6 +30,10 @@ public sealed partial class MainWindow : Window
     // Marquee speed in pixels per second
     private const int MarqueePixelsPerSecond = 50;
 
+    // Window show animation
+    private const int ShowAnimationDurationMs = 250;  // Similar to Quick Settings flyout
+    private const int ShowAnimationOffsetPixels = 50; // Start offset below final position
+
     // Win32 constants
     private const int GWL_EXSTYLE = -20;
     private const int GWL_STYLE = -16;
@@ -44,6 +48,8 @@ public sealed partial class MainWindow : Window
     private const int HWND_TOPMOST = -1;
     private const int SWP_NOMOVE = 0x0002;
     private const int SWP_NOSIZE = 0x0001;
+    private const int SWP_NOZORDER = 0x0004;
+    private const int SWP_NOACTIVATE = 0x0010;
     private const int SWP_SHOWWINDOW = 0x0040;
     private const int WH_MOUSE_LL = 14;
     private const int WM_LBUTTONDOWN = 0x0201;
@@ -78,6 +84,14 @@ public sealed partial class MainWindow : Window
 
     // Marquee animation state
     private Storyboard? _marqueeStoryboard;
+
+    // Window show/hide animation state
+    private DispatcherTimer? _showAnimationTimer;
+    private DispatcherTimer? _hideAnimationTimer;
+    private DateTime _animationStartTime;
+    private int _animationStartY;
+    private int _animationTargetY;
+    private int _animationX;
 
     // System transparency effects detection
     private readonly UISettings _uiSettings = new();
@@ -140,6 +154,12 @@ public sealed partial class MainWindow : Window
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SystemParametersInfo(uint uiAction, uint uiParam, ref RECT pvParam, uint fWinIni);
+
+    private const uint SPI_GETWORKAREA = 0x0030;
+
     [StructLayout(LayoutKind.Sequential)]
     private struct RECT
     {
@@ -191,9 +211,28 @@ public sealed partial class MainWindow : Window
     [DllImport("user32.dll")]
     private static extern IntPtr SetCursor(IntPtr hCursor);
 
-    // Get DPI scale factor for this window
+    [DllImport("shcore.dll")]
+    private static extern int GetDpiForMonitor(IntPtr hMonitor, int dpiType, out uint dpiX, out uint dpiY);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
+
+    private const uint MONITOR_DEFAULTTOPRIMARY = 0x00000001;
+
+    // Get DPI scale factor for the primary display
     private double GetDpiScale()
     {
+        // Get the primary monitor's handle
+        var primaryPoint = new POINT { X = 0, Y = 0 };
+        var primaryMonitor = MonitorFromPoint(primaryPoint, MONITOR_DEFAULTTOPRIMARY);
+
+        // Get DPI for the primary monitor
+        if (GetDpiForMonitor(primaryMonitor, 0, out var dpiX, out _) == 0)
+        {
+            return dpiX / 96.0;
+        }
+
+        // Fallback to window DPI if monitor DPI fails
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var dpi = GetDpiForWindow(hwnd);
         return dpi / 96.0;
@@ -555,15 +594,19 @@ public sealed partial class MainWindow : Window
     {
         var appWindow = this.AppWindow;
 
-        // Get display area (work area excludes taskbar when it's permanently visible;
-        // when auto-hide is on, WorkArea covers the full screen — so we need to
-        // check whether the taskbar is currently revealed and offset accordingly).
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
-        var displayArea = DisplayArea.GetFromWindowId(windowId, DisplayAreaFallback.Primary);
+        // Get primary monitor's work area directly from Win32 API.
+        // This is more reliable than DisplayArea.Primary which may return stale data
+        // when the primary display changes while the app is running.
+        var workAreaRect = new RECT();
+        SystemParametersInfo(SPI_GETWORKAREA, 0, ref workAreaRect, 0);
 
-        var workArea = displayArea.WorkArea;
-        var screenHeight = displayArea.OuterBounds.Height;
+        // Convert to RectInt32 for consistency with existing code
+        var workArea = new RectInt32(workAreaRect.Left, workAreaRect.Top,
+            workAreaRect.Right - workAreaRect.Left,
+            workAreaRect.Bottom - workAreaRect.Top);
+
+        // Get screen height from primary monitor (full bounds, not just work area)
+        var screenHeight = workAreaRect.Bottom;
 
         // Get current window size (already scaled)
         var windowSize = appWindow.Size;
@@ -593,7 +636,12 @@ public sealed partial class MainWindow : Window
             }
         }
 
-        appWindow.Move(new PointInt32(x, y));
+        // Use Win32 SetWindowPos to set position even when window is hidden.
+        // This ensures the position is set before the window becomes visible,
+        // avoiding a flash at the old position when the primary display changes.
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        SetWindowPos(hwnd, IntPtr.Zero, x, y, 0, 0,
+            (uint)(SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE));
     }
 
     // ===== Click-outside-to-hide =====
@@ -745,6 +793,9 @@ public sealed partial class MainWindow : Window
 
             // Persist to config.json
             _ = App.WidgetService.SaveLayoutAsync();
+
+            // Reposition editor window to match new main window height
+            App.EditorWindow?.PositionRelativeToMainWindow();
         }
     }
 
@@ -897,19 +948,19 @@ public sealed partial class MainWindow : Window
         const double spacing = 8.0;
         var cellHeight = (double)App.WidgetService.ColumnWidth;
 
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
-        var displayArea = DisplayArea.GetFromWindowId(windowId, DisplayAreaFallback.Primary);
+        // Get primary monitor's work area directly from Win32 API
+        var workAreaRect = new RECT();
+        SystemParametersInfo(SPI_GETWORKAREA, 0, ref workAreaRect, 0);
+
         var dpiScale = GetDpiScale();
 
         // Available height in physical pixels:
         // workArea already excludes a permanently-visible taskbar.
         // If the taskbar is auto-hide and currently revealed, subtract its height too.
-        var workArea = displayArea.WorkArea;
-        var screenHeight = displayArea.OuterBounds.Height;
+        var screenHeight = workAreaRect.Bottom;
         var taskbarOffsetPx = 0;
 
-        var workAreaBottom = workArea.Y + workArea.Height;
+        var workAreaBottom = workAreaRect.Bottom;
         if (workAreaBottom >= screenHeight)
         {
             // WorkArea extends to screen bottom → auto-hide taskbar mode.
@@ -927,7 +978,7 @@ public sealed partial class MainWindow : Window
             }
         }
 
-        var availableHeightPx = workArea.Height - 2 * WindowMargin - taskbarOffsetPx;
+        var availableHeightPx = (workAreaRect.Bottom - workAreaRect.Top) - 2 * WindowMargin - taskbarOffsetPx;
         var maxHeightDIPs = availableHeightPx / dpiScale;
         var canvasHeight = maxHeightDIPs - bottomBarHeight;
         var rowUnit = cellHeight + spacing;
@@ -970,15 +1021,29 @@ public sealed partial class MainWindow : Window
     // ===== Public Methods =====
 
     /// <summary>
-    /// Show the window and bring it to front.
+    /// Show the window and bring it to front with a fly-in animation from bottom.
+    /// Respects system "Animation effects" setting.
     /// </summary>
     public void ShowWindow()
     {
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var animationsEnabled = _uiSettings.AnimationsEnabled;
 
         // Suppress deactivation handler briefly while showing
         _suppressDeactivation = true;
         _lastShowTime = DateTime.Now;
+
+        // Calculate final position on primary display
+        PositionBottomRight();
+        var finalPos = this.AppWindow.Position;
+
+        if (animationsEnabled)
+        {
+            // Start position is below the final position (fly-in from bottom)
+            var startY = finalPos.Y + ShowAnimationOffsetPixels;
+            SetWindowPos(hwnd, IntPtr.Zero, finalPos.X, startY, 0, 0,
+                (uint)(SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE));
+        }
 
         // Show the window
         ShowWindow(hwnd, SW_SHOW);
@@ -1015,7 +1080,12 @@ public sealed partial class MainWindow : Window
             SetForegroundWindow(hwnd);
         }
 
-        PositionBottomRight(); // Re-position in case display changed
+        // Start fly-in animation (only if system animations are enabled)
+        if (animationsEnabled)
+        {
+            var startY = finalPos.Y + ShowAnimationOffsetPixels;
+            StartShowAnimation(finalPos.X, startY, finalPos.Y);
+        }
 
         // Install mouse hook to dismiss on click-outside (covers the case where
         // SetForegroundWindow failed and the window was never activated)
@@ -1030,6 +1100,131 @@ public sealed partial class MainWindow : Window
         {
             _suppressDeactivation = false;
         });
+    }
+
+    /// <summary>
+    /// Start the fly-in animation from bottom.
+    /// Uses an easing function similar to Windows Quick Settings flyout.
+    /// </summary>
+    private void StartShowAnimation(int x, int startY, int targetY)
+    {
+        _animationX = x;
+        _animationStartY = startY;
+        _animationTargetY = targetY;
+        _animationStartTime = DateTime.Now;
+
+        // Stop any existing animation
+        _showAnimationTimer?.Stop();
+        _hideAnimationTimer?.Stop();
+
+        // Create timer for animation (~60fps)
+        _showAnimationTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(16)
+        };
+        _showAnimationTimer.Tick += OnShowAnimationTick;
+        _showAnimationTimer.Start();
+    }
+
+    /// <summary>
+    /// Start the fly-out animation to bottom (before hiding).
+    /// </summary>
+    private void StartHideAnimation()
+    {
+        var pos = this.AppWindow.Position;
+        _animationX = pos.X;
+        _animationStartY = pos.Y;
+        _animationTargetY = pos.Y + ShowAnimationOffsetPixels;
+        _animationStartTime = DateTime.Now;
+
+        // Stop any existing animation
+        _showAnimationTimer?.Stop();
+        _hideAnimationTimer?.Stop();
+
+        // Create timer for animation (~60fps)
+        _hideAnimationTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(16)
+        };
+        _hideAnimationTimer.Tick += OnHideAnimationTick;
+        _hideAnimationTimer.Start();
+    }
+
+    /// <summary>
+    /// Animation tick handler for show. Moves window from start Y to target Y with easing.
+    /// Uses cubic ease-out for smooth deceleration like Quick Settings.
+    /// </summary>
+    private void OnShowAnimationTick(object? sender, object e)
+    {
+        var elapsed = (DateTime.Now - _animationStartTime).TotalMilliseconds;
+        var progress = Math.Min(1.0, elapsed / ShowAnimationDurationMs);
+
+        // Cubic ease-out: 1 - (1 - t)^3
+        var easedProgress = 1.0 - Math.Pow(1.0 - progress, 3);
+
+        // Calculate current Y position
+        var deltaY = _animationTargetY - _animationStartY;
+        var currentY = (int)(_animationStartY + deltaY * easedProgress);
+
+        // Move window
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        SetWindowPos(hwnd, IntPtr.Zero, _animationX, currentY, 0, 0,
+            (uint)(SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE));
+
+        // Stop animation when complete
+        if (progress >= 1.0)
+        {
+            _showAnimationTimer?.Stop();
+            _showAnimationTimer = null;
+        }
+    }
+
+    /// <summary>
+    /// Animation tick handler for hide. Moves window down then hides.
+    /// Uses cubic ease-in for smooth acceleration.
+    /// </summary>
+    private void OnHideAnimationTick(object? sender, object e)
+    {
+        var elapsed = (DateTime.Now - _animationStartTime).TotalMilliseconds;
+        var progress = Math.Min(1.0, elapsed / ShowAnimationDurationMs);
+
+        // Cubic ease-in: t^3
+        var easedProgress = Math.Pow(progress, 3);
+
+        // Calculate current Y position
+        var deltaY = _animationTargetY - _animationStartY;
+        var currentY = (int)(_animationStartY + deltaY * easedProgress);
+
+        // Move window
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        SetWindowPos(hwnd, IntPtr.Zero, _animationX, currentY, 0, 0,
+            (uint)(SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE));
+
+        // Stop animation and hide when complete
+        if (progress >= 1.0)
+        {
+            _hideAnimationTimer?.Stop();
+            _hideAnimationTimer = null;
+            FinishHide();
+        }
+    }
+
+    /// <summary>
+    /// Complete the hide operation after animation finishes.
+    /// </summary>
+    private void FinishHide()
+    {
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        ShowWindow(hwnd, SW_HIDE);
+
+        // Remove mouse hook (no longer needed while hidden)
+        RemoveMouseHook();
+
+        // Reset to default state while hidden (so it's ready for next show)
+        ResetToDefaultState();
+
+        // Suppress metrics UI updates while hidden (data still collected)
+        App.MetricsService.SuppressNotifications = true;
     }
 
     /// <summary>
@@ -1063,21 +1258,28 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Hide the window.
+    /// Hide the window with a fly-out animation to bottom.
+    /// Respects system "Animation effects" setting.
     /// </summary>
     public void HideWindow()
     {
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        ShowWindow(hwnd, SW_HIDE);
+        // Stop any ongoing show animation
+        _showAnimationTimer?.Stop();
+        _showAnimationTimer = null;
+        _hideAnimationTimer?.Stop();
+        _hideAnimationTimer = null;
 
-        // Remove mouse hook (no longer needed while hidden)
-        RemoveMouseHook();
-
-        // Reset to default state while hidden (so it's ready for next show)
-        ResetToDefaultState();
-
-        // Suppress metrics UI updates while hidden (data still collected)
-        App.MetricsService.SuppressNotifications = true;
+        // Check if system animations are enabled
+        if (_uiSettings.AnimationsEnabled)
+        {
+            // Start the hide animation (will call FinishHide when done)
+            StartHideAnimation();
+        }
+        else
+        {
+            // Hide immediately without animation
+            FinishHide();
+        }
     }
 
     /// <summary>

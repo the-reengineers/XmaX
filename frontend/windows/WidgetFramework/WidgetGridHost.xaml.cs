@@ -21,10 +21,13 @@ public sealed partial class WidgetGridHost : UserControl
     private const double WidgetCornerRadius = 8.0;
     private const int AnimationDurationMs = 200;
 
-    private const double CloseButtonSize = 24.0;
+    private const double CloseButtonSize = 28.0;
     private const double CloseButtonMargin = 6.0;
-    private const double ResizeButtonSize = 24.0;
+    private const double ResizeButtonSize = 28.0;
     private const double ResizeButtonMargin = 6.0;
+
+    // Font size as a ratio of button size (scales with button size and system DPI)
+    private const double IconFontSizeRatio = 0.55;
 
     private readonly List<GridWidget> _widgets = new();
     private readonly Dictionary<string, Border> _containers = new();
@@ -316,6 +319,8 @@ public sealed partial class WidgetGridHost : UserControl
         var content = widget.Content as FrameworkElement;
 
         // Close button (hidden by default, shown in edit mode)
+        // Uses accent color background with white foreground for contrast
+        var accentBrush = Application.Current.Resources["SystemControlHighlightAccentBrush"] as Microsoft.UI.Xaml.Media.Brush;
         var closeButton = new Button
         {
             Width = CloseButtonSize,
@@ -326,32 +331,36 @@ public sealed partial class WidgetGridHost : UserControl
             VerticalAlignment = VerticalAlignment.Top,
             Margin = new Thickness(0, CloseButtonMargin, CloseButtonMargin, 0),
             Visibility = Visibility.Collapsed,
+            Background = accentBrush,
             Content = new FontIcon
             {
                 Glyph = "",
-                FontSize = 10,
+                FontSize = CloseButtonSize * IconFontSizeRatio,
+                Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White),
             },
         };
         closeButton.Click += (_, _) => WidgetCloseClicked?.Invoke(widget.Id);
 
         // Resize button (hidden by default, shown in edit mode for resizable widgets)
+        // Uses accent color background with white foreground for contrast
         var resizeButton = new Button
         {
             Width = ResizeButtonSize,
             Height = ResizeButtonSize,
             Padding = new Thickness(0),
-            CornerRadius = new CornerRadius(ResizeButtonSize / 2),
+            CornerRadius = new CornerRadius(4),
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Bottom,
             Margin = new Thickness(0, 0, ResizeButtonMargin, ResizeButtonMargin),
             Visibility = Visibility.Collapsed,
             IsHitTestVisible = false,
-            Background = Application.Current.Resources["SystemControlBackgroundChromeMediumBrush"] as Microsoft.UI.Xaml.Media.Brush,
+            Background = accentBrush,
             Content = new FontIcon
             {
                 Glyph = "",
                 FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("/Assets/tabler-icons-300.ttf#tabler-icons"),
-                FontSize = 12,
+                FontSize = ResizeButtonSize * IconFontSizeRatio,
+                Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White),
             },
         };
 

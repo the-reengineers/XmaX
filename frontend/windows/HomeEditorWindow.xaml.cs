@@ -16,6 +16,10 @@ public sealed partial class HomeEditorWindow : Window
     // Window margin from main window
     private const int WindowMargin = 10;
 
+    // Add button constants
+    private const double AddButtonSize = 28.0;
+    private const double AddButtonIconFontSizeRatio = 0.55;
+
     // Win32 constants
     private const int GWL_EXSTYLE = -20;
     private const int GWL_STYLE = -16;
@@ -56,6 +60,30 @@ public sealed partial class HomeEditorWindow : Window
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
 
+    [DllImport("shcore.dll")]
+    private static extern int GetDpiForMonitor(IntPtr hMonitor, int dpiType, out uint dpiX, out uint dpiY);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
+
+    private const uint MONITOR_DEFAULTTOPRIMARY = 0x00000001;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private struct MARGINS
     {
@@ -89,19 +117,23 @@ public sealed partial class HomeEditorWindow : Window
             if (content == null) continue;
 
             // Create "+" button (top-right corner)
+            // Uses accent color background with white foreground for contrast
+            var accentBrush = Application.Current.Resources["SystemControlHighlightAccentBrush"] as Microsoft.UI.Xaml.Media.Brush;
             var addButton = new Button
             {
-                Width = 24,
-                Height = 24,
+                Width = AddButtonSize,
+                Height = AddButtonSize,
                 Padding = new Thickness(0),
-                CornerRadius = new CornerRadius(12),
+                CornerRadius = new CornerRadius(AddButtonSize / 2),
                 HorizontalAlignment = HorizontalAlignment.Right,
                 VerticalAlignment = VerticalAlignment.Top,
                 Margin = new Thickness(0, 6, 6, 0),
+                Background = accentBrush,
                 Content = new FontIcon
                 {
                     Glyph = "",  // Segoe MDL2 Assets Add icon
-                    FontSize = 10,
+                    FontSize = AddButtonSize * AddButtonIconFontSizeRatio,
+                    Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White),
                 },
             };
             addButton.Click += (_, _) => OnAddWidgetClick(widgetId);
@@ -112,17 +144,11 @@ public sealed partial class HomeEditorWindow : Window
                 Children = { content, addButton },
             };
 
-            // Create a new GridWidget with the wrapped content
-            var editorWidget = new WidgetFramework.GridWidget(widgetId, 1, 1, false)
-            {
-                Content = containerGrid,
-                MinColumnSpan = 1,
-                MaxColumnSpan = 1,
-                MinRowSpan = 1,
-                MaxRowSpan = 1,
-            };
+            // Update the widget's content to include the add button
+            // The widget already has proper min/max constraints from the factory
+            widget.Content = containerGrid;
 
-            gridWidgets.Add(editorWidget);
+            gridWidgets.Add(widget);
         }
 
         // Set widgets in the grid host (3 columns for editor window)
@@ -156,9 +182,20 @@ public sealed partial class HomeEditorWindow : Window
         LoadHiddenWidgets();
     }
 
-    // Get DPI scale factor for this window
+    // Get DPI scale factor for the primary display
     private double GetDpiScale()
     {
+        // Get the primary monitor's handle
+        var primaryPoint = new POINT { X = 0, Y = 0 };
+        var primaryMonitor = MonitorFromPoint(primaryPoint, MONITOR_DEFAULTTOPRIMARY);
+
+        // Get DPI for the primary monitor
+        if (GetDpiForMonitor(primaryMonitor, 0, out var dpiX, out _) == 0)
+        {
+            return dpiX / 96.0;
+        }
+
+        // Fallback to window DPI if monitor DPI fails
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var dpi = GetDpiForWindow(hwnd);
         return dpi / 96.0;
@@ -176,6 +213,28 @@ public sealed partial class HomeEditorWindow : Window
 
         var scale = GetDpiScale();
         return (int)(baseWidth * scale);
+    }
+
+    /// <summary>
+    /// Convert a pixel width to the nearest column count.
+    /// Inverse of GetScaledWindowWidth.
+    /// </summary>
+    private int WidthToColumns(int widthPixels)
+    {
+        var scale = GetDpiScale();
+        var widthDIPs = widthPixels / scale;
+
+        // From GetScaledWindowWidth:
+        // width = columns * columnWidth + (columns - 1) * spacing + 2 * padding
+        //       = columns * (columnWidth + spacing) - spacing + 2 * padding
+        // columns = (width + spacing - 2 * padding) / (columnWidth + spacing)
+        const double columnSpacing = 8.0;
+        const double gridPadding = 12.0;
+        var columnWidth = (double)App.WidgetService.ColumnWidth;
+
+        var rawColumns = (widthDIPs + columnSpacing - 2 * gridPadding) / (columnWidth + columnSpacing);
+        var columns = (int)Math.Round(rawColumns);
+        return Math.Clamp(columns, Services.WidgetService.MinColumns, Services.WidgetService.MaxColumns);
     }
 
     /// <summary>
@@ -197,6 +256,31 @@ public sealed partial class HomeEditorWindow : Window
         var heightDIPs = ComputeWindowHeightDIPs(rows);
         var scale = GetDpiScale();
         return (int)(heightDIPs * scale);
+    }
+
+    /// <summary>
+    /// Convert a pixel height to the maximum number of whole rows that fit.
+    /// Inverse of GetScaledWindowHeight. Floors to nearest whole row.
+    /// </summary>
+    private int HeightToRows(int heightPixels)
+    {
+        var scale = GetDpiScale();
+        var heightDIPs = heightPixels / scale;
+
+        // From ComputeWindowHeightDIPs:
+        // height = bottomBarHeight + 2*gridPadding + rows*cellHeight + (rows-1)*spacing
+        //        = 50 + 24 + rows*cellHeight + (rows-1)*8
+        //        = 66 + rows*(cellHeight + 8)
+        // rows = (height - 66) / (cellHeight + 8)
+        const double bottomBarHeight = 50.0;
+        const double gridPadding = 12.0;
+        const double spacing = 8.0;
+        var cellHeight = (double)App.WidgetService.ColumnWidth;
+
+        var fixedHeight = bottomBarHeight + 2 * gridPadding;
+        var rowUnit = cellHeight + spacing;
+        var rows = (heightDIPs - fixedHeight + spacing) / rowUnit;
+        return Math.Max(1, (int)Math.Floor(rows));
     }
 
     private void ConfigureWindow()
@@ -301,48 +385,99 @@ public sealed partial class HomeEditorWindow : Window
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
 
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SystemParametersInfo(uint uiAction, uint uiParam, ref RECT pvParam, uint fWinIni);
+
+    private const uint SPI_GETWORKAREA = 0x0030;
+
     /// <summary>
     /// Position this window relative to the main window.
-    /// Bottom edges are aligned so the editor sits at the same distance from the
-    /// screen bottom as the main window. Places to the left of main window, or
-    /// above/below if too close to left screen edge.
+    /// Resizes editor to match main window height, then aligns bottom edges.
+    /// Places to the left of main window, or above/below if too close to left screen edge.
     /// </summary>
     public void PositionRelativeToMainWindow()
     {
         if (App.MainWindow == null) return;
 
         var mainWindow = App.MainWindow;
-        var mainWindowHwnd = WinRT.Interop.WindowNative.GetWindowHandle(mainWindow);
-        var mainWindowId = Win32Interop.GetWindowIdFromWindow(mainWindowHwnd);
-        var displayArea = DisplayArea.GetFromWindowId(mainWindowId, DisplayAreaFallback.Primary);
-        var workArea = displayArea.WorkArea;
+
+        // Get primary monitor's work area directly from Win32 API
+        var workAreaRect = new RECT();
+        SystemParametersInfo(SPI_GETWORKAREA, 0, ref workAreaRect, 0);
+        var workArea = new RectInt32(workAreaRect.Left, workAreaRect.Top,
+            workAreaRect.Right - workAreaRect.Left,
+            workAreaRect.Bottom - workAreaRect.Top);
 
         var mainAppWindow = mainWindow.AppWindow;
         var mainPosX = mainAppWindow.Position.X;
         var mainPosY = mainAppWindow.Position.Y;
         var mainHeight = mainAppWindow.Size.Height;
 
-        var hiddenWidth = this.AppWindow.Size.Width;
-        var hiddenHeight = this.AppWindow.Size.Height;
+        // Calculate editor width to match main window's column count
+        var mainColumns = App.WidgetService.Columns;
+        var columnWidth = App.WidgetService.ColumnWidth;
+        var hiddenWidth = GetScaledWindowWidth(mainColumns, columnWidth);
+
+        // Update grid to match main window columns
+        HiddenWidgetsHost.Columns = mainColumns;
+        HiddenWidgetsHost.LayoutWidgets(animate: false);
+
+        // Resize editor to match main window height, with a minimum of 3 rows
+        const int minEditorRows = 3;
+        var minHeight = GetScaledWindowHeight(minEditorRows);
+        var editorHeight = Math.Max(minHeight, mainHeight);
+        this.AppWindow.Resize(new SizeInt32(hiddenWidth, editorHeight));
+        var hiddenHeight = editorHeight;
 
         // Align bottom edges: editor bottom at same Y as main window bottom
         var mainBottomY = mainPosY + mainHeight;
         var hiddenPosX = mainPosX - hiddenWidth - WindowMargin;
         var hiddenPosY = mainBottomY - hiddenHeight;
 
-        // Check if too close to left edge (less than 50px from left edge)
-        if (hiddenPosX < workArea.X + 50)
+        // Check if there's not enough space on the left for the editor window
+        // (editor would be cut off or too close to left edge)
+        var minMargin = 20;
+        if (hiddenPosX < workArea.X + minMargin)
         {
-            // Position above main window instead
+            // Position above main window, matching main window width
+            var mainWidth = mainAppWindow.Size.Width;
+            hiddenWidth = mainWidth;
             hiddenPosX = mainPosX;
+
+            // Cap height at 3 rows when above main window
+            const int maxEditorRows = 3;
+            hiddenHeight = GetScaledWindowHeight(maxEditorRows);
+
             hiddenPosY = mainPosY - hiddenHeight - WindowMargin;
 
-            // If also too close to top, position below main window
-            if (hiddenPosY < workArea.Y + 50)
+            // Calculate column count based on new width and update grid
+            var columns = WidthToColumns(hiddenWidth);
+            HiddenWidgetsHost.Columns = columns;
+            HiddenWidgetsHost.LayoutWidgets(animate: false);
+
+            // Resize editor to match main window width, max 3 rows height
+            this.AppWindow.Resize(new SizeInt32(hiddenWidth, hiddenHeight));
+
+            // If editor's top edge would be above the work area, shrink height to fit
+            if (hiddenPosY < workArea.Y)
             {
-                hiddenPosY = mainBottomY + WindowMargin;
+                // Calculate available height above main window
+                var availableHeight = mainPosY - workArea.Y - WindowMargin;
+
+                // Floor to nearest whole row count (minimum 1 row)
+                var rows = HeightToRows(availableHeight);
+                rows = Math.Max(1, rows);
+
+                // Resize editor to fit
+                hiddenHeight = GetScaledWindowHeight(rows);
+                this.AppWindow.Resize(new SizeInt32(hiddenWidth, hiddenHeight));
+
+                // Position at top of work area
+                hiddenPosY = workArea.Y;
             }
         }
+        // else: Positioned to the left - columns already set to mainColumns above
 
         this.AppWindow.Move(new PointInt32(hiddenPosX, hiddenPosY));
     }

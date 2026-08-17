@@ -86,37 +86,40 @@ public class WidgetServiceTests
         Assert.Equal(WidgetService.DefaultColumnWidth, svc.ColumnWidth);
     }
 
-    // ===== WindowHeight =====
+    // ===== WindowHeightRows =====
 
     [Fact]
-    public void WindowHeight_Default_IsDefaultWindowHeight()
+    public void WindowHeightRows_Default_IsDefaultWindowHeightRows()
     {
         var svc = CreateService();
-        Assert.Equal(WidgetService.DefaultWindowHeight, svc.WindowHeight);
+        Assert.Equal(WidgetService.DefaultWindowHeightRows, svc.WindowHeightRows);
     }
 
     [Fact]
-    public void WindowHeight_SetValue_UpdatesAndFiresPropertyChanged()
+    public void WindowHeightRows_SetValue_UpdatesAndFiresPropertyChanged()
     {
         var svc = CreateService();
         var changed = false;
         svc.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(WidgetService.WindowHeight)) changed = true;
+            if (e.PropertyName == nameof(WidgetService.WindowHeightRows)) changed = true;
         };
 
-        svc.WindowHeight = 800;
+        svc.WindowHeightRows = 3;
 
-        Assert.Equal(800, svc.WindowHeight);
+        Assert.Equal(3, svc.WindowHeightRows);
         Assert.True(changed);
     }
 
     [Fact]
-    public void WindowHeight_ZeroOrNegative_Ignored()
+    public void WindowHeightRows_ClampedToRange()
     {
         var svc = CreateService();
-        svc.WindowHeight = 0;
-        Assert.Equal(WidgetService.DefaultWindowHeight, svc.WindowHeight);
+        svc.WindowHeightRows = 0;
+        Assert.Equal(WidgetService.MinWindowHeightRows, svc.WindowHeightRows);
+
+        svc.WindowHeightRows = 10;
+        Assert.Equal(WidgetService.MaxWindowHeightRows, svc.WindowHeightRows);
     }
 
     // ===== LoadWidgetSpans / ConfigWidgetIds / GetWidgetSpan =====

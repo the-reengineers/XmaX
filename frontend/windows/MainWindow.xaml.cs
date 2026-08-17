@@ -50,9 +50,18 @@ public sealed partial class MainWindow : Window
     private const int WM_RBUTTONDOWN = 0x0204;
     private const int WM_MBUTTONDOWN = 0x0207;
 
+    // Resize handle constants
+    private const int IDC_SIZENS = 32515;
+    private const int IDC_ARROW = 32512;
+
     // Suppress deactivation handler briefly when showing window
     private bool _suppressDeactivation;
     private DateTime _lastShowTime;
+
+    // Top-edge resize state (edit mode only)
+    private bool _isResizing;
+    private int _resizeStartScreenY;
+    private int _resizeStartHeightPhysical;
 
     // Edit mode state
     private bool _isEditMode;
@@ -166,6 +175,16 @@ public sealed partial class MainWindow : Window
     [DllImport("kernel32.dll")]
     private static extern IntPtr GetModuleHandle(string? lpModuleName);
 
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetCursorPos(out POINT lpPoint);
+
+    [DllImport("user32.dll", EntryPoint = "LoadCursorW")]
+    private static extern IntPtr LoadCursor(IntPtr hInstance, int cursor);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetCursor(IntPtr hCursor);
+
     // Get DPI scale factor for this window
     private double GetDpiScale()
     {
@@ -186,10 +205,21 @@ public sealed partial class MainWindow : Window
         return (int)(baseWidth * scale);
     }
 
-    private int GetScaledWindowHeight(int windowHeight)
+    /// <summary>Compute window height in DIPs from row count.</summary>
+    private double ComputeWindowHeightDIPs(int rows)
     {
+        const double bottomBarHeight = 50.0;
+        const double gridPadding = 12.0;
+        const double spacing = 8.0;
+        var cellHeight = (double)App.WidgetService.ColumnWidth;
+        return bottomBarHeight + 2 * gridPadding + rows * cellHeight + (rows - 1) * spacing;
+    }
+
+    private int GetScaledWindowHeight(int rows)
+    {
+        var heightDIPs = ComputeWindowHeightDIPs(rows);
         var scale = GetDpiScale();
-        return (int)(windowHeight * scale);
+        return (int)(heightDIPs * scale);
     }
 
     public MainWindow()
@@ -354,6 +384,7 @@ public sealed partial class MainWindow : Window
     public void EnterEditMode()
     {
         _isEditMode = true;
+        ResizeHandle.Visibility = Visibility.Visible;
         EditIcon.Glyph = "ﯿ";  // Change to close/done icon
         App.ShowEditorWindow();
 
@@ -368,6 +399,7 @@ public sealed partial class MainWindow : Window
     public void ExitEditMode()
     {
         _isEditMode = false;
+        ResizeHandle.Visibility = Visibility.Collapsed;
         EditIcon.Glyph = "";  // Change back to pencil icon
         App.HideEditorWindow();
 
@@ -408,7 +440,7 @@ public sealed partial class MainWindow : Window
     {
         if (e.PropertyName == nameof(Services.WidgetService.Columns)
             || e.PropertyName == nameof(Services.WidgetService.ColumnWidth)
-            || e.PropertyName == nameof(Services.WidgetService.WindowHeight))
+            || e.PropertyName == nameof(Services.WidgetService.WindowHeightRows))
         {
             ResizeWindowToCurrentConfig();
         }
@@ -418,9 +450,9 @@ public sealed partial class MainWindow : Window
     {
         var columns = App.WidgetService.Columns;
         var columnWidth = App.WidgetService.ColumnWidth;
-        var windowHeight = App.WidgetService.WindowHeight;
+        var rows = ClampRowsToDisplay(App.WidgetService.WindowHeightRows);
         var width = GetScaledWindowWidth(columns, columnWidth);
-        var height = GetScaledWindowHeight(windowHeight);
+        var height = GetScaledWindowHeight(rows);
 
         this.AppWindow.Resize(new SizeInt32(width, height));
         PositionBottomRight();
@@ -442,7 +474,7 @@ public sealed partial class MainWindow : Window
             {
                 App.WidgetService.Columns = config.HomeLayout.Columns;
                 App.WidgetService.ColumnWidth = config.HomeLayout.ColumnWidth;
-                App.WidgetService.WindowHeight = config.HomeLayout.WindowHeight;
+                App.WidgetService.WindowHeightRows = config.HomeLayout.WindowHeightRows;
                 App.WidgetService.LoadWidgetSpans(config.HomeLayout.Widgets, config.HomeLayout.HiddenWidgets);
             }
         }
@@ -475,12 +507,12 @@ public sealed partial class MainWindow : Window
             presenter.IsMinimizable = false;
         }
 
-        // Set window size based on current config
+        // Set window size based on current config (clamped to current display)
         var columns = App.WidgetService.Columns;
         var columnWidth = App.WidgetService.ColumnWidth;
-        var windowHeight = App.WidgetService.WindowHeight;
+        var rows = ClampRowsToDisplay(App.WidgetService.WindowHeightRows);
         var width = GetScaledWindowWidth(columns, columnWidth);
-        var height = GetScaledWindowHeight(windowHeight);
+        var height = GetScaledWindowHeight(rows);
         appWindow.Resize(new SizeInt32(width, height));
 
         // Hide from task switchers
@@ -644,6 +676,157 @@ public sealed partial class MainWindow : Window
         {
             DispatcherQueue.TryEnqueue(ToggleVisibility);
         }
+    }
+
+    // ===== Top-edge resize (edit mode only) =====
+
+    private void OnResizePointerPressed(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        ((Microsoft.UI.Xaml.UIElement)sender).CapturePointer(e.Pointer);
+        GetCursorPos(out var cursorPos);
+        _isResizing = true;
+        _resizeStartScreenY = cursorPos.Y;
+        _resizeStartHeightPhysical = this.AppWindow.Size.Height;
+        e.Handled = true;
+    }
+
+    private void OnResizePointerMoved(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        // Set resize cursor while over the handle
+        SetCursor(LoadCursor(IntPtr.Zero, IDC_SIZENS));
+
+        if (!_isResizing) return;
+        if (!GetCursorPos(out var cursorPos)) return;
+
+        var dpiScale = GetDpiScale();
+
+        // Delta in physical pixels: dragging up = positive = window grows
+        var deltaPhysical = _resizeStartScreenY - cursorPos.Y;
+        var rawHeightPhysical = _resizeStartHeightPhysical + deltaPhysical;
+
+        // Snap to row count
+        var rawHeightDIPs = rawHeightPhysical / dpiScale;
+        var rows = HeightDIPsToRows(rawHeightDIPs);
+        rows = ClampRowsToDisplay(rows);
+        var snappedHeightPhysical = (int)(ComputeWindowHeightDIPs(rows) * dpiScale);
+
+        // Resize window keeping bottom edge fixed
+        var posX = this.AppWindow.Position.X;
+        var windowSize = this.AppWindow.Size;
+        var bottomY = this.AppWindow.Position.Y + windowSize.Height;
+        var newY = bottomY - snappedHeightPhysical;
+        this.AppWindow.Resize(new SizeInt32(windowSize.Width, snappedHeightPhysical));
+        this.AppWindow.Move(new PointInt32(posX, newY));
+
+        e.Handled = true;
+    }
+
+    private void OnResizePointerReleased(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        ((Microsoft.UI.Xaml.UIElement)sender).ReleasePointerCapture(e.Pointer);
+
+        if (_isResizing)
+        {
+            _isResizing = false;
+
+            // Compute row count from current height and save
+            var dpiScale = GetDpiScale();
+            var heightDIPs = this.AppWindow.Size.Height / dpiScale;
+            var rows = HeightDIPsToRows(heightDIPs);
+            App.WidgetService.WindowHeightRows = rows;
+
+            // Persist to config.json
+            _ = App.WidgetService.SaveLayoutAsync();
+        }
+    }
+
+    private void OnResizePointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        if (!_isResizing)
+        {
+            // Restore arrow cursor when leaving the handle (not during drag)
+            SetCursor(LoadCursor(IntPtr.Zero, IDC_ARROW));
+        }
+    }
+
+    /// <summary>
+    /// Convert a raw height (DIPs) to the nearest row count.
+    /// windowHeight(DIPs) = bottomBar + canvasHeight
+    ///                    = 50 + 2*gridPadding + N*cellHeight + (N-1)*spacing
+    ///                    = 66 + N*(cellHeight + 8)
+    /// </summary>
+    private int HeightDIPsToRows(double heightDIPs)
+    {
+        const double bottomBarHeight = 50.0;
+        const double gridPadding = 12.0;
+        const double spacing = 8.0;
+        var cellHeight = (double)App.WidgetService.ColumnWidth;
+
+        var canvasHeight = heightDIPs - bottomBarHeight;
+        var rowUnit = cellHeight + spacing;
+        var n = (canvasHeight - 2 * gridPadding + spacing) / rowUnit;
+        var rounded = (int)Math.Round(n);
+        return Math.Clamp(rounded, Services.WidgetService.MinWindowHeightRows, Services.WidgetService.MaxWindowHeightRows);
+    }
+
+    /// <summary>
+    /// Clamp row count to [1, min(5, displayMax)].
+    /// Ensures the window fits when opened on a smaller monitor than where it was saved.
+    /// </summary>
+    private int ClampRowsToDisplay(int rows)
+    {
+        var maxRows = GetMaxRowCountForDisplay();
+        return Math.Clamp(rows, Services.WidgetService.MinWindowHeightRows,
+            Math.Min(Services.WidgetService.MaxWindowHeightRows, maxRows));
+    }
+
+    /// <summary>
+    /// Max row count that fits on the current display, accounting for margins and
+    /// a temporarily-visible taskbar (auto-hide mode). Result is floored to whole rows.
+    /// </summary>
+    private int GetMaxRowCountForDisplay()
+    {
+        const double bottomBarHeight = 50.0;
+        const double gridPadding = 12.0;
+        const double spacing = 8.0;
+        var cellHeight = (double)App.WidgetService.ColumnWidth;
+
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
+        var displayArea = DisplayArea.GetFromWindowId(windowId, DisplayAreaFallback.Primary);
+        var dpiScale = GetDpiScale();
+
+        // Available height in physical pixels:
+        // workArea already excludes a permanently-visible taskbar.
+        // If the taskbar is auto-hide and currently revealed, subtract its height too.
+        var workArea = displayArea.WorkArea;
+        var screenHeight = displayArea.OuterBounds.Height;
+        var taskbarOffsetPx = 0;
+
+        var workAreaBottom = workArea.Y + workArea.Height;
+        if (workAreaBottom >= screenHeight)
+        {
+            // WorkArea extends to screen bottom → auto-hide taskbar mode.
+            // Check if the taskbar is currently revealed.
+            var taskbarHwnd = FindWindow("Shell_TrayWnd", null);
+            if (taskbarHwnd != IntPtr.Zero && IsWindowVisible(taskbarHwnd))
+            {
+                if (GetWindowRect(taskbarHwnd, out var taskbarRect))
+                {
+                    if (taskbarRect.Top < screenHeight && taskbarRect.Bottom == screenHeight)
+                    {
+                        taskbarOffsetPx = taskbarRect.Bottom - taskbarRect.Top;
+                    }
+                }
+            }
+        }
+
+        var availableHeightPx = workArea.Height - 2 * WindowMargin - taskbarOffsetPx;
+        var maxHeightDIPs = availableHeightPx / dpiScale;
+        var canvasHeight = maxHeightDIPs - bottomBarHeight;
+        var rowUnit = cellHeight + spacing;
+        var n = (canvasHeight - 2 * gridPadding + spacing) / rowUnit;
+        return Math.Max(1, (int)Math.Floor(n));
     }
 
     // ===== Public Navigation Methods =====

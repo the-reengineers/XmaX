@@ -9,15 +9,39 @@
 
     <Grid Background="Transparent" KeyDown="OnGridKeyDown">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
+        <!-- Resize handle (visible only in edit mode) -->
+        <Border x:Name="ResizeHandle"
+                Grid.Row="0"
+                Height="10"
+                Background="Transparent"
+                Visibility="Collapsed"
+                PointerPressed="OnResizePointerPressed"
+                PointerMoved="OnResizePointerMoved"
+                PointerReleased="OnResizePointerReleased"
+                PointerExited="OnResizePointerExited">
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="4">
+                <Ellipse Width="3" Height="3"
+                         Fill="{ThemeResource TextFillColorTertiaryBrush}" />
+                <Ellipse Width="3" Height="3"
+                         Fill="{ThemeResource TextFillColorTertiaryBrush}" />
+                <Ellipse Width="3" Height="3"
+                         Fill="{ThemeResource TextFillColorTertiaryBrush}" />
+            </StackPanel>
+        </Border>
+
         <!-- Page content -->
-        <Frame x:Name="RootFrame" Grid.Row="0" />
+        <Frame x:Name="RootFrame" Grid.Row="1" />
 
         <!-- Bottom bar: marquee + edit icon + settings icon -->
-        <Grid x:Name="BottomBar" Grid.Row="1"
+        <Grid x:Name="BottomBar" Grid.Row="2"
               BorderThickness="0,0.5,0,0"
               BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
               Padding="12,6"

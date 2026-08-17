@@ -32,6 +32,10 @@ public sealed partial class WidgetGridHost : UserControl
     private readonly Dictionary<string, Button> _resizeButtons = new();
     private List<WidgetPosition> _currentPositions = new();
     private DragReflowController? _dragController;
+    private bool _isSnapping;
+    private bool _wheelScrollPending;
+    private double _scrollStartOffset = -1;
+    private double _lastScrollDirection; // positive = down, negative = up
 
     public int Columns { get; set; } = 3;
 
@@ -48,6 +52,15 @@ public sealed partial class WidgetGridHost : UserControl
     {
         this.InitializeComponent();
         this.SizeChanged += OnSizeChanged;
+
+        // Register on the ScrollViewer with handledEventsToo so our handler fires
+        // even if the ScrollViewer's internal wheel handler fires first. We just
+        // record direction here — the actual snap is done in ViewChanged intermediate
+        // events, overriding the default smoothing for one smooth movement.
+        HostScrollViewer.AddHandler(
+            UIElement.PointerWheelChangedEvent,
+            new Microsoft.UI.Xaml.Input.PointerEventHandler(OnPointerWheelChanged),
+            handledEventsToo: true);
     }
 
     /// <summary>
@@ -430,6 +443,186 @@ public sealed partial class WidgetGridHost : UserControl
         if (_widgets.Count > 0)
         {
             LayoutWidgets(animate: false);
+        }
+    }
+
+    // ===== Scroll snapping to row multiples =====
+    // Canvas-based layout means XAML VerticalSnapPointsType only snaps to the
+    // canvas bounds, not individual rows. We handle snapping manually via
+    // ViewChanged + ChangeView for smooth animation to row-aligned offsets.
+
+    /// <summary>
+    /// <summary>
+    /// Scroll snap to row multiples. PointerWheelChanged records direction; the
+    /// ViewChanged intermediate handler overrides the ScrollViewer's default
+    /// smoothing for one smooth animated snap per tick. The final event does a
+    /// cleanup snap if needed.
+    ///
+    /// Boundary stepping: when the offset is on an exact row boundary and the user
+    /// scrolls, we step one row in the scroll direction BEFORE applying ceiling/
+    /// floor. This prevents the bounce at the bottom/top where ceiling(5.0) = 5
+    /// (same row, no movement) caused the ScrollViewer's smoothing to dominate
+    /// and snap back.
+    /// </summary>
+    private void OnScrollViewerViewChanged(object sender, ScrollViewerViewChangedEventArgs e)
+    {
+        if (_isSnapping)
+        {
+            if (!e.IsIntermediate) _isSnapping = false;
+            return;
+        }
+
+        var rowUnit = CellHeight + Spacing;
+        if (rowUnit <= 0) return;
+
+        if (e.IsIntermediate)
+        {
+            if (_wheelScrollPending)
+            {
+                // Mouse wheel: override the ScrollViewer's default smoothing with
+                // our animated snap to the next row boundary in the scroll direction.
+                var currentOffset = HostScrollViewer.VerticalOffset;
+                var snapOffset = ComputeSnapTarget(currentOffset, _lastScrollDirection, rowUnit);
+
+                var maxOffset = Math.Max(0, HostScrollViewer.ExtentHeight - HostScrollViewer.ViewportHeight);
+                snapOffset = Math.Clamp(snapOffset, 0, maxOffset);
+
+                if (Math.Abs(currentOffset - snapOffset) > 0.5)
+                {
+                    _isSnapping = true;
+                    HostScrollViewer.ChangeView(null, snapOffset, null, disableAnimation: false);
+                }
+                return;
+            }
+
+            // Non-wheel: just track scroll direction
+            var currentOffset2 = HostScrollViewer.VerticalOffset;
+            if (_scrollStartOffset < 0)
+                _scrollStartOffset = currentOffset2;
+            _lastScrollDirection = currentOffset2 - _scrollStartOffset;
+            return;
+        }
+
+        // --- Final event (scroll settled) ---
+
+        if (_wheelScrollPending)
+        {
+            _wheelScrollPending = false;
+            var settledOffset = HostScrollViewer.VerticalOffset;
+            // Direction-aware snap with boundary stepping
+            var snapOffset = ComputeSnapTarget(settledOffset, _lastScrollDirection, rowUnit);
+
+            var maxOffset = Math.Max(0, HostScrollViewer.ExtentHeight - HostScrollViewer.ViewportHeight);
+            snapOffset = Math.Clamp(snapOffset, 0, maxOffset);
+
+            if (Math.Abs(settledOffset - snapOffset) > 1.0)
+            {
+                _isSnapping = true;
+                HostScrollViewer.ChangeView(null, snapOffset, null, disableAnimation: false);
+            }
+            return;
+        }
+
+        // Non-wheel scroll settled — use tracked direction
+        var finalOffset = HostScrollViewer.VerticalOffset;
+        var startOffset = _scrollStartOffset >= 0 ? _scrollStartOffset : finalOffset;
+        _scrollStartOffset = -1;
+
+        var snap = ComputeSnapTarget(finalOffset, finalOffset - startOffset, rowUnit);
+        var maxOff = Math.Max(0, HostScrollViewer.ExtentHeight - HostScrollViewer.ViewportHeight);
+        snap = Math.Clamp(snap, 0, maxOff);
+
+        if (Math.Abs(finalOffset - snap) > 1.0)
+        {
+            _isSnapping = true;
+            HostScrollViewer.ChangeView(null, snap, null, disableAnimation: false);
+        }
+    }
+
+    /// <summary>
+    /// Compute the snap target for a given offset and scroll direction.
+    /// Uses tolerance-based rounding to detect exact row boundaries, and
+    /// steps one row in the scroll direction before applying ceiling/floor.
+    /// </summary>
+    private static double ComputeSnapTarget(double currentOffset, double direction, double rowUnit)
+    {
+        var norm = currentOffset / rowUnit;
+        var rounded = Math.Round(norm);
+
+        // If on an exact boundary (within 2% tolerance), step one row in the
+        // scroll direction first — then ceiling/floor lands on the next boundary.
+        if (Math.Abs(norm - rounded) < 0.02)
+        {
+            if (direction < -0.5)
+                return (rounded - 1) * rowUnit;
+            if (direction > 0.5)
+                return (rounded + 1) * rowUnit;
+            return rounded * rowUnit; // No meaningful direction — stay put
+        }
+
+        // Not on boundary — ceiling/floor gets the next boundary in scroll direction
+        if (direction > 0)
+            return Math.Ceiling(norm) * rowUnit;
+        if (direction < 0)
+            return Math.Floor(norm) * rowUnit;
+
+        // No direction — snap to nearest
+        return rounded * rowUnit;
+    }
+
+    /// <summary>
+    /// Mouse wheel: record scroll direction. The snap is done in ViewChanged
+    /// intermediate events (overrides the ScrollViewer's default smoothing).
+    /// </summary>
+    private void OnPointerWheelChanged(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        var props = e.GetCurrentPoint(HostScrollViewer).Properties;
+        var mouseWheelDelta = props.MouseWheelDelta;
+        if (mouseWheelDelta == 0) return;
+
+        // Positive delta = wheel forward = scroll UP (content moves down)
+        _lastScrollDirection = mouseWheelDelta > 0 ? -1.0 : 1.0;
+        _wheelScrollPending = true;
+    }
+
+    /// <summary>
+    /// Immediate scroll snap: fires when the user releases and inertia is about
+    /// to begin. We override the default inertia with our own animated scroll
+    /// to the nearest row-aligned offset in the scroll direction.
+    /// </summary>
+    private void OnScrollViewerManipulationInertiaStarting(
+        object sender,
+        Microsoft.UI.Xaml.Input.ManipulationInertiaStartingRoutedEventArgs e)
+    {
+        if (_isSnapping) return;
+
+        var currentOffset = HostScrollViewer.VerticalOffset;
+        var rowUnit = CellHeight + Spacing;
+        if (rowUnit <= 0) return;
+
+        // Determine direction from velocity, fall back to tracked scroll direction
+        var velocity = e.Velocities.Linear.Y;
+        double direction;
+        if (Math.Abs(velocity) > 0.01)
+            direction = velocity; // positive = scrolling down (content moves up)
+        else
+            direction = _lastScrollDirection;
+
+        // Compute snap target using shared helper (handles boundary stepping)
+        var snapOffset = ComputeSnapTarget(currentOffset, direction, rowUnit);
+
+        var maxOffset = Math.Max(0, HostScrollViewer.ExtentHeight - HostScrollViewer.ViewportHeight);
+        snapOffset = Math.Clamp(snapOffset, 0, maxOffset);
+
+        if (Math.Abs(currentOffset - snapOffset) > 1.0)
+        {
+            _isSnapping = true;
+            _scrollStartOffset = -1;
+            _lastScrollDirection = 0;
+
+            // Cancel default inertia and start our own animated scroll
+            e.Handled = true;
+            HostScrollViewer.ChangeView(null, snapOffset, null, disableAnimation: false);
         }
     }
 

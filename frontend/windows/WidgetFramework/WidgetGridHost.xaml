@@ -9,7 +9,9 @@
     <ScrollViewer x:Name="HostScrollViewer"
                   VerticalScrollBarVisibility="Auto"
                   HorizontalScrollBarVisibility="Disabled"
-                  SizeChanged="OnScrollViewerSizeChanged">
+                  SizeChanged="OnScrollViewerSizeChanged"
+                  ViewChanged="OnScrollViewerViewChanged"
+                  ManipulationInertiaStarting="OnScrollViewerManipulationInertiaStarting">
         <Canvas x:Name="HostCanvas"
                 PointerPressed="OnCanvasPointerPressed"
                 PointerMoved="OnCanvasPointerMoved"

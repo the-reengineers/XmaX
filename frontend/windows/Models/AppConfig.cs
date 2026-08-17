@@ -87,10 +87,10 @@ public sealed class HomeLayout
     [JsonPropertyName("column_width")]
     public int ColumnWidth { get; set; } = 140;
 
-    /// <summary>Window height in pixels (at 100% DPI). Default 600.</summary>
-    [JsonPropertyName("window_height")]
-    public int WindowHeight { get; set; } = 600;
+    /// <summary>Window height in widget rows (1–5). Default 4.</summary>
+    [JsonPropertyName("window_height_rows")]
+    public int WindowHeightRows { get; set; } = 4;
 
     public override string ToString() =>
-        $"HomeLayout(widgets:[{string.Join(",", Widgets)}], hidden:[{string.Join(",", HiddenWidgets)}], cols:{Columns}, colWidth:{ColumnWidth}, height:{WindowHeight})";
+        $"HomeLayout(widgets:[{string.Join(",", Widgets)}], hidden:[{string.Join(",", HiddenWidgets)}], cols:{Columns}, colWidth:{ColumnWidth}, rows:{WindowHeightRows})";
 }

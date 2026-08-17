@@ -178,10 +178,21 @@ public sealed partial class HomeEditorWindow : Window
         return (int)(baseWidth * scale);
     }
 
-    private int GetScaledWindowHeight(int windowHeight)
+    /// <summary>Compute window height in DIPs from row count (mirrors MainWindow).</summary>
+    private double ComputeWindowHeightDIPs(int rows)
     {
+        const double bottomBarHeight = 50.0;
+        const double gridPadding = 12.0;
+        const double spacing = 8.0;
+        var cellHeight = (double)App.WidgetService.ColumnWidth;
+        return bottomBarHeight + 2 * gridPadding + rows * cellHeight + (rows - 1) * spacing;
+    }
+
+    private int GetScaledWindowHeight(int rows)
+    {
+        var heightDIPs = ComputeWindowHeightDIPs(rows);
         var scale = GetDpiScale();
-        return (int)(windowHeight * scale);
+        return (int)(heightDIPs * scale);
     }
 
     private void ConfigureWindow()
@@ -205,12 +216,13 @@ public sealed partial class HomeEditorWindow : Window
             presenter.IsMinimizable = false;
         }
 
-        // Set window size: 3 columns wide, same height as main window
+        // Set window size: 3 columns wide, minimum 3 rows tall
         var columns = App.WidgetService.Columns > 0 ? 3 : 3; // Always 3 columns for hidden widgets
         var columnWidth = App.WidgetService.ColumnWidth;
-        var windowHeight = App.WidgetService.WindowHeight;
+        const int minEditorRows = 3;
+        var windowHeightRows = Math.Max(minEditorRows, App.WidgetService.WindowHeightRows);
         var width = GetScaledWindowWidth(3, columnWidth);
-        var height = GetScaledWindowHeight(windowHeight);
+        var height = GetScaledWindowHeight(windowHeightRows);
         appWindow.Resize(new SizeInt32(width, height));
 
         // Hide from task switchers
@@ -287,7 +299,9 @@ public sealed partial class HomeEditorWindow : Window
 
     /// <summary>
     /// Position this window relative to the main window.
-    /// Places to the left of main window, or above if too close to left screen edge.
+    /// Bottom edges are aligned so the editor sits at the same distance from the
+    /// screen bottom as the main window. Places to the left of main window, or
+    /// above/below if too close to left screen edge.
     /// </summary>
     public void PositionRelativeToMainWindow()
     {
@@ -302,15 +316,15 @@ public sealed partial class HomeEditorWindow : Window
         var mainAppWindow = mainWindow.AppWindow;
         var mainPosX = mainAppWindow.Position.X;
         var mainPosY = mainAppWindow.Position.Y;
-        var mainWidth = mainAppWindow.Size.Width;
         var mainHeight = mainAppWindow.Size.Height;
 
         var hiddenWidth = this.AppWindow.Size.Width;
         var hiddenHeight = this.AppWindow.Size.Height;
 
-        // Calculate position to the left of main window
+        // Align bottom edges: editor bottom at same Y as main window bottom
+        var mainBottomY = mainPosY + mainHeight;
         var hiddenPosX = mainPosX - hiddenWidth - WindowMargin;
-        var hiddenPosY = mainPosY;
+        var hiddenPosY = mainBottomY - hiddenHeight;
 
         // Check if too close to left edge (less than 50px from left edge)
         if (hiddenPosX < workArea.X + 50)
@@ -322,7 +336,7 @@ public sealed partial class HomeEditorWindow : Window
             // If also too close to top, position below main window
             if (hiddenPosY < workArea.Y + 50)
             {
-                hiddenPosY = mainPosY + mainHeight + WindowMargin;
+                hiddenPosY = mainBottomY + WindowMargin;
             }
         }
 

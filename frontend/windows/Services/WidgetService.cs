@@ -14,7 +14,9 @@ public sealed class WidgetService : INotifyPropertyChanged
     public const int MinColumns = 3;
     public const int MaxColumns = 4;
     public const int DefaultColumnWidth = 140;
-    public const int DefaultWindowHeight = 600;
+    public const int DefaultWindowHeightRows = 4;
+    public const int MinWindowHeightRows = 1;
+    public const int MaxWindowHeightRows = 5;
 
     private readonly PipeClient _pipe;
 
@@ -24,7 +26,7 @@ public sealed class WidgetService : INotifyPropertyChanged
     private List<string> _hiddenWidgetIds = new();
     private int _columns = MinColumns;
     private int _columnWidth = DefaultColumnWidth;
-    private int _windowHeight = DefaultWindowHeight;
+    private int _windowHeightRows = DefaultWindowHeightRows;
 
     public WidgetService(PipeClient pipe)
     {
@@ -70,16 +72,16 @@ public sealed class WidgetService : INotifyPropertyChanged
         }
     }
 
-    /// <summary>Window height in pixels (at 100% DPI).</summary>
-    public int WindowHeight
+    /// <summary>Window height in widget rows (1–5).</summary>
+    public int WindowHeightRows
     {
-        get => _windowHeight;
+        get => _windowHeightRows;
         set
         {
-            if (value <= 0) return;
-            if (_windowHeight == value) return;
-            _windowHeight = value;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(WindowHeight)));
+            var clamped = Math.Clamp(value, MinWindowHeightRows, MaxWindowHeightRows);
+            if (_windowHeightRows == clamped) return;
+            _windowHeightRows = clamped;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(WindowHeightRows)));
         }
     }
 
@@ -199,7 +201,7 @@ public sealed class WidgetService : INotifyPropertyChanged
                 ["hidden_widgets"] = hiddenWidgetsArray,
                 ["columns"] = _columns,
                 ["column_width"] = _columnWidth,
-                ["window_height"] = _windowHeight,
+                ["window_height_rows"] = _windowHeightRows,
             };
 
             var payload = new JsonObject

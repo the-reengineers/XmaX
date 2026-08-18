@@ -33,10 +33,13 @@ public sealed partial class WidgetGridHost : UserControl
     private readonly Dictionary<string, Border> _containers = new();
     private readonly Dictionary<string, Button> _closeButtons = new();
     private readonly Dictionary<string, Button> _resizeButtons = new();
+    private readonly Dictionary<string, Border> _topBorders = new();
+    private readonly Dictionary<string, Border> _bottomBorders = new();
     private List<WidgetPosition> _currentPositions = new();
     private DragReflowController? _dragController;
     private bool _isSnapping;
     private double _scrollStartOffset = -1;
+    private double _lastSnapOffset = -1;
 
     public int Columns { get; set; } = 3;
 
@@ -66,6 +69,8 @@ public sealed partial class WidgetGridHost : UserControl
         // Create containers for all widgets
         HostCanvas.Children.Clear();
         _containers.Clear();
+        _topBorders.Clear();
+        _bottomBorders.Clear();
 
         foreach (var widget in _widgets)
         {
@@ -104,6 +109,10 @@ public sealed partial class WidgetGridHost : UserControl
             HostCanvas.Children.Remove(container);
             _containers.Remove(widgetId);
         }
+
+        // Clean up border references
+        _topBorders.Remove(widgetId);
+        _bottomBorders.Remove(widgetId);
     }
 
     /// <summary>
@@ -168,16 +177,30 @@ public sealed partial class WidgetGridHost : UserControl
     {
         _currentPositions = positions;
 
-        // Calculate required canvas height
-        int maxRow = 0;
-        int maxRowSpan = 1;
+        // Calculate required canvas height by finding the maximum bottom edge
+        int maxBottom = 0;
         foreach (var pos in positions)
         {
-            if (pos.Row > maxRow) maxRow = pos.Row;
-            if (pos.Row == maxRow && pos.RowSpan > maxRowSpan) maxRowSpan = pos.RowSpan;
+            var bottom = pos.Row + pos.RowSpan;
+            if (bottom > maxBottom) maxBottom = bottom;
         }
 
-        var totalRows = maxRow + maxRowSpan;
+        // Update border visibility for AlwaysFillRow widgets:
+        // hide top border if at row 0, hide bottom border if at the bottom edge
+        foreach (var pos in positions)
+        {
+            if (_topBorders.TryGetValue(pos.Id, out var topBorder))
+            {
+                topBorder.Visibility = pos.Row == 0 ? Visibility.Collapsed : Visibility.Visible;
+            }
+            if (_bottomBorders.TryGetValue(pos.Id, out var bottomBorder))
+            {
+                var bottom = pos.Row + pos.RowSpan;
+                bottomBorder.Visibility = bottom == maxBottom ? Visibility.Collapsed : Visibility.Visible;
+            }
+        }
+
+        var totalRows = maxBottom;
         var canvasHeight = GridPadding * 2 + (totalRows * CellHeight) + ((totalRows - 1) * Spacing);
         HostCanvas.Height = Math.Max(canvasHeight, this.ActualHeight);
 
@@ -251,6 +274,7 @@ public sealed partial class WidgetGridHost : UserControl
     /// </summary>
     public void ScrollToTop()
     {
+        _lastSnapOffset = 0;
         HostScrollViewer.ChangeView(0, 0, null, true);
     }
 
@@ -269,6 +293,53 @@ public sealed partial class WidgetGridHost : UserControl
     private void OnCanvasPointerReleased(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
     {
         _dragController?.OnPointerReleased(sender, e);
+    }
+
+    /// <summary>
+    /// Intercept mousewheel before the ScrollViewer processes it.
+    /// Instead of scrolling freely then snapping (two-stage), we immediately
+    /// animate to the next row-boundary in the scroll direction (one continuous movement).
+    /// </summary>
+    private void OnCanvasPointerWheelChanged(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        var delta = e.GetCurrentPoint(HostCanvas).Properties.MouseWheelDelta;
+        if (delta == 0) return;
+
+        var rowUnit = CellHeight + Spacing;
+        if (rowUnit <= 0) return;
+
+        // Positive MouseWheelDelta = wheel toward user = scroll up (offset decreases)
+        // Negate so positive direction = scroll down (offset increases)
+        var direction = -delta;
+
+        // Compute from last snap target when available so rapid wheel ticks chain
+        // correctly even while an animation is in flight.
+        var baseOffset = _lastSnapOffset >= 0 ? _lastSnapOffset : HostScrollViewer.VerticalOffset;
+
+        double targetOffset;
+        if (direction > 0)
+            targetOffset = (Math.Floor(baseOffset / rowUnit) + 1) * rowUnit;
+        else
+            targetOffset = (Math.Ceiling(baseOffset / rowUnit) - 1) * rowUnit;
+
+        var maxOffset = Math.Max(0, HostScrollViewer.ExtentHeight - HostScrollViewer.ViewportHeight);
+        targetOffset = Math.Clamp(targetOffset, 0, maxOffset);
+
+        // Already at the boundary in the scroll direction — let ScrollViewer
+        // handle it so the user gets overscroll/bounce feedback.
+        if (Math.Abs(targetOffset - baseOffset) < 1.0)
+        {
+            if (_isSnapping)
+                e.Handled = true; // don't let it interfere with an in-flight animation
+            return;
+        }
+
+        e.Handled = true;
+        _isSnapping = true;
+        _scrollStartOffset = -1;
+        _lastSnapOffset = targetOffset;
+
+        HostScrollViewer.ChangeView(null, targetOffset, null, disableAnimation: false);
     }
 
     // ===== Private methods =====
@@ -378,6 +449,7 @@ public sealed partial class WidgetGridHost : UserControl
             };
             Grid.SetRow(topBorder, 0);
             borderGrid.Children.Add(topBorder);
+            _topBorders[widget.Id] = topBorder;
 
             Grid.SetRow(containerGrid, 1);
 
@@ -389,6 +461,7 @@ public sealed partial class WidgetGridHost : UserControl
             };
             Grid.SetRow(bottomBorder, 2);
             borderGrid.Children.Add(bottomBorder);
+            _bottomBorders[widget.Id] = bottomBorder;
 
             containerChild = borderGrid;
         }
@@ -474,6 +547,9 @@ public sealed partial class WidgetGridHost : UserControl
         // Canvas inside ScrollViewer doesn't stretch — manually set its width
         HostCanvas.Width = HostScrollViewer.ViewportWidth;
 
+        // Cell dimensions change on resize, so cached snap offset is stale
+        _lastSnapOffset = -1;
+
         // Re-layout when size changes (recalculates cell dimensions)
         if (_widgets.Count > 0)
         {
@@ -495,7 +571,11 @@ public sealed partial class WidgetGridHost : UserControl
     {
         if (_isSnapping)
         {
-            if (!e.IsIntermediate) _isSnapping = false;
+            if (!e.IsIntermediate)
+            {
+                _isSnapping = false;
+                _lastSnapOffset = HostScrollViewer.VerticalOffset;
+            }
             return;
         }
 
@@ -532,6 +612,7 @@ public sealed partial class WidgetGridHost : UserControl
         if (Math.Abs(finalOffset - snap) > 1.0)
         {
             _isSnapping = true;
+            _lastSnapOffset = snap;
             HostScrollViewer.ChangeView(null, snap, null, disableAnimation: false);
         }
     }
@@ -601,6 +682,7 @@ public sealed partial class WidgetGridHost : UserControl
         {
             _isSnapping = true;
             _scrollStartOffset = -1;
+            _lastSnapOffset = snapOffset;
 
             // Cancel default inertia and start our own animated scroll
             e.Handled = true;
@@ -610,6 +692,9 @@ public sealed partial class WidgetGridHost : UserControl
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)
     {
+        // Cell dimensions change on resize, so cached snap offset is stale
+        _lastSnapOffset = -1;
+
         // Re-layout when UserControl size changes
         if (_widgets.Count > 0)
         {

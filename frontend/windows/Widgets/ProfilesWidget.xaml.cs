@@ -92,7 +92,7 @@ public sealed partial class ProfilesWidget : UserControl
         var titleGap = RootGrid.RowSpacing;
         var titleHeight = TitleText.ActualHeight;
         var overhead = gridPadding + titleGap + titleHeight;
-        var marginSize = 12.0; // Bottom margin on each row container
+        var marginSize = 6.0; // Bottom margin on each row container (matches column spacing)
 
         // N = widget rowSpan, computed from widget height / cell width.
         int widgetRows = Math.Max(1, (int)Math.Round(RootGrid.ActualHeight / cellWidth));
@@ -156,7 +156,7 @@ public sealed partial class ProfilesWidget : UserControl
         var activeId = _profileService.ActiveProfileId;
         var rowGrid = new Grid
         {
-            ColumnSpacing = 8,
+            ColumnSpacing = 12,
         };
 
         // One column per card in the row (Star sizing distributes width evenly)
@@ -195,7 +195,7 @@ public sealed partial class ProfilesWidget : UserControl
 
         // Partial rows: left-align at normal column width so cards don't stretch
         var totalColumns = Math.Max(1, _widgetService.Columns);
-        const double columnSpacing = 8;
+        const double columnSpacing = 12;
         if (profiles.Count < totalColumns)
         {
             rowGrid.HorizontalAlignment = HorizontalAlignment.Left;
@@ -207,7 +207,7 @@ public sealed partial class ProfilesWidget : UserControl
         // Wrap the row in a container with bottom margin for the gap
         var container = new Grid
         {
-            Margin = new Thickness(0, 0, 0, 12),
+            Margin = new Thickness(0, 0, 0, 6),
             Height = _containerHeight > 0 ? _containerHeight : double.NaN,
             Children = { rowGrid }
         };

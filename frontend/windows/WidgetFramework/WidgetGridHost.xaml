@@ -16,8 +16,10 @@
                   ViewChanged="OnScrollViewerViewChanged"
                   ManipulationInertiaStarting="OnScrollViewerManipulationInertiaStarting">
         <Canvas x:Name="HostCanvas"
+                Background="Transparent"
                 PointerPressed="OnCanvasPointerPressed"
                 PointerMoved="OnCanvasPointerMoved"
-                PointerReleased="OnCanvasPointerReleased" />
+                PointerReleased="OnCanvasPointerReleased"
+                PointerWheelChanged="OnCanvasPointerWheelChanged" />
     </ScrollViewer>
 </UserControl>

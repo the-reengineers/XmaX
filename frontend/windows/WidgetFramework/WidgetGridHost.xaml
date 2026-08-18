@@ -7,8 +7,10 @@
              mc:Ignorable="d">
 
     <ScrollViewer x:Name="HostScrollViewer"
+                  VerticalScrollMode="Enabled"
                   VerticalScrollBarVisibility="Auto"
-                  HorizontalScrollBarVisibility="Disabled"
+                  HorizontalScrollMode="Disabled"
+                  ZoomMode="Disabled"
                   SizeChanged="OnScrollViewerSizeChanged"
                   ViewChanged="OnScrollViewerViewChanged"
                   ManipulationInertiaStarting="OnScrollViewerManipulationInertiaStarting">

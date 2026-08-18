@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using XmaX.Models;
@@ -7,21 +8,15 @@ namespace XmaX.Widgets;
 
 /// <summary>
 /// Profiles widget showing profile cards in a grid layout.
-/// Each card uses 1 column width matching the home page column count.
-/// Uses ProfileCard component for each profile. Tap to apply.
-/// Active profile is visually highlighted.
+/// Uses ScrollViewer with mandatory vertical snap points so each row of cards
+/// snaps into place — touch, mouse wheel, and kinetic panning all snap row-by-row.
 /// </summary>
 public sealed partial class ProfilesWidget : UserControl
 {
     private readonly ProfileService _profileService;
     private readonly WidgetService _widgetService;
-    private bool _isRebuildingCards;
-    private bool _isSnapping;
-    private double _scrollStartOffset = -1;
-    private double _lastScrollDirection; // positive = down, negative = up
-    private bool _wheelScrollPending;
+    private bool _isRebuildingRows;
     private double _cardHeight;
-    private bool _isTouch;
 
     public ProfilesWidget()
     {
@@ -31,14 +26,9 @@ public sealed partial class ProfilesWidget : UserControl
         _widgetService = App.WidgetService;
         _profileService.PropertyChanged += OnProfileServiceChanged;
         _widgetService.PropertyChanged += OnWidgetServiceChanged;
-        CardsScroller.SizeChanged += (_, _) => RebuildCards();
-        // Register on the ScrollViewer with handledEventsToo so our handler fires
-        // even if the ScrollViewer's internal wheel handler fires first.
-        CardsScroller.AddHandler(
-            UIElement.PointerWheelChangedEvent,
-            new Microsoft.UI.Xaml.Input.PointerEventHandler(OnCardsPointerWheelChanged),
-            handledEventsToo: true);
-        RebuildCards();
+        RowsScroller.SizeChanged += (_, _) => RebuildRows();
+
+        RebuildRows();
     }
 
     private void OnProfileServiceChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -46,7 +36,7 @@ public sealed partial class ProfilesWidget : UserControl
         if (e.PropertyName == nameof(ProfileService.Profiles) ||
             e.PropertyName == nameof(ProfileService.ActiveProfileId))
         {
-            DispatcherQueue.TryEnqueue(RebuildCards);
+            DispatcherQueue.TryEnqueue(RebuildRows);
         }
     }
 
@@ -54,107 +44,123 @@ public sealed partial class ProfilesWidget : UserControl
     {
         if (e.PropertyName == nameof(WidgetService.Columns))
         {
-            DispatcherQueue.TryEnqueue(RebuildCards);
+            DispatcherQueue.TryEnqueue(RebuildRows);
         }
     }
 
-    private void RebuildCards()
+    private void RebuildRows()
     {
-        // Guard against reentrancy from SizeChanged triggered by our own layout changes
-        if (_isRebuildingCards) return;
-        _isRebuildingCards = true;
+        if (_isRebuildingRows) return;
+        _isRebuildingRows = true;
         try
         {
-            DoRebuildCards();
+            DoRebuildRows();
         }
         finally
         {
-            _isRebuildingCards = false;
+            _isRebuildingRows = false;
         }
     }
 
-    private void DoRebuildCards()
+    private double _containerHeight;
+
+    private void DoRebuildRows()
     {
-        CardsGrid.Children.Clear();
-        CardsGrid.ColumnDefinitions.Clear();
-        CardsGrid.RowDefinitions.Clear();
+        RowsPanel.Children.Clear();
 
         var profiles = _profileService.Profiles;
-        var activeId = _profileService.ActiveProfileId;
-        // Always fill the full row width
         var columns = _widgetService.Columns;
+        if (columns <= 0) columns = 1;
+
+        // Compute card height to match the widget grid's standard row height.
+        // cellWidth = standard widget row height (cells are square in the host grid).
+        // Each row container has 12px bottom margin (the gap), so:
+        //   containerHeight = cellWidth - overhead/N
+        //   cardHeight = containerHeight - margin
+        var cellWidth = ComputeCellWidth();
+        if (cellWidth <= 0) return;
+
+        var gridPadding = RootGrid.Padding.Top + RootGrid.Padding.Bottom;
+        var titleGap = RootGrid.RowSpacing;
+        var titleHeight = TitleText.ActualHeight;
+        var overhead = gridPadding + titleGap + titleHeight;
+        var marginSize = 12.0; // Bottom margin on each row container
+
+        // N = widget rowSpan, computed from widget height / cell width.
+        int widgetRows = Math.Max(1, (int)Math.Round(RootGrid.ActualHeight / cellWidth));
+        _containerHeight = cellWidth - (overhead / widgetRows);
+        _cardHeight = _containerHeight - marginSize;
+        if (_cardHeight < 0) _cardHeight = 0;
+        if (_containerHeight < 0) _containerHeight = 0;
 
         if (profiles.Count == 0)
         {
-            var empty = new TextBlock
-            {
-                Text = Loc.Empty_NoProfiles,
-                Style = (Microsoft.UI.Xaml.Style)Application.Current.Resources["CaptionTextBlockStyle"],
-                Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
-            };
-            CardsGrid.Children.Add(empty);
+            // Show empty state via a single placeholder
+            RowsPanel.Children.Add(CreateEmptyStateElement());
             return;
         }
 
-        // Calculate rows needed
-        var rows = (profiles.Count + columns - 1) / columns;
-
-        // Card height = standard widget row height (= column width, since host grid
-        // cells are square) minus all vertical overhead distributed across N rows.
-        // N = the number of widget-grid rows the widget spans (its rowSpan).
-        //
-        // Vertical overhead that reduces available scroll area:
-        //   - gridPadding: RootGrid Padding top+bottom
-        //   - titleGap: RootGrid RowSpacing between title row and scroll area
-        //   - interCardSpacing: CardsGrid RowSpacing between card rows ((N-1) gaps for N cards)
-        //   - titleHeight: rendered title text height
-        //
-        // scrollarea = N*cellWidth - gridPadding - titleGap - titleHeight
-        // content = N*cardHeight + (N-1)*interCardSpacing
-        // For exact fit: cardHeight = (scrollarea - (N-1)*interCardSpacing) / N
-        //                          = cellWidth - (gridPadding + titleGap + titleHeight) / N
-        //                            - (N-1) * interCardSpacing / N
-        var cellWidth = ComputeCellWidth();
-        var gridPadding = RootGrid.Padding.Top + RootGrid.Padding.Bottom;
-        var titleGap = RootGrid.RowSpacing;
-        var interCardSpacing = CardsGrid.RowSpacing;
-        var titleHeight = TitleText.ActualHeight;
-
-        // Compute N (widget rowSpan) from the widget's actual height / cell width.
-        // The widget container is sized as rowSpan * cellHeight by the host grid.
-        int widgetRows = 1;
-        if (cellWidth > 0)
+        // Group profiles into rows of `columns` profiles each
+        for (int i = 0; i < profiles.Count; i += columns)
         {
-            widgetRows = Math.Max(1, (int)Math.Round(RootGrid.ActualHeight / cellWidth));
+            var count = Math.Min(columns, profiles.Count - i);
+            var rowProfiles = new List<Profile>(count);
+            for (int j = 0; j < count; j++)
+            {
+                rowProfiles.Add(profiles[i + j]);
+            }
+            RowsPanel.Children.Add(CreateRowElement(rowProfiles));
+        }
+    }
+
+    /// <summary>
+    /// Create an empty state placeholder element.
+    /// </summary>
+    private UIElement CreateEmptyStateElement()
+    {
+        return new TextBlock
+        {
+            Text = Loc.Empty_NoProfiles,
+            Style = (Microsoft.UI.Xaml.Style)Application.Current.Resources["CaptionTextBlockStyle"],
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center,
+        };
+    }
+
+    /// <summary>
+    /// Compute the widget grid cell width (cells are square in the host grid).
+    /// </summary>
+    private double ComputeCellWidth()
+    {
+        var columns = _widgetService.Columns;
+        var width = RowsScroller.ActualWidth;
+        if (width <= 0 || columns <= 0) return 0;
+        return width / columns;
+    }
+
+    /// <summary>
+    /// Build a row panel. Each row is a Grid of ProfileCards.
+    /// The ScrollViewer snaps to each row panel as a unit.
+    /// </summary>
+    private UIElement CreateRowElement(List<Profile> profiles)
+    {
+        var activeId = _profileService.ActiveProfileId;
+        var rowGrid = new Grid
+        {
+            ColumnSpacing = 8,
+        };
+
+        // One column per card in the row (Star sizing distributes width evenly)
+        for (int c = 0; c < profiles.Count; c++)
+        {
+            rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         }
 
-        var titleOverhead = gridPadding + titleGap + titleHeight;
-        _cardHeight = cellWidth
-                    - (widgetRows > 0 ? titleOverhead / widgetRows : 0)
-                    - (widgetRows > 1 ? (widgetRows - 1) * interCardSpacing / widgetRows : 0);
-        var cardHeight = _cardHeight;
-        if (cardHeight < 0) cardHeight = 0;
-
-        // Create columns matching home page column count
-        for (int c = 0; c < columns; c++)
+        for (int c = 0; c < profiles.Count; c++)
         {
-            CardsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        }
-
-        for (int r = 0; r < rows; r++)
-        {
-            CardsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        }
-
-        // Add profile cards
-        for (int i = 0; i < profiles.Count; i++)
-        {
-            var profile = profiles[i];
+            var profile = profiles[c];
             var isActive = profile.Id == activeId;
-            var row = i / columns;
-            var col = i % columns;
-
-            // Resolve fan curve data for mini chart
             var fanCurve = _profileService.FanCurves.FirstOrDefault(f => f.Id == profile.FanCurve);
 
             var card = new ProfileCard
@@ -165,23 +171,33 @@ public sealed partial class ProfilesWidget : UserControl
                 Info = GetProfileInfo(profile),
                 FanCurveData = fanCurve,
                 IsSelected = isActive,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Top,
             };
 
-            if (cardHeight > 0)
+            if (_cardHeight > 0)
             {
-                card.Height = cardHeight;
+                card.Height = _cardHeight;
             }
 
             card.CardTapped += OnProfileCardTapped;
-            CardsGrid.Children.Add(card);
-            Grid.SetRow(card, row);
-            Grid.SetColumn(card, col);
+            rowGrid.Children.Add(card);
+            Grid.SetColumn(card, c);
         }
+
+        // Wrap the row in a container with bottom margin for the gap
+        var container = new Grid
+        {
+            Margin = new Thickness(0, 0, 0, 12),
+            Height = _containerHeight > 0 ? _containerHeight : double.NaN,
+            Children = { rowGrid }
+        };
+
+        return container;
     }
 
     /// <summary>
     /// Get info text for a profile.
-    /// Fixed: TDP values. Adaptive: tuning type uppercase.
     /// </summary>
     private string GetProfileInfo(Profile profile)
     {
@@ -194,7 +210,9 @@ public sealed partial class ProfilesWidget : UserControl
 
     private async void OnProfileCardTapped(object? sender, EventArgs e)
     {
-        if (sender is ProfileCard card && !string.IsNullOrEmpty(card.ProfileId))
+        // Walk up the visual tree to find the ProfileCard (tapped element may be a child)
+        var card = FindParent<ProfileCard>(sender as DependencyObject);
+        if (card != null && !string.IsNullOrEmpty(card.ProfileId))
         {
             try
             {
@@ -205,6 +223,20 @@ public sealed partial class ProfilesWidget : UserControl
                 await ShowErrorAsync(Loc.Dialog_ApplyFailed, ex.Message);
             }
         }
+    }
+
+    /// <summary>
+    /// Walk up the visual tree to find the nearest parent of type T.
+    /// </summary>
+    private static T? FindParent<T>(DependencyObject? child) where T : DependencyObject
+    {
+        var current = child;
+        while (current != null)
+        {
+            if (current is T match) return match;
+            current = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(current);
+        }
+        return null;
     }
 
     private async Task ShowErrorAsync(string title, string message)
@@ -218,213 +250,5 @@ public sealed partial class ProfilesWidget : UserControl
         };
         await dialog.ShowAsync();
     }
-
-    // ===== Cell sizing =====
-
-    /// <summary>
-    /// Compute the widget grid cell width (== standard widget row height for square cells).
-    /// cellWidth = (CardsGrid width - (columns-1) * spacing) / columns.
-    /// </summary>
-    private double ComputeCellWidth()
-    {
-        var columns = _widgetService.Columns;
-        var gridWidth = CardsGrid.ActualWidth;
-        if (gridWidth <= 0 || columns <= 0) return 0;
-        var w = (gridWidth - (columns - 1) * 8.0) / columns;
-        return w > 0 ? w : 0;
-    }
-
-    // ===== Snap scrolling (mirrors WidgetGridHost snap logic) =====
-
-    /// <summary>
-    /// Pointer wheel: record scroll direction for snap.
-    /// Wheel events only fire for mouse/touchpad (never touch), so this
-    /// also clears the _isTouch flag to re-enable snap.
-    /// </summary>
-    private void OnCardsPointerWheelChanged(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
-    {
-        _isTouch = false;
-
-        var props = e.GetCurrentPoint(CardsScroller).Properties;
-        var mouseWheelDelta = props.MouseWheelDelta;
-        if (mouseWheelDelta == 0) return;
-
-        // Positive delta = wheel forward = scroll UP (content moves down)
-        _lastScrollDirection = mouseWheelDelta > 0 ? -1.0 : 1.0;
-        _wheelScrollPending = true;
-    }
-
-    /// <summary>
-    /// ViewChanged: snap to card-height multiples. Wheel uses boundary stepping;
-    /// non-wheel tracks direction and snaps on settle.
-    /// Touch input skips snap entirely for natural free-form scrolling.
-    /// </summary>
-    private void OnCardsScrollerViewChanged(object sender, ScrollViewerViewChangedEventArgs e)
-    {
-        // Touch input: let ScrollViewer handle scrolling naturally (no snap)
-        if (_isTouch) return;
-
-        if (_isSnapping)
-        {
-            if (!e.IsIntermediate) _isSnapping = false;
-            return;
-        }
-
-        var rowUnit = _cardHeight + 8.0; // card height + RowSpacing
-        if (rowUnit <= 0) return;
-
-        if (e.IsIntermediate)
-        {
-            if (_wheelScrollPending)
-            {
-                var currentOffset = CardsScroller.VerticalOffset;
-                var snapOffset = ComputeCardsSnapTarget(currentOffset, _lastScrollDirection, rowUnit);
-
-                var maxOffset = Math.Max(0, CardsScroller.ExtentHeight - CardsScroller.ViewportHeight);
-                snapOffset = Math.Clamp(snapOffset, 0, maxOffset);
-
-                if (Math.Abs(currentOffset - snapOffset) > 0.5)
-                {
-                    _isSnapping = true;
-                    CardsScroller.ChangeView(null, snapOffset, null, disableAnimation: false);
-                }
-                return;
-            }
-
-            // Non-wheel: just track scroll direction
-            var currentOffset2 = CardsScroller.VerticalOffset;
-            if (_scrollStartOffset < 0)
-                _scrollStartOffset = currentOffset2;
-            _lastScrollDirection = currentOffset2 - _scrollStartOffset;
-            return;
-        }
-
-        // Final event (scroll settled)
-
-        if (_wheelScrollPending)
-        {
-            _wheelScrollPending = false;
-            var settledOffset = CardsScroller.VerticalOffset;
-            var snapOffset = ComputeCardsSnapTarget(settledOffset, _lastScrollDirection, rowUnit);
-
-            var maxOffset = Math.Max(0, CardsScroller.ExtentHeight - CardsScroller.ViewportHeight);
-            snapOffset = Math.Clamp(snapOffset, 0, maxOffset);
-
-            if (Math.Abs(settledOffset - snapOffset) > 1.0)
-            {
-                _isSnapping = true;
-                CardsScroller.ChangeView(null, snapOffset, null, disableAnimation: false);
-            }
-            return;
-        }
-
-        // Non-wheel scroll settled — use tracked direction
-        var finalOffset = CardsScroller.VerticalOffset;
-        var startOffset = _scrollStartOffset >= 0 ? _scrollStartOffset : finalOffset;
-        _scrollStartOffset = -1;
-
-        var snap = ComputeCardsSnapTarget(finalOffset, finalOffset - startOffset, rowUnit);
-        var maxOff = Math.Max(0, CardsScroller.ExtentHeight - CardsScroller.ViewportHeight);
-        snap = Math.Clamp(snap, 0, maxOff);
-
-        if (Math.Abs(finalOffset - snap) > 1.0)
-        {
-            _isSnapping = true;
-            CardsScroller.ChangeView(null, snap, null, disableAnimation: false);
-        }
-    }
-
-    /// <summary>
-    /// Manipulation started: mark this interaction as touch-based.
-    /// Subsequent ViewChanged and InertiaStarting events will skip snap.
-    /// </summary>
-    private void OnCardsScrollerManipulationStarted(
-        object sender,
-        Microsoft.UI.Xaml.Input.ManipulationStartedRoutedEventArgs e)
-    {
-        _isTouch = true;
-    }
-
-    /// <summary>
-    /// Manipulation completed: reset touch tracking for the next interaction.
-    /// </summary>
-    private void OnCardsScrollerManipulationCompleted(
-        object sender,
-        Microsoft.UI.Xaml.Input.ManipulationCompletedRoutedEventArgs e)
-    {
-        _isTouch = false;
-    }
-
-    /// <summary>
-    /// Manipulation inertia ending: snap to nearest card boundary in the
-    /// direction of velocity (falling back to tracked scroll direction).
-    /// Touch input skips snap — let natural inertia decelerate freely.
-    /// </summary>
-    private void OnCardsScrollerInertiaStarting(
-        object sender,
-        Microsoft.UI.Xaml.Input.ManipulationInertiaStartingRoutedEventArgs e)
-    {
-        // Touch input: no snap, let inertia decelerate naturally
-        if (_isTouch) return;
-
-        if (_isSnapping) return;
-
-        var currentOffset = CardsScroller.VerticalOffset;
-        var rowUnit = _cardHeight + 8.0;
-        if (rowUnit <= 0) return;
-
-        var velocity = e.Velocities.Linear.Y;
-        double direction;
-        if (Math.Abs(velocity) > 0.01)
-            direction = velocity; // positive = scrolling down (content moves up)
-        else
-            direction = _lastScrollDirection;
-
-        var snapOffset = ComputeCardsSnapTarget(currentOffset, direction, rowUnit);
-
-        var maxOffset = Math.Max(0, CardsScroller.ExtentHeight - CardsScroller.ViewportHeight);
-        snapOffset = Math.Clamp(snapOffset, 0, maxOffset);
-
-        if (Math.Abs(currentOffset - snapOffset) > 1.0)
-        {
-            _isSnapping = true;
-            _scrollStartOffset = -1;
-            _lastScrollDirection = 0;
-
-            // Cancel default inertia and start our own animated scroll
-            e.Handled = true;
-            CardsScroller.ChangeView(null, snapOffset, null, disableAnimation: false);
-        }
-    }
-
-    /// <summary>
-    /// Compute the snap target for a given offset and direction.
-    /// Uses tolerance-based rounding to detect exact row boundaries, and
-    /// steps one row in the scroll direction before applying ceiling/floor.
-    /// </summary>
-    private static double ComputeCardsSnapTarget(double currentOffset, double direction, double rowUnit)
-    {
-        var norm = currentOffset / rowUnit;
-        var rounded = Math.Round(norm);
-
-        // If on an exact boundary (within 2% tolerance), step one row in the
-        // scroll direction first — then ceiling/floor lands on the next boundary.
-        if (Math.Abs(norm - rounded) < 0.02)
-        {
-            if (direction < -0.5)
-                return (rounded - 1) * rowUnit;
-            if (direction > 0.5)
-                return (rounded + 1) * rowUnit;
-            return rounded * rowUnit;
-        }
-
-        // Not on boundary — ceiling/floor gets the next boundary in scroll direction
-        if (direction > 0)
-            return Math.Ceiling(norm) * rowUnit;
-        if (direction < 0)
-            return Math.Floor(norm) * rowUnit;
-
-        // No direction — snap to nearest
-        return rounded * rowUnit;
-    }
 }
+

@@ -370,10 +370,44 @@ public sealed partial class WidgetGridHost : UserControl
             Children = { content!, closeButton, resizeButton },
         };
 
+        // For AlwaysFillRow widgets, add top and bottom borders using system spacer brush
+        UIElement containerChild = containerGrid;
+        if (widget.AlwaysFillRow)
+        {
+            var spacerBrush = Application.Current.Resources["DividerStrokeColorDefaultBrush"] as Microsoft.UI.Xaml.Media.Brush;
+            var borderGrid = new Grid();
+            borderGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
+            borderGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            borderGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
+            borderGrid.Children.Add(containerGrid);
+
+            var topBorder = new Border
+            {
+                Height = 1,
+                Background = spacerBrush,
+                VerticalAlignment = VerticalAlignment.Top,
+            };
+            Grid.SetRow(topBorder, 0);
+            borderGrid.Children.Add(topBorder);
+
+            Grid.SetRow(containerGrid, 1);
+
+            var bottomBorder = new Border
+            {
+                Height = 1,
+                Background = spacerBrush,
+                VerticalAlignment = VerticalAlignment.Bottom,
+            };
+            Grid.SetRow(bottomBorder, 2);
+            borderGrid.Children.Add(bottomBorder);
+
+            containerChild = borderGrid;
+        }
+
         var border = new Border
         {
-            CornerRadius = new CornerRadius(WidgetCornerRadius),
-            Child = containerGrid,
+            CornerRadius = widget.AlwaysFillRow ? new CornerRadius(0) : new CornerRadius(WidgetCornerRadius),
+            Child = containerChild,
             RenderTransform = new CompositeTransform(),
         };
 

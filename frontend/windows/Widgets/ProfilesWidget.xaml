@@ -18,16 +18,15 @@
                    TextWrapping="NoWrap"
                    MaxLines="1" />
 
-        <!-- Scrollable grid of profile cards (columns created dynamically) -->
-        <ScrollViewer x:Name="CardsScroller" Grid.Row="1"
+        <!-- ScrollViewer with mandatory vertical snap points: each row snaps into place. -->
+        <ScrollViewer x:Name="RowsScroller" Grid.Row="1"
                       VerticalScrollBarVisibility="Auto"
+                      VerticalScrollMode="Enabled"
+                      VerticalSnapPointsType="Mandatory"
+                      VerticalSnapPointsAlignment="Near"
                       HorizontalScrollBarVisibility="Disabled"
-                      ManipulationMode="System"
-                      ViewChanged="OnCardsScrollerViewChanged"
-                      ManipulationStarted="OnCardsScrollerManipulationStarted"
-                      ManipulationCompleted="OnCardsScrollerManipulationCompleted"
-                      ManipulationInertiaStarting="OnCardsScrollerInertiaStarting">
-            <Grid x:Name="CardsGrid" ColumnSpacing="8" RowSpacing="8" />
+                      HorizontalAlignment="Stretch">
+            <StackPanel x:Name="RowsPanel" Orientation="Vertical" Spacing="0" />
         </ScrollViewer>
     </Grid>
 </UserControl>

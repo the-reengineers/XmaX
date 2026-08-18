@@ -6,6 +6,8 @@
   <br>Designed to be a bloat-free and fully functional alternative to the OneXConsole</p>
 </div>
 
+**WARNING: This is still in development and not in any state for use.**
+
 ## How It Works
 ### Backend
 

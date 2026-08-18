@@ -113,18 +113,11 @@ public static class HomeWidgetFactory
     }
 
     /// <summary>
-    /// Create profiles widget wrapped in a ScrollViewer.
-    /// In the v2 framework, profiles uses a fixed row span with internal scrolling
-    /// instead of auto-expanding rows.
+    /// Create profiles widget with built-in scrolling.
+    /// The widget handles vertical overflow internally.
     /// </summary>
     private static object CreateProfilesContent()
     {
-        var profilesWidget = new ProfilesWidget();
-        return new ScrollViewer
-        {
-            Content = profilesWidget,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-        };
+        return new ProfilesWidget();
     }
 }

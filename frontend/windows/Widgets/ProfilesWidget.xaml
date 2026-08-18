@@ -6,7 +6,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d">
 
-    <Grid Padding="4" RowSpacing="8">
+    <Grid x:Name="RootGrid" Padding="0 4" RowSpacing="8">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -18,7 +18,16 @@
                    TextWrapping="NoWrap"
                    MaxLines="1" />
 
-        <!-- Grid of profile cards (columns created dynamically) -->
-        <Grid x:Name="CardsGrid" Grid.Row="1" ColumnSpacing="8" RowSpacing="8" />
+        <!-- Scrollable grid of profile cards (columns created dynamically) -->
+        <ScrollViewer x:Name="CardsScroller" Grid.Row="1"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      ManipulationMode="System"
+                      ViewChanged="OnCardsScrollerViewChanged"
+                      ManipulationStarted="OnCardsScrollerManipulationStarted"
+                      ManipulationCompleted="OnCardsScrollerManipulationCompleted"
+                      ManipulationInertiaStarting="OnCardsScrollerInertiaStarting">
+            <Grid x:Name="CardsGrid" ColumnSpacing="8" RowSpacing="8" />
+        </ScrollViewer>
     </Grid>
 </UserControl>

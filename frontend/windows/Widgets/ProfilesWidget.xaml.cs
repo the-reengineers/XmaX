@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using XmaX.Models;
 using XmaX.Services;
 
@@ -29,6 +30,13 @@ public sealed partial class ProfilesWidget : UserControl
         RowsScroller.SizeChanged += (_, _) => RebuildRows();
 
         RebuildRows();
+
+        // Forward mouse wheel events to the outer ScrollViewer when this widget
+        // is at its scroll bounds (nested scroll forwarding).
+        RowsScroller.AddHandler(
+            PointerWheelChangedEvent,
+            new PointerEventHandler(OnRowsScrollerPointerWheelChanged),
+            handledEventsToo: true);
     }
 
     private void OnProfileServiceChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -246,6 +254,53 @@ public sealed partial class ProfilesWidget : UserControl
         {
             if (current is T match) return match;
             current = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(current);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Forward mouse wheel events to the outer ScrollViewer when the inner
+    /// ScrollViewer has reached its scroll boundary. This enables nested scroll
+    /// forwarding so the home page continues scrolling when the widget can't.
+    /// </summary>
+    private void OnRowsScrollerPointerWheelChanged(object sender, PointerRoutedEventArgs e)
+    {
+        var delta = e.GetCurrentPoint(RowsScroller).Properties.MouseWheelDelta;
+        var offset = RowsScroller.VerticalOffset;
+        var maxOffset = Math.Max(0, RowsScroller.ExtentHeight - RowsScroller.ViewportHeight);
+
+        // Can the inner ScrollViewer still scroll in the requested direction?
+        bool canScrollUp = delta > 0 && offset > 0.5;
+        bool canScrollDown = delta < 0 && offset < maxOffset - 0.5;
+
+        if (canScrollUp || canScrollDown) return;
+
+        // Inner is at bounds — forward to outer ScrollViewer
+        var outer = FindAncestorScrollViewer();
+        if (outer == null) return;
+
+        var outerMax = Math.Max(0, outer.ExtentHeight - outer.ViewportHeight);
+        var newOffset = Math.Clamp(outer.VerticalOffset - delta, 0, outerMax);
+
+        if (Math.Abs(newOffset - outer.VerticalOffset) > 0.5)
+        {
+            outer.ChangeView(null, newOffset, null, disableAnimation: false);
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>
+    /// Walk up the visual tree to find the nearest ancestor ScrollViewer
+    /// (the WidgetGridHost's HostScrollViewer).
+    /// </summary>
+    private ScrollViewer? FindAncestorScrollViewer()
+    {
+        DependencyObject? current = RowsScroller;
+        while (current != null)
+        {
+            current = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(current);
+            if (current is ScrollViewer sv && sv != RowsScroller)
+                return sv;
         }
         return null;
     }

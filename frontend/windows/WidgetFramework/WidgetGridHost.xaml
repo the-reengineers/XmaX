@@ -11,6 +11,7 @@
                   VerticalScrollBarVisibility="Auto"
                   HorizontalScrollMode="Disabled"
                   ZoomMode="Disabled"
+                  IsVerticalScrollChainingEnabled="True"
                   SizeChanged="OnScrollViewerSizeChanged"
                   ViewChanged="OnScrollViewerViewChanged"
                   ManipulationInertiaStarting="OnScrollViewerManipulationInertiaStarting">

@@ -25,7 +25,8 @@
                       VerticalSnapPointsType="Mandatory"
                       VerticalSnapPointsAlignment="Near"
                       HorizontalScrollBarVisibility="Disabled"
-                      HorizontalAlignment="Stretch">
+                      HorizontalAlignment="Stretch"
+                      IsVerticalScrollChainingEnabled="True">
             <StackPanel x:Name="RowsPanel" Orientation="Vertical" Spacing="0" />
         </ScrollViewer>
     </Grid>

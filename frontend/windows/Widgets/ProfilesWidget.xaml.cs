@@ -185,6 +185,17 @@ public sealed partial class ProfilesWidget : UserControl
             Grid.SetColumn(card, c);
         }
 
+        // Partial rows: left-align at normal column width so cards don't stretch
+        var totalColumns = Math.Max(1, _widgetService.Columns);
+        const double columnSpacing = 8;
+        if (profiles.Count < totalColumns)
+        {
+            rowGrid.HorizontalAlignment = HorizontalAlignment.Left;
+            var cellWidth = ComputeCellWidth();
+            var availablePerCard = cellWidth - columnSpacing + columnSpacing / totalColumns;
+            rowGrid.Width = profiles.Count * availablePerCard + (profiles.Count - 1) * columnSpacing;
+        }
+
         // Wrap the row in a container with bottom margin for the gap
         var container = new Grid
         {

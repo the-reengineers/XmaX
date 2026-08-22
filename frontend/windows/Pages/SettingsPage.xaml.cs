@@ -86,10 +86,15 @@ public sealed partial class SettingsPage : Page
         }
     }
 
-    private void OnNavigateHome() => App.NavigateTo(typeof(HomePage), new SlideNavigationTransitionInfo
+    private void OnNavigateHome()
     {
-        Effect = SlideNavigationTransitionEffect.FromLeft
-    });
+        App.NavigateTo(typeof(HomePage), new SlideNavigationTransitionInfo
+        {
+            Effect = SlideNavigationTransitionEffect.FromLeft
+        });
+        // Update UI for home page (show edit button, settings icon)
+        App.MainWindow?.UpdateUIForHomePage();
+    }
 
     private void OnNavigateSettings()
     {

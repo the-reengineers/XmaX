@@ -464,7 +464,8 @@ public sealed partial class MainWindow : Window
         {
             // Navigate to settings page (entrance from bottom)
             RootFrame.Navigate(typeof(SettingsPage), null, new EntranceNavigationTransitionInfo());
-            SettingsIcon.Glyph = "";  // Home icon (F02C)
+            SettingsIcon.Glyph = "";
+            UpdateUIForSettingsPage();
             ResizeWindowToCurrentConfig();
         }
         else
@@ -474,7 +475,7 @@ public sealed partial class MainWindow : Window
             {
                 Effect = SlideNavigationTransitionEffect.FromLeft
             });
-            SettingsIcon.Glyph = "";  // Settings icon (EB20)
+            UpdateUIForHomePage();
             ResizeWindowToCurrentConfig();
         }
     }
@@ -1002,6 +1003,31 @@ public sealed partial class MainWindow : Window
 
     // ===== Public Navigation Methods =====
 
+    /// <summary>
+    /// Update the settings button glyph to show the settings icon (for home page).
+    /// </summary>
+    public void UpdateSettingsIconForHome()
+    {
+        SettingsIcon.Glyph = "";
+    }
+
+    /// <summary>
+    /// Update UI elements for home page (show edit button, settings icon).
+    /// </summary>
+    public void UpdateUIForHomePage()
+    {
+        UpdateSettingsIconForHome();
+        EditButton.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>
+    /// Update UI elements for settings page (hide edit button, show home icon).
+    /// </summary>
+    public void UpdateUIForSettingsPage()
+    {
+        EditButton.Visibility = Visibility.Collapsed;
+    }
+
     /// <summary>Navigate the main frame to a page type with an optional transition.</summary>
     public void NavigateToPage(Type pageType, NavigationTransitionInfo? transitionInfo = null)
     {
@@ -1234,8 +1260,7 @@ public sealed partial class MainWindow : Window
             {
                 Effect = SlideNavigationTransitionEffect.FromLeft
             });
-            // Reset settings icon back to settings icon
-            SettingsIcon.Glyph = "";
+            UpdateUIForHomePage();
             ResizeWindowToCurrentConfig();
         }
 

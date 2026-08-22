@@ -289,8 +289,52 @@ public sealed partial class MainWindow : Window
         // Load config and apply home layout
         await LoadConfigAsync();
 
+        // Apply theme from config
+        await ApplyThemeFromConfig();
+
         // Navigate to home page by default (after config is loaded)
         RootFrame.Navigate(typeof(HomePage), null, new SuppressNavigationTransitionInfo());
+    }
+
+    /// <summary>
+    /// Apply theme from config file.
+    /// </summary>
+    private async Task ApplyThemeFromConfig()
+    {
+        try
+        {
+            var data = await App.Pipe.SendCommandAsync("get_config").ConfigureAwait(true);
+            var config = System.Text.Json.JsonSerializer.Deserialize<Models.AppConfig>(
+                data.ToJsonString(),
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = false }
+            );
+
+            if (config?.Theme != null)
+            {
+                ApplyTheme(config.Theme);
+            }
+        }
+        catch
+        {
+            // Failed to load config — use system default
+        }
+    }
+
+    /// <summary>
+    /// Apply the specified theme to the application.
+    /// </summary>
+    /// <param name="theme">Theme name: "system", "light", or "dark"</param>
+    public void ApplyTheme(string theme)
+    {
+        var elementTheme = theme.ToLower() switch
+        {
+            "light" => ElementTheme.Light,
+            "dark" => ElementTheme.Dark,
+            _ => ElementTheme.Default
+        };
+
+        // Apply theme to the root frame
+        RootFrame.RequestedTheme = elementTheme;
     }
 
     // ===== System Transparency Effects =====

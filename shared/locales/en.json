@@ -56,6 +56,7 @@
   "form.type_fixed": "Fixed",
   "form.type_adaptive": "Adaptive",
   "form.power_state": "Power State",
+  "form.tdp": "TDP",
   "form.stapm": "STAPM (W)",
   "form.fast": "Fast (W)",
   "form.slow": "Slow (W)",

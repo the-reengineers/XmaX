@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="XmaX.Pages.ProfileEditorPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <ScrollViewer Padding="24,16" VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="16" MaxWidth="500">
+
+            <!-- Name -->
+            <TextBox x:Name="NameBox" />
+
+            <!-- Type selector -->
+            <ComboBox x:Name="TypeCombo" HorizontalAlignment="Stretch" />
+
+            <!-- Power state assignment -->
+            <ComboBox x:Name="PowerStateCombo" HorizontalAlignment="Stretch" />
+
+            <!-- Default profile checkbox -->
+            <CheckBox x:Name="DefaultCheckBox" Visibility="Collapsed" />
+
+            <!-- Fixed profile panel -->
+            <StackPanel x:Name="FixedPanel" Spacing="12">
+                <Slider x:Name="StapmSlider" Minimum="6" Maximum="120" StepFrequency="1" />
+                <Slider x:Name="FastSlider" Minimum="6" Maximum="120" StepFrequency="1" />
+                <Slider x:Name="SlowSlider" Minimum="6" Maximum="120" StepFrequency="1" />
+                <ComboBox x:Name="FanCurveCombo" HorizontalAlignment="Stretch" />
+            </StackPanel>
+
+            <!-- Adaptive profile panel -->
+            <StackPanel x:Name="AdaptivePanel" Spacing="12" Visibility="Collapsed">
+                <ComboBox x:Name="TuningCombo" HorizontalAlignment="Stretch" />
+                <Slider x:Name="TargetTempSlider" Minimum="50" Maximum="100" StepFrequency="1" Value="85" />
+                <Slider x:Name="TdpMaxSlider" Minimum="6" Maximum="120" StepFrequency="1" Value="55" />
+                <Slider x:Name="FanMaxSlider" Minimum="0" Maximum="100" StepFrequency="1" Value="100" />
+            </StackPanel>
+
+            <!-- Buttons -->
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                <Button x:Name="CancelButton" Click="OnCancelClick" />
+                <Button x:Name="SaveButton" Click="OnSaveClick" Style="{StaticResource AccentButtonStyle}" />
+            </StackPanel>
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

@@ -171,13 +171,20 @@ public sealed partial class SettingsPage : Page
             return;
         }
 
+        // ProfileEditorPage: Home > Settings > Profiles > [Profile Name]
+        if (pageType == typeof(ProfileEditorPage) && pageContent is ProfileEditorPage profileEditorPage)
+        {
+            _breadcrumbItems.Add(new BreadcrumbItem { Text = Loc.Title_Profiles });
+            _breadcrumbItems.Add(new BreadcrumbItem { Text = profileEditorPage.GetPageTitle() });
+            return;
+        }
+
         // Sub-pages: Home > Settings > [Page Name]
         string? pageName = pageType switch
         {
             var t when t == typeof(ProfilesSubPage) => Loc.Title_Profiles,
             var t when t == typeof(CoolingSubPage) => Loc.Title_FanCurves,
             var t when t == typeof(PowerStatesSubPage) => Loc.Title_PowerStateAssignments,
-            var t when t == typeof(WidgetPlaygroundSubPage) => Loc.Title_WidgetPlayground,
             _ => null
         };
 

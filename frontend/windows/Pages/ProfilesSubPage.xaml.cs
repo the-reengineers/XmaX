@@ -1,3 +1,4 @@
+using CommunityToolkit.WinUI.Controls;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -55,111 +56,142 @@ public sealed partial class ProfilesSubPage : Page
         ProfilesList.ItemTemplate = null;
     }
 
-    private Grid BuildProfileCard(Profile profile)
+    private SettingsExpander BuildProfileCard(Profile profile)
     {
-        var grid = new Grid
+        var expander = new SettingsExpander
         {
-            Padding = new Thickness(8),
-            ColumnSpacing = 8,
-            Background = (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"],
-            CornerRadius = new CornerRadius(8),
+            Header = profile.Name,
+            Description = profile.IsAdaptive ? GetTuningDisplayText(profile.Tuning) : GetTdpDisplayText(profile.Tdp),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
         };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        // Type icon (adaptive: effe, fixed: edde)
-        var icon = new TextBlock
+        // Header icon (adaptive: effe, fixed: edde)
+        expander.HeaderIcon = new FontIcon
         {
             FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("/Assets/tabler-icons-300.ttf#tabler-icons"),
-            Text = profile.IsAdaptive ? "\U0000EFFE" : "\U0000EDDE",
+            Glyph = profile.IsAdaptive ? "\U0000EFFE" : "\U0000EDDE",
             FontSize = 20,
-            VerticalAlignment = VerticalAlignment.Center,
             Foreground = (Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"],
         };
-        Grid.SetColumn(icon, 0);
-        grid.Children.Add(icon);
 
-        var info = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        info.Children.Add(new TextBlock
+        // Expanded items: Details + Actions
+        if (profile.IsAdaptive)
         {
-            Text = profile.Name,
-            Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
-        });
-        info.Children.Add(new TextBlock
+            // Adaptive profile: Show tuning type
+            var tuningCard = new SettingsCard
+            {
+                Header = Loc.Form_Tuning,
+                Description = GetTuningDisplayText(profile.Tuning),
+            };
+            expander.Items.Add(tuningCard);
+        }
+        else
         {
-            Text = Loc.F("format.tdp_fan", profile.Tdp.Stapm, profile.Tdp.Fast, profile.Tdp.Slow, profile.FanCurve),
-            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-            Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
-        });
-        Grid.SetColumn(info, 1);
-        grid.Children.Add(info);
+            // Fixed profile: Show TDP values and fan curve in one card
+            var detailsCard = new SettingsCard
+            {
+                Header = "Profile Details",
+            };
 
+            // Create custom content for TDP and fan curve
+            var detailsPanel = new StackPanel { Spacing = 8 };
+
+            // TDP section
+            var tdpStack = new StackPanel { Spacing = 2 };
+            tdpStack.Children.Add(new TextBlock
+            {
+                Text = Loc.Form_Tdp,
+                Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+            });
+            tdpStack.Children.Add(new TextBlock
+            {
+                Text = GetTdpDisplayText(profile.Tdp),
+                Style = (Style)Application.Current.Resources["BodyTextBlockStyle"],
+            });
+            detailsPanel.Children.Add(tdpStack);
+
+            // Fan curve section
+            var fanCurveStack = new StackPanel { Spacing = 2 };
+            fanCurveStack.Children.Add(new TextBlock
+            {
+                Text = Loc.Form_FanCurve,
+                Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+            });
+            fanCurveStack.Children.Add(new TextBlock
+            {
+                Text = profile.FanCurve,
+                Style = (Style)Application.Current.Resources["BodyTextBlockStyle"],
+            });
+            detailsPanel.Children.Add(fanCurveStack);
+
+            detailsCard.Content = detailsPanel;
+            expander.Items.Add(detailsCard);
+        }
+
+        // Edit button
+        var editCard = new SettingsCard
+        {
+            Header = "Edit this profile",
+        };
         var editBtn = new Button
         {
             Content = Loc.Button_Edit,
-            VerticalAlignment = VerticalAlignment.Center,
             Tag = profile,
         };
         editBtn.Click += OnEditProfileClick;
-        Grid.SetColumn(editBtn, 2);
-        grid.Children.Add(editBtn);
+        editCard.Content = editBtn;
+        expander.Items.Add(editCard);
 
-        var deleteBtn = new Button
+        // Remove button
+        var removeCard = new SettingsCard
         {
-            Content = Loc.Button_Delete,
-            VerticalAlignment = VerticalAlignment.Center,
+            Header = "Remove this profile",
+        };
+        var removeBtn = new Button
+        {
+            Content = "Remove",
             Tag = profile,
         };
-        deleteBtn.Click += OnDeleteProfileClick;
-        Grid.SetColumn(deleteBtn, 3);
-        grid.Children.Add(deleteBtn);
+        removeBtn.Click += OnDeleteProfileClick;
+        removeCard.Content = removeBtn;
+        expander.Items.Add(removeCard);
 
-        return grid;
+        return expander;
     }
 
     // ===== Profile CRUD =====
 
-    private async void OnCreateProfileClick(object sender, RoutedEventArgs e)
+    private void OnCreateProfileClick(object sender, RoutedEventArgs e)
     {
-        var dialog = new ProfileEditorDialog(null, _viewModel.FanCurves.ToList(), _viewModel.Profiles.ToList()) { XamlRoot = this.XamlRoot };
-        var result = await dialog.ShowAsync();
-
-        if (result == ContentDialogResult.Primary && dialog.ResultProfile != null)
-        {
-            try
-            {
-                var p = dialog.ResultProfile;
-                if (p.IsAdaptive)
-                {
-                    await _viewModel.CreateAdaptiveProfileAsync(p.Name, p.Tuning, p.TargetTempC, p.TdpMaxW, p.FanMaxPercent, p.PowerState);
-                }
-                else
-                {
-                    await _viewModel.CreateFixedProfileAsync(p.Name, p.Tdp.Stapm, p.Tdp.Fast, p.Tdp.Slow, p.FanCurve, p.PowerState);
-                }
-            }
-            catch (Exception ex) { await ShowErrorAsync(Loc.Dialog_CreateFailed, ex.Message); }
-        }
+        // Navigate to editor page for new profile
+        var settingsPage = GetParentSettingsPage();
+        settingsPage?.NavigateToSubPage(typeof(ProfileEditorPage), parameter: null);
     }
 
-    private async void OnEditProfileClick(object sender, RoutedEventArgs e)
+    private void OnEditProfileClick(object sender, RoutedEventArgs e)
     {
         if (sender is Button btn && btn.Tag is Profile profile)
         {
-            var dialog = new ProfileEditorDialog(profile, _viewModel.FanCurves.ToList(), _viewModel.Profiles.ToList()) { XamlRoot = this.XamlRoot };
-            var result = await dialog.ShowAsync();
-
-            if (result == ContentDialogResult.Primary && dialog.ResultProfile != null)
-            {
-                try
-                {
-                    await _viewModel.UpdateProfileAsync(dialog.ResultProfile);
-                }
-                catch (Exception ex) { await ShowErrorAsync(Loc.Dialog_UpdateFailed, ex.Message); }
-            }
+            // Navigate to editor page with the existing profile
+            var settingsPage = GetParentSettingsPage();
+            settingsPage?.NavigateToSubPage(typeof(ProfileEditorPage), parameter: profile);
         }
+    }
+
+    private SettingsPage? GetParentSettingsPage()
+    {
+        // Walk up the visual tree to find the parent SettingsPage
+        DependencyObject current = this;
+        while (current != null)
+        {
+            if (current is SettingsPage page)
+                return page;
+            current = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(current);
+        }
+        return null;
     }
 
     private async void OnDeleteProfileClick(object sender, RoutedEventArgs e)
@@ -185,5 +217,23 @@ public sealed partial class ProfilesSubPage : Page
             XamlRoot = this.XamlRoot,
         };
         await dialog.ShowAsync();
+    }
+
+    // ===== Helper methods =====
+
+    private static string GetTuningDisplayText(string tuning)
+    {
+        return tuning switch
+        {
+            "silent" => Loc.Button_Silent,
+            "default" => Loc.Button_Default,
+            "performance" => Loc.Button_Performance,
+            _ => tuning
+        };
+    }
+
+    private static string GetTdpDisplayText(TdpLimits tdp)
+    {
+        return $"STAPM: {tdp.Stapm}W • Fast: {tdp.Fast}W • Slow: {tdp.Slow}W";
     }
 }

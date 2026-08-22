@@ -56,6 +56,7 @@
   "form.type_fixed": "固定",
   "form.type_adaptive": "自适应",
   "form.power_state": "电源状态",
+  "form.tdp": "TDP",
   "form.stapm": "STAPM (W)",
   "form.fast": "快速 (W)",
   "form.slow": "慢速 (W)",

@@ -10,37 +10,40 @@ using XmaX.ViewModels;
 namespace XmaX.Pages;
 
 /// <summary>
-/// Settings content page: language, theme, persist, auto-start, column count, widget layout, and revert.
+/// Settings content page: language, theme, persist, auto-start, widget layout, and revert.
 /// Hosted inside SettingsPage which manages the breadcrumb header and sub-page navigation.
 /// </summary>
 public sealed partial class SettingsContent : Page
 {
     private readonly SettingsViewModel _viewModel;
-    private bool _isInitializing = true;  // Prevent slider events during initialization
+    private bool _isInitializing = true;  // Prevent events during initialization
 
     public SettingsContent()
     {
         this.InitializeComponent();
 
         // Apply localized text from Loc
-        LanguageLabel.Text = Loc.Settings_Language;
-        ThemeLabel.Text = Loc.Settings_Theme;
-        PersistLabel.Text = Loc.Settings_Persist;
-        PersistDescLabel.Text = Loc.Settings_PersistDesc;
-        AutoStartLabel.Text = Loc.Settings_AutoStart;
-        AutoStartDescLabel.Text = Loc.Settings_AutoStartDesc;
-        ColumnsLabel.Text = Loc.Settings_Columns;
-        RevertButton.Content = Loc.Button_RevertDefaults;
-        FactoryResetLabel.Text = Loc.Settings_RestoreDefaults;
-        FactoryResetDescLabel.Text = Loc.Settings_RestoreDefaultsDesc;
+        LanguageCard.Header = Loc.Settings_Language;
+        ThemeCard.Header = Loc.Settings_Theme;
+        PersistCard.Header = Loc.Settings_Persist;
+        PersistCard.Description = Loc.Settings_PersistDesc;
+        AutoStartCard.Header = Loc.Settings_AutoStart;
+        AutoStartCard.Description = Loc.Settings_AutoStartDesc;
+        FactoryResetCard.Header = Loc.Settings_RestoreDefaults;
+        FactoryResetCard.Description = Loc.Settings_RestoreDefaultsDesc;
         FactoryResetButton.Content = Loc.Settings_RestoreDefaults;
 
         // UMA labels
-        UmaLabel.Text = Loc.Settings_Uma;
-        UmaDescLabel.Text = Loc.Settings_UmaDesc;
+        UmaCard.Header = Loc.Settings_Uma;
+        UmaCard.Description = Loc.Settings_UmaDesc;
 
-        // Sub-page navigation labels are inside ControlTemplate — set after load
-        this.Loaded += OnPageLoaded;
+        // Apply localized text to navigation cards
+        ProfilesCard.Header = Loc.Title_Profiles;
+        ProfilesCard.Description = Loc.Nav_ProfilesDesc;
+        CoolingCard.Header = Loc.Title_FanCurves;
+        CoolingCard.Description = Loc.Nav_CoolingDesc;
+        PowerStatesCard.Header = Loc.Title_PowerStateAssignments;
+        PowerStatesCard.Description = Loc.Nav_PowerStatesDesc;
 
         _viewModel = new SettingsViewModel(App.Pipe, App.WidgetService);
         _viewModel.PropertyChanged += OnViewModelChanged;
@@ -50,7 +53,6 @@ public sealed partial class SettingsContent : Page
 
         InitializeLanguageDropdown();
         InitializeThemeDropdown();
-        InitializeColumnsSlider();
         InitializeUma();
     }
 
@@ -94,16 +96,6 @@ public sealed partial class SettingsContent : Page
         }
     }
 
-    private void InitializeColumnsSlider()
-    {
-        _isInitializing = true;
-        ColumnsSlider.Minimum = 3;
-        ColumnsSlider.Maximum = 4;
-        ColumnsSlider.Value = _viewModel.Columns;
-        ColumnsValue.Text = _viewModel.Columns.ToString();
-        _isInitializing = false;
-    }
-
     private void InitializeUma()
     {
         var umaService = App.UmaService;
@@ -111,13 +103,13 @@ public sealed partial class SettingsContent : Page
 
         if (!umaService.Supported || umaService.AvailableOptions.Count == 0)
         {
-            Logger.Debug("[UMA] InitializeUma: hiding UmaPanel");
-            UmaPanel.Visibility = Visibility.Collapsed;
+            Logger.Debug("[UMA] InitializeUma: hiding UmaCard");
+            UmaCard.Visibility = Visibility.Collapsed;
             return;
         }
 
-        Logger.Debug("[UMA] InitializeUma: showing UmaPanel, populating combo box");
-        UmaPanel.Visibility = Visibility.Visible;
+        Logger.Debug("[UMA] InitializeUma: showing UmaCard, populating combo box");
+        UmaCard.Visibility = Visibility.Visible;
 
         // Defer item population until ComboBox is in the visual tree
         // so we can inherit its font properties for accurate text measurement.
@@ -398,6 +390,8 @@ public sealed partial class SettingsContent : Page
         if (ThemeCombo.SelectedItem is ComboBoxItem item && item.Tag is string theme)
         {
             _viewModel.Theme = theme;
+            // Apply theme immediately
+            App.MainWindow?.ApplyTheme(theme);
         }
     }
 
@@ -409,34 +403,6 @@ public sealed partial class SettingsContent : Page
     private void OnAutoStartToggled(object sender, RoutedEventArgs e)
     {
         _viewModel.AutoStart = AutoStartToggle.IsOn;
-    }
-
-    private void OnColumnsChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
-    {
-        if (_isInitializing) return;
-
-        var value = (int)ColumnsSlider.Value;
-        ColumnsValue.Text = value.ToString();
-        _viewModel.Columns = value;
-    }
-
-    private async void OnRevertClick(object sender, RoutedEventArgs e)
-    {
-        var dialog = new ContentDialog
-        {
-            Title = Loc.Dialog_RevertTitle,
-            Content = Loc.Dialog_RevertMessage,
-            PrimaryButtonText = Loc.Button_Revert,
-            CloseButtonText = Loc.Button_Cancel,
-            DefaultButton = ContentDialogButton.Close,
-            XamlRoot = this.XamlRoot,
-        };
-
-        var result = await dialog.ShowAsync();
-        if (result == ContentDialogResult.Primary)
-        {
-            await _viewModel.RevertToDefaultsAsync();
-        }
     }
 
     private async void OnFactoryResetClick(object sender, RoutedEventArgs e)
@@ -466,7 +432,6 @@ public sealed partial class SettingsContent : Page
                     InitializeThemeDropdown();
                     PersistToggle.IsOn = _viewModel.Persist;
                     AutoStartToggle.IsOn = _viewModel.AutoStart;
-                    InitializeColumnsSlider();
                 });
             }
             catch
@@ -474,43 +439,6 @@ public sealed partial class SettingsContent : Page
                 // Factory reset failed — show error or ignore
             }
         }
-    }
-
-    // ===== Initialization =====
-
-    private void OnPageLoaded(object sender, RoutedEventArgs e)
-    {
-        // Set labels inside ControlTemplate (not accessible by x:Name in code-behind)
-        SetTextInTemplate("ProfilesNavLabel", Loc.Title_Profiles);
-        SetTextInTemplate("ProfilesNavDesc", Loc.Nav_ProfilesDesc);
-        SetTextInTemplate("CoolingNavLabel", Loc.Title_FanCurves);
-        SetTextInTemplate("CoolingNavDesc", Loc.Nav_CoolingDesc);
-        SetTextInTemplate("PowerStatesNavLabel", Loc.Title_PowerStateAssignments);
-        SetTextInTemplate("PowerStatesNavDesc", Loc.Nav_PowerStatesDesc);
-        SetTextInTemplate("PlaygroundNavLabel", Loc.Title_WidgetPlayground);
-        SetTextInTemplate("PlaygroundNavDesc", Loc.Nav_PlaygroundDesc);
-    }
-
-    private void SetTextInTemplate(string name, string text)
-    {
-        if (FindVisualChild<TextBlock>(this, name) is TextBlock tb)
-        {
-            tb.Text = text;
-        }
-    }
-
-    private static T? FindVisualChild<T>(DependencyObject parent, string name) where T : FrameworkElement
-    {
-        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
-        {
-            var child = VisualTreeHelper.GetChild(parent, i);
-            if (child is T fe && fe.Name == name)
-                return fe;
-            var result = FindVisualChild<T>(child, name);
-            if (result != null)
-                return result;
-        }
-        return null;
     }
 
     // ===== Sub-page navigation =====
@@ -535,12 +463,6 @@ public sealed partial class SettingsContent : Page
     {
         var settingsPage = GetParentSettingsPage();
         settingsPage?.NavigateToSubPage(typeof(PowerStatesSubPage), SlideFromRight);
-    }
-
-    private void OnNavigatePlayground(object sender, RoutedEventArgs e)
-    {
-        var settingsPage = GetParentSettingsPage();
-        settingsPage?.NavigateToSubPage(typeof(WidgetPlaygroundSubPage), SlideFromRight);
     }
 
     private SettingsPage? GetParentSettingsPage()
@@ -569,7 +491,6 @@ public sealed partial class SettingsContent : Page
                 InitializeThemeDropdown();
                 PersistToggle.IsOn = _viewModel.Persist;
                 AutoStartToggle.IsOn = _viewModel.AutoStart;
-                InitializeColumnsSlider();
             });
         }
     }

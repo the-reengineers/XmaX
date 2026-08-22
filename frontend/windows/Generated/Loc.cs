@@ -65,6 +65,7 @@ public static class Loc
         ["form.speed"] = @"Speed (%)",
         ["form.stapm"] = @"STAPM (W)",
         ["form.target_temp"] = @"Target Temp (°C)",
+        ["form.tdp"] = @"TDP",
         ["form.tdp_max"] = @"TDP Max (W)",
         ["form.temp"] = @"Temp (°C)",
         ["form.tuning"] = @"Tuning",
@@ -206,6 +207,7 @@ public static class Loc
         ["form.speed"] = @"速度 (%)",
         ["form.stapm"] = @"STAPM (W)",
         ["form.target_temp"] = @"目标温度 (°C)",
+        ["form.tdp"] = @"TDP",
         ["form.tdp_max"] = @"最大 TDP (W)",
         ["form.temp"] = @"温度 (°C)",
         ["form.tuning"] = @"调节",
@@ -478,6 +480,9 @@ public static class Loc
 
     /// <summary>form.target_temp</summary>
     public static string Form_TargetTemp => Get("form.target_temp");
+
+    /// <summary>form.tdp</summary>
+    public static string Form_Tdp => Get("form.tdp");
 
     /// <summary>form.tdp_max</summary>
     public static string Form_TdpMax => Get("form.tdp_max");

@@ -7,7 +7,7 @@
     mc:Ignorable="d">
 
     <ScrollViewer Padding="24,16" VerticalScrollBarVisibility="Auto">
-        <StackPanel Spacing="16" MaxWidth="600" HorizontalAlignment="Center">
+        <StackPanel Spacing="16">
 
             <StackPanel x:Name="PowerStateAssignments" Spacing="8" />
 

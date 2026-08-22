@@ -72,7 +72,7 @@ public sealed partial class ProfilesSubPage : Page
             FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("/Assets/tabler-icons-300.ttf#tabler-icons"),
             Glyph = profile.IsAdaptive ? "\U0000EFFE" : "\U0000EDDE",
             FontSize = 20,
-            Foreground = (Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"],
+            Foreground = (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"],
         };
 
         // Expanded items: Details + Actions

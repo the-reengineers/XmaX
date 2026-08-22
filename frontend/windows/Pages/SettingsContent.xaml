@@ -8,7 +8,7 @@
     mc:Ignorable="d">
 
     <ScrollViewer Padding="24,16" VerticalScrollBarVisibility="Auto">
-        <StackPanel Spacing="4" 600">
+        <StackPanel Spacing="4">
 
             <!-- Language -->
             <controls:SettingsCard x:Name="LanguageCard" Header="Language" Margin="0">

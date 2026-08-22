@@ -8,7 +8,7 @@
     mc:Ignorable="d">
 
     <ScrollViewer Padding="24,16" VerticalScrollBarVisibility="Auto">
-        <StackPanel Spacing="16" MaxWidth="500">
+        <StackPanel Spacing="16">
 
             <!-- Name -->
             <TextBox x:Name="NameBox" />

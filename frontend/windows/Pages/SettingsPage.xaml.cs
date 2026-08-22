@@ -38,8 +38,8 @@ public sealed partial class SettingsPage : Page
         SubPageFrame.Navigated += OnSubPageNavigated;
         this.KeyDown += OnKeyDown;
 
-        // Navigate to the settings content initially
-        SubPageFrame.Navigate(typeof(SettingsContent));
+        // Navigate to the settings content initially (no animation)
+        SubPageFrame.Navigate(typeof(SettingsContent), null, new SuppressNavigationTransitionInfo());
     }
 
     // ===== Navigation =====
@@ -68,7 +68,10 @@ public sealed partial class SettingsPage : Page
     {
         if (SubPageFrame.CanGoBack)
         {
-            SubPageFrame.GoBack();
+            SubPageFrame.GoBack(new SlideNavigationTransitionInfo
+            {
+                Effect = SlideNavigationTransitionEffect.FromRight
+            });
         }
     }
 
@@ -83,7 +86,10 @@ public sealed partial class SettingsPage : Page
         }
     }
 
-    private void OnNavigateHome() => App.NavigateTo(typeof(HomePage));
+    private void OnNavigateHome() => App.NavigateTo(typeof(HomePage), new SlideNavigationTransitionInfo
+    {
+        Effect = SlideNavigationTransitionEffect.FromLeft
+    });
 
     private void OnNavigateSettings()
     {
@@ -92,7 +98,10 @@ public sealed partial class SettingsPage : Page
         {
             _breadcrumbItems.RemoveAt(_breadcrumbItems.Count - 1);
         }
-        SubPageFrame.Navigate(typeof(SettingsContent));
+        SubPageFrame.Navigate(typeof(SettingsContent), null, new SlideNavigationTransitionInfo
+        {
+            Effect = SlideNavigationTransitionEffect.FromLeft
+        });
     }
 
     private void OnBreadcrumbItemClicked(BreadcrumbBar sender, BreadcrumbBarItemClickedEventArgs args)
@@ -106,22 +115,36 @@ public sealed partial class SettingsPage : Page
         {
             OnNavigateSettings();
         }
+        else if (args.Index >= 2)
+        {
+            // Sub-page breadcrumb clicked — navigate back to that level
+            // For now, just go back one level (e.g., Fan Curves > Curve Name → Fan Curves)
+            if (SubPageFrame.CanGoBack)
+            {
+                SubPageFrame.GoBack(new SlideNavigationTransitionInfo
+                {
+                    Effect = SlideNavigationTransitionEffect.FromRight
+                });
+            }
+        }
     }
 
-    public void NavigateToSubPage(Type pageType, NavigationTransitionInfo? transitionInfo = null)
+    public void NavigateToSubPage(Type pageType, object? parameter = null, NavigationTransitionInfo? transitionInfo = null)
     {
-        if (transitionInfo != null)
-            SubPageFrame.Navigate(pageType, null, transitionInfo);
-        else
-            SubPageFrame.Navigate(pageType);
+        // Default to slide-from-right transition for forward navigation
+        var transition = transitionInfo ?? new SlideNavigationTransitionInfo
+        {
+            Effect = SlideNavigationTransitionEffect.FromRight
+        };
+        SubPageFrame.Navigate(pageType, parameter, transition);
     }
 
     private void OnSubPageNavigated(object sender, NavigationEventArgs e)
     {
-        UpdateBreadcrumb(e.SourcePageType);
+        UpdateBreadcrumb(e.SourcePageType, e.Content);
     }
 
-    private void UpdateBreadcrumb(Type pageType)
+    private void UpdateBreadcrumb(Type pageType, object? pageContent)
     {
         // Remove any existing sub-page items (keep Home and Settings)
         while (_breadcrumbItems.Count > 2)
@@ -132,6 +155,14 @@ public sealed partial class SettingsPage : Page
         // SettingsContent: Home > Settings (already in the collection)
         if (pageType == typeof(SettingsContent))
         {
+            return;
+        }
+
+        // FanCurveEditorPage: Home > Settings > Fan Curves > [Curve Name]
+        if (pageType == typeof(FanCurveEditorPage) && pageContent is FanCurveEditorPage editorPage)
+        {
+            _breadcrumbItems.Add(new BreadcrumbItem { Text = Loc.Title_FanCurves });
+            _breadcrumbItems.Add(new BreadcrumbItem { Text = editorPage.GetPageTitle() });
             return;
         }
 

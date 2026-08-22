@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page x:Class="XmaX.Pages.FanCurveEditorPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+      mc:Ignorable="d">
+
+    <ScrollViewer Padding="24,16" VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="16" MaxWidth="500">
+
+            <!-- Name -->
+            <TextBox x:Name="NameBox" />
+
+            <!-- Graph -->
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    CornerRadius="8" Padding="16" HorizontalAlignment="Center">
+                <widgets:FanCurveGraph x:Name="Graph"
+                    xmlns:widgets="using:XmaX.Widgets"
+                    Width="400" Height="400" />
+            </Border>
+
+            <!-- Buttons -->
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                <Button x:Name="CancelButton" Click="OnCancelClick" />
+                <Button x:Name="SaveButton" Click="OnSaveClick" Style="{StaticResource AccentButtonStyle}" />
+            </StackPanel>
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

@@ -290,7 +290,7 @@ public sealed partial class MainWindow : Window
         await LoadConfigAsync();
 
         // Navigate to home page by default (after config is loaded)
-        RootFrame.Navigate(typeof(HomePage));
+        RootFrame.Navigate(typeof(HomePage), null, new SuppressNavigationTransitionInfo());
     }
 
     // ===== System Transparency Effects =====
@@ -462,15 +462,18 @@ public sealed partial class MainWindow : Window
     {
         if (RootFrame.CurrentSourcePageType != typeof(SettingsPage))
         {
-            // Navigate to settings page
-            RootFrame.Navigate(typeof(SettingsPage));
+            // Navigate to settings page (entrance from bottom)
+            RootFrame.Navigate(typeof(SettingsPage), null, new EntranceNavigationTransitionInfo());
             SettingsIcon.Glyph = "";  // Home icon (F02C)
             ResizeWindowToCurrentConfig();
         }
         else
         {
-            // Navigate back to home page
-            RootFrame.Navigate(typeof(Pages.HomePage));
+            // Navigate back to home page (slide from left)
+            RootFrame.Navigate(typeof(Pages.HomePage), null, new SlideNavigationTransitionInfo
+            {
+                Effect = SlideNavigationTransitionEffect.FromLeft
+            });
             SettingsIcon.Glyph = "";  // Settings icon (EB20)
             ResizeWindowToCurrentConfig();
         }
@@ -1002,10 +1005,8 @@ public sealed partial class MainWindow : Window
     /// <summary>Navigate the main frame to a page type with an optional transition.</summary>
     public void NavigateToPage(Type pageType, NavigationTransitionInfo? transitionInfo = null)
     {
-        if (transitionInfo != null)
-            RootFrame.Navigate(pageType, null, transitionInfo);
-        else
-            RootFrame.Navigate(pageType);
+        var transition = transitionInfo ?? new SlideNavigationTransitionInfo { Effect = SlideNavigationTransitionEffect.FromRight };
+        RootFrame.Navigate(pageType, null, transition);
     }
 
     /// <summary>Navigate the main frame back to the previous page with a slide-from-left transition.</summary>
@@ -1013,7 +1014,7 @@ public sealed partial class MainWindow : Window
     {
         if (RootFrame.CanGoBack)
         {
-            var transition = new SlideNavigationTransitionInfo { Effect = SlideNavigationTransitionEffect.FromRight };
+            var transition = new SlideNavigationTransitionInfo { Effect = SlideNavigationTransitionEffect.FromLeft };
             RootFrame.GoBack(transition);
         }
     }
@@ -1229,7 +1230,10 @@ public sealed partial class MainWindow : Window
         // Navigate to home page if not already there
         if (RootFrame.CurrentSourcePageType != typeof(Pages.HomePage))
         {
-            RootFrame.Navigate(typeof(Pages.HomePage));
+            RootFrame.Navigate(typeof(Pages.HomePage), null, new SlideNavigationTransitionInfo
+            {
+                Effect = SlideNavigationTransitionEffect.FromLeft
+            });
             // Reset settings icon back to settings icon
             SettingsIcon.Glyph = "";
             ResizeWindowToCurrentConfig();

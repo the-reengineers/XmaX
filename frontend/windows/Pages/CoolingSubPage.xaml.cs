@@ -96,52 +96,34 @@ public sealed partial class CoolingSubPage : Page
 
     // ===== Fan Curve CRUD Handlers =====
 
-    private async void OnCreateFanCurveClick(object sender, RoutedEventArgs e)
+    private void OnCreateFanCurveClick(object sender, RoutedEventArgs e)
     {
-        var dialog = new FanCurveEditorDialog(null) { XamlRoot = this.XamlRoot };
-        var result = await dialog.ShowAsync();
-
-        if (dialog.ValidationError != null)
-        {
-            await ShowErrorAsync(Loc.Dialog_InvalidFanCurve, dialog.ValidationError);
-            return;
-        }
-
-        if (result == ContentDialogResult.Primary && dialog.ResultCurve != null)
-        {
-            try
-            {
-                var c = dialog.ResultCurve;
-                await _viewModel.CreateFanCurveAsync(c.Name, c.Points);
-            }
-            catch (Exception ex) { await ShowErrorAsync(Loc.Dialog_CreateFailed, ex.Message); }
-        }
+        // Navigate to editor page for new fan curve
+        var settingsPage = GetParentSettingsPage();
+        settingsPage?.NavigateToSubPage(typeof(FanCurveEditorPage), parameter: null);
     }
 
-    private async void OnEditFanCurveClick(object sender, RoutedEventArgs e)
+    private void OnEditFanCurveClick(object sender, RoutedEventArgs e)
     {
         if (sender is Button btn && btn.Tag is FanCurve curve)
         {
-            var dialog = new FanCurveEditorDialog(curve) { XamlRoot = this.XamlRoot };
-            var result = await dialog.ShowAsync();
-
-            if (dialog.ValidationError != null)
-            {
-                await ShowErrorAsync(Loc.Dialog_InvalidFanCurve, dialog.ValidationError);
-                return;
-            }
-
-            if (result == ContentDialogResult.Primary && dialog.ResultCurve != null)
-            {
-                try
-                {
-                    curve.Name = dialog.ResultCurve.Name;
-                    curve.Points = dialog.ResultCurve.Points;
-                    await _viewModel.UpdateFanCurveAsync(curve);
-                }
-                catch (Exception ex) { await ShowErrorAsync(Loc.Dialog_UpdateFailed, ex.Message); }
-            }
+            // Navigate to editor page with the existing curve
+            var settingsPage = GetParentSettingsPage();
+            settingsPage?.NavigateToSubPage(typeof(FanCurveEditorPage), parameter: curve);
         }
+    }
+
+    private SettingsPage? GetParentSettingsPage()
+    {
+        // Walk up the visual tree to find the parent SettingsPage
+        DependencyObject current = this;
+        while (current != null)
+        {
+            if (current is SettingsPage page)
+                return page;
+            current = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(current);
+        }
+        return null;
     }
 
     private async void OnDeleteFanCurveClick(object sender, RoutedEventArgs e)

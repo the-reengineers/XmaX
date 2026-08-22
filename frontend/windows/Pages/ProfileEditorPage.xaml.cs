@@ -19,6 +19,12 @@ public sealed partial class ProfileEditorPage : Page
     private string? _editingProfileId;
     private readonly List<FanCurve> _fanCurves;
     private readonly List<Profile> _existingProfiles;
+    private bool _isDirty;
+    private bool _isLoading;
+
+    public bool IsDirty => _isDirty;
+
+    public void MarkAsClean() => _isDirty = false;
 
     public ProfileEditorPage()
     {
@@ -70,6 +76,19 @@ public sealed partial class ProfileEditorPage : Page
 
         CancelButton.Content = Loc.Button_Cancel;
         SaveButton.Content = Loc.Button_Save;
+
+        // Dirty tracking
+        NameBox.TextChanged += MarkDirty;
+        DefaultCheckBox.Checked += MarkDirty;
+        DefaultCheckBox.Unchecked += MarkDirty;
+        StapmSlider.ValueChanged += MarkDirty;
+        FastSlider.ValueChanged += MarkDirty;
+        SlowSlider.ValueChanged += MarkDirty;
+        FanCurveCombo.SelectionChanged += MarkDirty;
+        TuningCombo.SelectionChanged += MarkDirty;
+        TargetTempSlider.ValueChanged += MarkDirty;
+        TdpMaxSlider.ValueChanged += MarkDirty;
+        FanMaxSlider.ValueChanged += MarkDirty;
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -80,7 +99,10 @@ public sealed partial class ProfileEditorPage : Page
         _isNew = _existingProfile == null;
         _editingProfileId = _existingProfile?.Id;
 
+        _isLoading = true;
         PopulateFields(_existingProfile);
+        _isLoading = false;
+        _isDirty = false;
     }
 
     private void PopulateFields(Profile? existingProfile)
@@ -160,6 +182,7 @@ public sealed partial class ProfileEditorPage : Page
         var isAdaptive = TypeCombo.SelectedIndex == 1;
         FixedPanel.Visibility = isAdaptive ? Visibility.Collapsed : Visibility.Visible;
         AdaptivePanel.Visibility = isAdaptive ? Visibility.Visible : Visibility.Collapsed;
+        if (!_isLoading) _isDirty = true;
     }
 
     private void OnPowerStateChanged(object sender, SelectionChangedEventArgs e)
@@ -169,10 +192,21 @@ public sealed partial class ProfileEditorPage : Page
             && psItem.Tag is string psTag
             && !string.IsNullOrEmpty(psTag);
         DefaultCheckBox.Visibility = hasPowerState ? Visibility.Visible : Visibility.Collapsed;
+        if (!_isLoading) _isDirty = true;
     }
 
-    private void OnCancelClick(object sender, RoutedEventArgs e)
+    private void MarkDirty(object sender, object e)
     {
+        if (!_isLoading) _isDirty = true;
+    }
+
+    private async void OnCancelClick(object sender, RoutedEventArgs e)
+    {
+        if (_isDirty)
+        {
+            if (!await ShowUnsavedChangesDialogAsync())
+                return;
+        }
         if (Frame.CanGoBack)
         {
             Frame.GoBack(new SlideNavigationTransitionInfo
@@ -320,5 +354,49 @@ public sealed partial class ProfileEditorPage : Page
             XamlRoot = this.XamlRoot,
         };
         _ = dialog.ShowAsync();
+    }
+
+    protected override void OnNavigatingFrom(NavigatingCancelEventArgs e)
+    {
+        if (_isDirty)
+        {
+            e.Cancel = true;
+            _ = ShowUnsavedChangesDialogAsync().ContinueWith(task =>
+            {
+                if (task.Result)
+                {
+                    _isDirty = false;
+                    Frame.GoBack();
+                }
+            }, TaskScheduler.FromCurrentSynchronizationContext());
+        }
+        else
+        {
+            base.OnNavigatingFrom(e);
+        }
+    }
+
+    private async Task<bool> ShowUnsavedChangesDialogAsync()
+    {
+        var dialog = new ContentDialog
+        {
+            Title = Loc.Dialog_UnsavedChanges,
+            Content = Loc.Dialog_UnsavedChangesMessage,
+            PrimaryButtonText = Loc.Button_Discard,
+            CloseButtonText = Loc.Button_Cancel,
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = this.XamlRoot,
+        };
+
+        App.MainWindow?.SetModalDialogOpen(true);
+        try
+        {
+            var result = await dialog.ShowAsync();
+            return result == ContentDialogResult.Primary;
+        }
+        finally
+        {
+            App.MainWindow?.SetModalDialogOpen(false);
+        }
     }
 }

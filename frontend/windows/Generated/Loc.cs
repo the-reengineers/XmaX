@@ -22,6 +22,7 @@ public static class Loc
         ["button.create_profile"] = @"Create New Profile",
         ["button.default"] = @"Default",
         ["button.delete"] = @"Delete",
+        ["button.discard"] = @"Discard",
         ["button.edit"] = @"Edit",
         ["button.ok"] = @"OK",
         ["button.performance"] = @"Performance",
@@ -40,6 +41,8 @@ public static class Loc
         ["dialog.invalid_fan_curve"] = @"Invalid Fan Curve",
         ["dialog.revert_message"] = @"This will reset all settings to their default values. Continue?",
         ["dialog.revert_title"] = @"Revert to System Defaults",
+        ["dialog.unsaved_changes"] = @"Unsaved Changes",
+        ["dialog.unsaved_changes_message"] = @"You have unsaved changes that will be lost.",
         ["dialog.update_failed"] = @"Update failed",
         ["empty.no_fan_curves_hint"] = @"No fan curves yet. Create one above.",
         ["empty.no_profiles"] = @"No profiles yet",
@@ -119,6 +122,9 @@ public static class Loc
         ["settings.restore_defaults"] = @"Restore Factory Defaults",
         ["settings.restore_defaults_confirm"] = @"Are you sure? This will delete all profiles, fan curves, and settings.",
         ["settings.restore_defaults_desc"] = @"Delete all user configurations and restore default settings",
+        ["settings.section_general"] = @"General",
+        ["settings.section_reset"] = @"Reset",
+        ["settings.section_system"] = @"System",
         ["settings.theme"] = @"Theme",
         ["settings.theme_dark"] = @"Dark",
         ["settings.theme_light"] = @"Light",
@@ -164,6 +170,7 @@ public static class Loc
         ["button.create_profile"] = @"新建配置",
         ["button.default"] = @"默认",
         ["button.delete"] = @"删除",
+        ["button.discard"] = @"放弃",
         ["button.edit"] = @"编辑",
         ["button.ok"] = @"确定",
         ["button.performance"] = @"性能",
@@ -182,6 +189,8 @@ public static class Loc
         ["dialog.invalid_fan_curve"] = @"无效的风扇曲线",
         ["dialog.revert_message"] = @"这将重置所有设置为默认值。继续吗？",
         ["dialog.revert_title"] = @"还原为系统默认值",
+        ["dialog.unsaved_changes"] = @"未保存的更改",
+        ["dialog.unsaved_changes_message"] = @"您有未保存的更改，这些更改将会丢失。",
         ["dialog.update_failed"] = @"更新失败",
         ["empty.no_fan_curves_hint"] = @"暂无风扇曲线。在上方创建一个。",
         ["empty.no_profiles"] = @"暂无配置",
@@ -261,6 +270,9 @@ public static class Loc
         ["settings.restore_defaults"] = @"恢复出厂默认",
         ["settings.restore_defaults_confirm"] = @"确定要删除所有配置文件、风扇曲线和设置吗？",
         ["settings.restore_defaults_desc"] = @"删除所有用户配置并恢复默认设置",
+        ["settings.section_general"] = @"常规",
+        ["settings.section_reset"] = @"重置",
+        ["settings.section_system"] = @"系统",
         ["settings.theme"] = @"主题",
         ["settings.theme_dark"] = @"深色",
         ["settings.theme_light"] = @"浅色",
@@ -352,6 +364,9 @@ public static class Loc
     /// <summary>button.delete</summary>
     public static string Button_Delete => Get("button.delete");
 
+    /// <summary>button.discard</summary>
+    public static string Button_Discard => Get("button.discard");
+
     /// <summary>button.edit</summary>
     public static string Button_Edit => Get("button.edit");
 
@@ -405,6 +420,12 @@ public static class Loc
 
     /// <summary>dialog.revert_title</summary>
     public static string Dialog_RevertTitle => Get("dialog.revert_title");
+
+    /// <summary>dialog.unsaved_changes</summary>
+    public static string Dialog_UnsavedChanges => Get("dialog.unsaved_changes");
+
+    /// <summary>dialog.unsaved_changes_message</summary>
+    public static string Dialog_UnsavedChangesMessage => Get("dialog.unsaved_changes_message");
 
     /// <summary>dialog.update_failed</summary>
     public static string Dialog_UpdateFailed => Get("dialog.update_failed");
@@ -636,6 +657,15 @@ public static class Loc
 
     /// <summary>settings.restore_defaults_desc</summary>
     public static string Settings_RestoreDefaultsDesc => Get("settings.restore_defaults_desc");
+
+    /// <summary>settings.section_general</summary>
+    public static string Settings_SectionGeneral => Get("settings.section_general");
+
+    /// <summary>settings.section_reset</summary>
+    public static string Settings_SectionReset => Get("settings.section_reset");
+
+    /// <summary>settings.section_system</summary>
+    public static string Settings_SectionSystem => Get("settings.section_system");
 
     /// <summary>settings.theme</summary>
     public static string Settings_Theme => Get("settings.theme");

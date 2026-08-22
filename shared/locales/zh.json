@@ -28,6 +28,7 @@
   "button.save": "保存",
   "button.create": "创建",
   "button.cancel": "取消",
+  "button.discard": "放弃",
   "button.ok": "确定",
   "button.revert": "还原",
   "button.add_point": "添加点",
@@ -48,6 +49,8 @@
   "dialog.apply_failed": "应用失败",
   "dialog.revert_title": "还原为系统默认值",
   "dialog.revert_message": "这将重置所有设置为默认值。继续吗？",
+  "dialog.unsaved_changes": "未保存的更改",
+  "dialog.unsaved_changes_message": "您有未保存的更改，这些更改将会丢失。",
 
   "form.name": "名称",
   "form.profile_name": "配置名称",
@@ -86,6 +89,10 @@
   "settings.theme_system": "系统",
   "settings.theme_light": "浅色",
   "settings.theme_dark": "深色",
+
+  "settings.section_general": "常规",
+  "settings.section_system": "系统",
+  "settings.section_reset": "重置",
 
   "settings.uma": "可变显存",
   "settings.uma_desc": "分配系统内存给GPU使用。更改后需要重启系统。",

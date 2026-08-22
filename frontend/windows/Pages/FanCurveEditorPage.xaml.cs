@@ -20,6 +20,12 @@ public sealed partial class FanCurveEditorPage : Page
     private FanCurve? _existingCurve;
     private bool _isNew;
     private readonly ProfileService _profileService;
+    private bool _isDirty;
+    private bool _isLoading;
+
+    public bool IsDirty => _isDirty;
+
+    public void MarkAsClean() => _isDirty = false;
 
     public FanCurveEditorPage()
     {
@@ -30,6 +36,11 @@ public sealed partial class FanCurveEditorPage : Page
         NameBox.Header = Loc.Form_Name;
         CancelButton.Content = Loc.Button_Cancel;
         SaveButton.Content = Loc.Button_Save;
+
+        // Dirty tracking
+        NameBox.TextChanged += MarkDirty;
+        _points.CollectionChanged += MarkDirty;
+        Graph.PointChanged += MarkDirty;
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -38,6 +49,8 @@ public sealed partial class FanCurveEditorPage : Page
 
         _existingCurve = e.Parameter as FanCurve;
         _isNew = _existingCurve == null;
+
+        _isLoading = true;
 
         if (_existingCurve != null)
         {
@@ -59,6 +72,8 @@ public sealed partial class FanCurveEditorPage : Page
         }
 
         Graph.Points = _points;
+        _isLoading = false;
+        _isDirty = false;
     }
 
     /// <summary>
@@ -73,8 +88,13 @@ public sealed partial class FanCurveEditorPage : Page
         return _existingCurve?.Name ?? Loc.Dialog_EditFanCurve;
     }
 
-    private void OnCancelClick(object sender, RoutedEventArgs e)
+    private async void OnCancelClick(object sender, RoutedEventArgs e)
     {
+        if (_isDirty)
+        {
+            if (!await ShowUnsavedChangesDialogAsync())
+                return;
+        }
         if (Frame.CanGoBack)
         {
             Frame.GoBack(new SlideNavigationTransitionInfo
@@ -82,6 +102,11 @@ public sealed partial class FanCurveEditorPage : Page
                 Effect = SlideNavigationTransitionEffect.FromRight
             });
         }
+    }
+
+    private void MarkDirty(object? sender, object e)
+    {
+        if (!_isLoading) _isDirty = true;
     }
 
     private async void OnSaveClick(object sender, RoutedEventArgs e)
@@ -148,5 +173,49 @@ public sealed partial class FanCurveEditorPage : Page
             XamlRoot = this.XamlRoot,
         };
         _ = dialog.ShowAsync();
+    }
+
+    protected override void OnNavigatingFrom(NavigatingCancelEventArgs e)
+    {
+        if (_isDirty)
+        {
+            e.Cancel = true;
+            _ = ShowUnsavedChangesDialogAsync().ContinueWith(task =>
+            {
+                if (task.Result)
+                {
+                    _isDirty = false;
+                    Frame.GoBack();
+                }
+            }, TaskScheduler.FromCurrentSynchronizationContext());
+        }
+        else
+        {
+            base.OnNavigatingFrom(e);
+        }
+    }
+
+    private async Task<bool> ShowUnsavedChangesDialogAsync()
+    {
+        var dialog = new ContentDialog
+        {
+            Title = Loc.Dialog_UnsavedChanges,
+            Content = Loc.Dialog_UnsavedChangesMessage,
+            PrimaryButtonText = Loc.Button_Discard,
+            CloseButtonText = Loc.Button_Cancel,
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = this.XamlRoot,
+        };
+
+        App.MainWindow?.SetModalDialogOpen(true);
+        try
+        {
+            var result = await dialog.ShowAsync();
+            return result == ContentDialogResult.Primary;
+        }
+        finally
+        {
+            App.MainWindow?.SetModalDialogOpen(false);
+        }
     }
 }

@@ -63,9 +63,38 @@ public sealed partial class SettingsPage : Page
 
     /// <summary>
     /// Navigate back in the sub-page frame (called from MainWindow keyboard handler).
+    /// Returns true if navigation occurred (or was handled), false if blocked by unsaved changes.
     /// </summary>
-    public void HandleGoBack()
+    public async Task<bool> HandleGoBack()
     {
+        // Check if current page is an editor with unsaved changes
+        if (HasUnsavedChanges())
+        {
+            var dialog = new ContentDialog
+            {
+                Title = Loc.Dialog_UnsavedChanges,
+                Content = Loc.Dialog_UnsavedChangesMessage,
+                PrimaryButtonText = Loc.Button_Discard,
+                CloseButtonText = Loc.Button_Cancel,
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = this.XamlRoot,
+            };
+
+            App.MainWindow?.SetModalDialogOpen(true);
+            try
+            {
+                var result = await dialog.ShowAsync();
+                if (result != ContentDialogResult.Primary)
+                    return false; // User cancelled, don't navigate
+                // Mark as clean so OnNavigatingFrom doesn't show dialog again
+                HasUnsavedChanges(discard: true);
+            }
+            finally
+            {
+                App.MainWindow?.SetModalDialogOpen(false);
+            }
+        }
+
         if (SubPageFrame.CanGoBack)
         {
             SubPageFrame.GoBack(new SlideNavigationTransitionInfo
@@ -73,6 +102,7 @@ public sealed partial class SettingsPage : Page
                 Effect = SlideNavigationTransitionEffect.FromRight
             });
         }
+        return true;
     }
 
     /// <summary>
@@ -109,8 +139,36 @@ public sealed partial class SettingsPage : Page
         });
     }
 
-    private void OnBreadcrumbItemClicked(BreadcrumbBar sender, BreadcrumbBarItemClickedEventArgs args)
+    private async void OnBreadcrumbItemClicked(BreadcrumbBar sender, BreadcrumbBarItemClickedEventArgs args)
     {
+        // Check if current page is an editor with unsaved changes
+        if (HasUnsavedChanges())
+        {
+            var dialog = new ContentDialog
+            {
+                Title = Loc.Dialog_UnsavedChanges,
+                Content = Loc.Dialog_UnsavedChangesMessage,
+                PrimaryButtonText = Loc.Button_Discard,
+                CloseButtonText = Loc.Button_Cancel,
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = this.XamlRoot,
+            };
+
+            App.MainWindow?.SetModalDialogOpen(true);
+            try
+            {
+                var result = await dialog.ShowAsync();
+                if (result != ContentDialogResult.Primary)
+                    return; // User cancelled, don't navigate
+                // Mark as clean so OnNavigatingFrom doesn't show dialog again
+                HasUnsavedChanges(discard: true);
+            }
+            finally
+            {
+                App.MainWindow?.SetModalDialogOpen(false);
+            }
+        }
+
         // Index 0 = Home, Index 1 = Settings, Index 2+ = Sub-pages
         if (args.Index == 0)
         {
@@ -142,6 +200,28 @@ public sealed partial class SettingsPage : Page
             Effect = SlideNavigationTransitionEffect.FromRight
         };
         SubPageFrame.Navigate(pageType, parameter, transition);
+    }
+
+    /// <summary>
+    /// Check if the current sub-page is an editor with unsaved changes.
+    /// If discard is true, marks the editor as clean (used after user confirms discard).
+    /// </summary>
+    public bool HasUnsavedChanges(bool discard = false)
+    {
+        if (SubPageFrame.Content is Page currentPage)
+        {
+            if (currentPage is ProfileEditorPage profileEditor && profileEditor.IsDirty)
+            {
+                if (discard) profileEditor.MarkAsClean();
+                return true;
+            }
+            if (currentPage is FanCurveEditorPage fanCurveEditor && fanCurveEditor.IsDirty)
+            {
+                if (discard) fanCurveEditor.MarkAsClean();
+                return true;
+            }
+        }
+        return false;
     }
 
     private void OnSubPageNavigated(object sender, NavigationEventArgs e)

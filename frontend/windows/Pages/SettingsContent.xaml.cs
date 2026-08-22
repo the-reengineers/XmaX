@@ -23,6 +23,10 @@ public sealed partial class SettingsContent : Page
         this.InitializeComponent();
 
         // Apply localized text from Loc
+        GeneralHeader.Text = Loc.Settings_SectionGeneral;
+        SystemHeader.Text = Loc.Settings_SectionSystem;
+        ResetHeader.Text = Loc.Settings_SectionReset;
+
         LanguageCard.Header = Loc.Settings_Language;
         ThemeCard.Header = Loc.Settings_Theme;
         PersistCard.Header = Loc.Settings_Persist;

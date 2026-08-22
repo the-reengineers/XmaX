@@ -28,6 +28,7 @@
   "button.save": "Save",
   "button.create": "Create",
   "button.cancel": "Cancel",
+  "button.discard": "Discard",
   "button.ok": "OK",
   "button.revert": "Revert",
   "button.add_point": "Add Point",
@@ -48,6 +49,8 @@
   "dialog.apply_failed": "Apply Failed",
   "dialog.revert_title": "Revert to System Defaults",
   "dialog.revert_message": "This will reset all settings to their default values. Continue?",
+  "dialog.unsaved_changes": "Unsaved Changes",
+  "dialog.unsaved_changes_message": "You have unsaved changes that will be lost.",
 
   "form.name": "Name",
   "form.profile_name": "Profile name",
@@ -86,6 +89,10 @@
   "settings.theme_system": "System",
   "settings.theme_light": "Light",
   "settings.theme_dark": "Dark",
+
+  "settings.section_general": "General",
+  "settings.section_system": "System",
+  "settings.section_reset": "Reset",
 
   "settings.uma": "Variable Graphics Memory",
   "settings.uma_desc": "Allocate system RAM for GPU use. Reboot required to apply changes.",

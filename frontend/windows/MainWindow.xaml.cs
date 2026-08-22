@@ -280,6 +280,9 @@ public sealed partial class MainWindow : Window
         SetupMarquee();
         SetupDynamicResizing();
 
+        // Intercept window close to check for unsaved changes
+        this.AppWindow.Closing += OnAppWindowClosing;
+
         // Load config first (await to ensure layout is loaded before HomePage is created)
         _ = InitializeAsync();
     }
@@ -713,7 +716,89 @@ public sealed partial class MainWindow : Window
             && (DateTime.Now - _lastShowTime).TotalMilliseconds > 500
             && !_isEditMode)
         {
+            // Check if current page is an editor with unsaved changes
+            if (HasUnsavedEditorChanges())
+            {
+                _ = ShowUnsavedChangesOnDeactivationAsync();
+                return;
+            }
+
             HideWindow();
+        }
+    }
+
+    private bool HasUnsavedEditorChanges()
+    {
+        if (RootFrame.Content is Pages.SettingsPage settingsPage)
+        {
+            return settingsPage.HasUnsavedChanges();
+        }
+        return false;
+    }
+
+    private async Task ShowUnsavedChangesOnDeactivationAsync()
+    {
+        SetModalDialogOpen(true);
+        try
+        {
+            var dialog = new ContentDialog
+            {
+                Title = Loc.Dialog_UnsavedChanges,
+                Content = Loc.Dialog_UnsavedChangesMessage,
+                PrimaryButtonText = Loc.Button_Discard,
+                CloseButtonText = Loc.Button_Cancel,
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = RootFrame.XamlRoot,
+            };
+
+            var result = await dialog.ShowAsync();
+            if (result == ContentDialogResult.Primary)
+            {
+                // Mark as clean and hide
+                if (RootFrame.Content is Pages.SettingsPage settingsPage)
+                {
+                    settingsPage.HasUnsavedChanges(discard: true);
+                }
+                HideWindow();
+            }
+        }
+        finally
+        {
+            SetModalDialogOpen(false);
+        }
+    }
+
+    private async void OnAppWindowClosing(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowClosingEventArgs args)
+    {
+        if (HasUnsavedEditorChanges())
+        {
+            args.Cancel = true;
+
+            SetModalDialogOpen(true);
+            try
+            {
+                var dialog = new ContentDialog
+                {
+                    Title = Loc.Dialog_UnsavedChanges,
+                    Content = "You have unsaved changes that will be lost if you exit.",
+                    PrimaryButtonText = Loc.Button_Discard,
+                    CloseButtonText = Loc.Button_Cancel,
+                    DefaultButton = ContentDialogButton.Close,
+                    XamlRoot = RootFrame.XamlRoot,
+                };
+
+                var result = await dialog.ShowAsync();
+                if (result == ContentDialogResult.Primary)
+                {
+                    // User confirmed, close for real by removing handler and closing
+                    this.AppWindow.Closing -= OnAppWindowClosing;
+                    this.Close();
+                }
+            }
+            finally
+            {
+                SetModalDialogOpen(false);
+            }
         }
     }
 

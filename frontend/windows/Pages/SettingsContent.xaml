@@ -10,6 +10,9 @@
     <ScrollViewer Padding="24,16" VerticalScrollBarVisibility="Auto">
         <StackPanel Spacing="4">
 
+            <!-- General section -->
+            <TextBlock x:Name="GeneralHeader" Text="General" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,8,0,4" />
+
             <!-- Language -->
             <controls:SettingsCard x:Name="LanguageCard" Header="Language" Margin="0">
                 <controls:SettingsCard.HeaderIcon>
@@ -42,6 +45,9 @@
                 <ToggleSwitch x:Name="AutoStartToggle" Toggled="OnAutoStartToggled" />
             </controls:SettingsCard>
 
+            <!-- System section -->
+            <TextBlock x:Name="SystemHeader" Text="System" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,16,0,4" />
+
             <!-- Variable Graphics Memory (UMA) -->
             <controls:SettingsCard x:Name="UmaCard" Description="Description" Visibility="Collapsed">
                 <controls:SettingsCard.HeaderIcon>
@@ -70,6 +76,9 @@
                     </controls:SettingsCard.HeaderIcon>
                 </controls:SettingsCard>
             </StackPanel>
+
+            <!-- Reset section -->
+            <TextBlock x:Name="ResetHeader" Text="Reset" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,16,0,4" />
 
             <!-- Factory reset (danger zone) -->
             <controls:SettingsCard x:Name="FactoryResetCard" Description="Description" Margin="0,0,0,0">

@@ -19,15 +19,23 @@ public partial class App : Application
     /// </summary>
     public App()
     {
-        var logPath = Path.Combine(
+        // Parse --debug flag from command line
+        bool debugEnabled = Environment.GetCommandLineArgs().Contains("--debug");
+
+        // Initialize logger (attaches to parent console if --debug)
+        Logger.Init(debugEnabled);
+
+        if (debugEnabled) Logger.Info("Frontend starting with debug logging enabled");
+
+        var crashLogPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "xmax", "frontend_crash.log");
 
         // Crash logging — overwrite on each startup, append within session
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
-            File.WriteAllText(logPath, $"[{DateTime.Now}] Session started\n");
+            Directory.CreateDirectory(Path.GetDirectoryName(crashLogPath)!);
+            File.WriteAllText(crashLogPath, $"[{DateTime.Now}] Session started\n");
         }
         catch { }
 
@@ -35,18 +43,20 @@ public partial class App : Application
         {
             try
             {
-                File.AppendAllText(logPath, $"[{DateTime.Now}] Unhandled: {e.ExceptionObject}\n");
+                File.AppendAllText(crashLogPath, $"[{DateTime.Now}] Unhandled: {e.ExceptionObject}\n");
             }
             catch { }
+            Logger.Error($"Unhandled exception: {e.ExceptionObject}");
         };
 
         Microsoft.UI.Xaml.Application.Current.UnhandledException += (s, e) =>
         {
             try
             {
-                File.AppendAllText(logPath, $"[{DateTime.Now}] XAML Unhandled: {e.Exception}\n");
+                File.AppendAllText(crashLogPath, $"[{DateTime.Now}] XAML Unhandled: {e.Exception}\n");
             }
             catch { }
+            Logger.Error($"XAML Unhandled exception: {e.Exception}");
         };
 
         this.InitializeComponent();
@@ -98,6 +108,7 @@ public partial class App : Application
         MetricsService = new MetricsService(Pipe);
         ProfileService = new ProfileService(Pipe);
         WidgetService = new WidgetService(Pipe);
+        UmaService = new UmaService(Pipe);
 
         // Connect to backend
         Pipe.Connect();
@@ -144,6 +155,9 @@ public partial class App : Application
 
     /// <summary>Widget layout management service.</summary>
     public static WidgetService WidgetService { get; private set; } = null!;
+
+    /// <summary>UMA (Variable Graphics Memory) management service.</summary>
+    public static UmaService UmaService { get; private set; } = null!;
 
     // ===== Shared ViewModel accessors =====
 

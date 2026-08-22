@@ -1,4 +1,5 @@
 #include "metrics.h"
+#include "logger.h"
 
 #include <iostream>
 
@@ -136,16 +137,12 @@ void MetricsPoller::poll_gpu() {
         current_metrics_.gpu.clock_mhz = telemetry.clock_mhz;
         current_metrics_.gpu.temp_c = telemetry.temp_c;
         current_metrics_.gpu.power_w = telemetry.power_w;
-        current_metrics_.gpu.vram_used_mb = telemetry.vram_used_mb;
-        current_metrics_.gpu.vram_total_mb = telemetry.vram_total_mb;
-        std::cout << "[metrics] GPU metrics OK: util=" << telemetry.util_pct
-                  << " clock=" << telemetry.clock_mhz << "MHz"
-                  << " temp=" << (telemetry.temp_c.has_value() ? std::to_string(telemetry.temp_c.value()) : "null")
-                  << std::endl;
+        current_metrics_.gpu.vram_used_bytes = telemetry.vram_used_bytes;
+        current_metrics_.gpu.vram_total_bytes = telemetry.vram_total_bytes;
     } else {
         // GPU metrics unavailable -- set to defaults
         current_metrics_.gpu = GpuMetrics{};
-        std::cout << "[metrics] GPU metrics unavailable (ADLX may have failed to initialize)" << std::endl;
+        log_warn("[metrics] GPU metrics unavailable (ADLX may have failed to initialize)");
     }
 }
 
@@ -156,11 +153,10 @@ void MetricsPoller::poll_ram() {
     MEMORYSTATUSEX mem_status;
     mem_status.dwLength = sizeof(MEMORYSTATUSEX);
     if (GlobalMemoryStatusEx(&mem_status)) {
-        // Convert bytes to GB
-        constexpr double bytes_per_gb = 1024.0 * 1024.0 * 1024.0;
-        current_metrics_.ram.total_gb = static_cast<float>(mem_status.ullTotalPhys / bytes_per_gb);
-        current_metrics_.ram.avail_gb = static_cast<float>(mem_status.ullAvailPhys / bytes_per_gb);
-        current_metrics_.ram.used_gb = current_metrics_.ram.total_gb - current_metrics_.ram.avail_gb;
+        // Store raw bytes
+        current_metrics_.ram.total_bytes = mem_status.ullTotalPhys;
+        current_metrics_.ram.avail_bytes = mem_status.ullAvailPhys;
+        current_metrics_.ram.used_bytes = current_metrics_.ram.total_bytes - current_metrics_.ram.avail_bytes;
         current_metrics_.ram.load_pct = static_cast<float>(mem_status.dwMemoryLoad);
     }
 #endif
@@ -201,7 +197,7 @@ void MetricsPoller::poll_power() {
     } else {
         current_metrics_.power.mode = PowerState::Source::Unknown;
         current_metrics_.power.label = "Unknown";
-        std::cout << "[metrics] Power state EC read failed (WMI may have failed)" << std::endl;
+        log_warn("[metrics] Power state EC read failed (WMI may have failed)");
     }
 
     // Poll charge limit from EC register 0x04A3

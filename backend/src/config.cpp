@@ -1,7 +1,7 @@
 #include "config.h"
+#include "logger.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
-#include <iostream>
 
 using json = nlohmann::json;
 
@@ -28,7 +28,7 @@ Config load_config(const std::filesystem::path& config_path) {
     try {
         std::ifstream file(config_path);
         if (!file.is_open()) {
-            std::cerr << "Failed to open config file: " << config_path << std::endl;
+            log_error("Failed to open config file: " + config_path.string());
             save_config(config_path, config);
             return config;
         }
@@ -108,7 +108,7 @@ Config load_config(const std::filesystem::path& config_path) {
         }
 
     } catch (const json::exception& e) {
-        std::cerr << "Config file corrupted, using defaults: " << e.what() << std::endl;
+        log_error("Config file corrupted, using defaults: " + std::string(e.what()));
         config = get_default_config();
         config.session_persist = config.persist;  // Initialize session_persist
         save_config(config_path, config);
@@ -161,7 +161,7 @@ bool save_config(const std::filesystem::path& config_path, const Config& config)
         return true;
 
     } catch (const std::exception& e) {
-        std::cerr << "Failed to save config: " << e.what() << std::endl;
+        log_error("Failed to save config: " + std::string(e.what()));
         return false;
     }
 }

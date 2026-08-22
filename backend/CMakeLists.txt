@@ -97,6 +97,7 @@ endif()
 # Main executable
 add_executable(${BACKEND_TARGET}
     src/main.cpp
+    src/logger.cpp
     src/protocol.cpp
     src/config.cpp
     src/profiles.cpp
@@ -146,6 +147,7 @@ if(WIN32)
         wbemuuid
         taskschd
         gdiplus
+        dxgi
     )
 
     # Copy PawnIO binary modules to output directory (post-build for multi-config generators)
@@ -188,6 +190,7 @@ enable_testing()
 
 add_executable(${BACKEND_TARGET}_tests
     tests/test_main.cpp
+    src/logger.cpp
     src/protocol.cpp
     src/config.cpp
     src/profiles.cpp

@@ -29,7 +29,9 @@ public sealed partial class RamTile : UserControl
     private void UpdateDisplay()
     {
         var ram = _metricsService.Metrics.Ram;
-        UsageText.Text = Loc.F("metrics.ram_format", $"{ram.UsedGb:F1}", $"{ram.TotalGb:F0}");
+        double usedGb = ram.UsedBytes / (1024.0 * 1024.0 * 1024.0);
+        double totalGb = ram.TotalBytes / (1024.0 * 1024.0 * 1024.0);
+        UsageText.Text = Loc.F("metrics.ram_format", $"{usedGb:F1}", $"{totalGb:F0}");
         LoadText.Text = Loc.F("metrics.load_format", $"{ram.LoadPercent:F0}");
     }
 }

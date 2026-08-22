@@ -1,4 +1,5 @@
 #include "platform.h"
+#include "../logger.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -10,12 +11,15 @@
 #include <tlhelp32.h>
 
 #include <cstdlib>
+#include <iomanip>
 #include <iostream>
 #include <memory>
+#include <sstream>
 #include <mutex>
 #include <shlobj.h>
 #include <shellapi.h>
 #include <gdiplus.h>
+#include <dxgi.h>
 
 // =====================================================================
 // GDI+ Helper for loading PNG as icon
@@ -71,7 +75,7 @@ static bool wmi_init_thread() {
     // Initialize COM apartment (multithreaded)
     hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     if (FAILED(hr)) {
-        std::cerr << "[WMI] CoInitializeEx failed: 0x" << std::hex << hr << std::dec << std::endl;
+        log_error("[WMI] CoInitializeEx failed: 0x" + std::to_string(hr));
         g_wmi_state.failed = true;
         return false;
     }
@@ -82,7 +86,7 @@ static bool wmi_init_thread() {
                               RPC_C_IMP_LEVEL_IMPERSONATE,
                               nullptr, EOAC_NONE, nullptr);
     if (FAILED(hr) && hr != RPC_E_TOO_LATE) {
-        std::cerr << "[WMI] CoInitializeSecurity failed: 0x" << std::hex << hr << std::dec << std::endl;
+        log_error("[WMI] CoInitializeSecurity failed: 0x" + std::to_string(hr));
         CoUninitialize();
         g_wmi_state.failed = true;
         return false;
@@ -93,7 +97,7 @@ static bool wmi_init_thread() {
     hr = CoCreateInstance(CLSID_WbemLocator, nullptr, CLSCTX_INPROC_SERVER,
                           IID_IWbemLocator, reinterpret_cast<void**>(&locator));
     if (FAILED(hr)) {
-        std::cerr << "[WMI] CoCreateInstance(WbemLocator) failed: 0x" << std::hex << hr << std::dec << std::endl;
+        log_error("[WMI] CoCreateInstance(WbemLocator) failed: 0x" + std::to_string(hr));
         CoUninitialize();
         g_wmi_state.failed = true;
         return false;
@@ -103,7 +107,7 @@ static bool wmi_init_thread() {
     hr = locator->ConnectServer((BSTR)L"ROOT\\WMI", nullptr, nullptr, nullptr, 0, nullptr, nullptr, &g_wmi_state.service);
     locator->Release();
     if (FAILED(hr)) {
-        std::cerr << "[WMI] ConnectServer(ROOT\\WMI) failed: 0x" << std::hex << hr << std::dec << std::endl;
+        log_error("[WMI] ConnectServer(ROOT\\WMI) failed: 0x" + std::to_string(hr));
         CoUninitialize();
         g_wmi_state.failed = true;
         return false;
@@ -113,7 +117,7 @@ static bool wmi_init_thread() {
     hr = CoSetProxyBlanket(g_wmi_state.service, RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE, nullptr,
                            RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE, nullptr, EOAC_NONE);
     if (FAILED(hr)) {
-        std::cerr << "[WMI] CoSetProxyBlanket failed: 0x" << std::hex << hr << std::dec << std::endl;
+        log_error("[WMI] CoSetProxyBlanket failed: 0x" + std::to_string(hr));
         g_wmi_state.service->Release();
         g_wmi_state.service = nullptr;
         CoUninitialize();
@@ -127,7 +131,7 @@ static bool wmi_init_thread() {
                                         WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
                                         nullptr, &enumerator);
     if (FAILED(hr)) {
-        std::cerr << "[WMI] ExecQuery(UMAInterface) failed: 0x" << std::hex << hr << std::dec << std::endl;
+        log_error("[WMI] ExecQuery(UMAInterface) failed: 0x" + std::to_string(hr));
         g_wmi_state.service->Release();
         g_wmi_state.service = nullptr;
         CoUninitialize();
@@ -157,7 +161,7 @@ static bool wmi_init_thread() {
     enumerator->Release();
 
     if (!g_wmi_state.uma_instance) {
-        std::cerr << "[WMI] UMAInterface SETUMAWMI instance not found" << std::endl;
+        log_error("[WMI] UMAInterface SETUMAWMI instance not found");
         g_wmi_state.service->Release();
         g_wmi_state.service = nullptr;
         CoUninitialize();
@@ -175,7 +179,7 @@ static bool wmi_init_thread() {
     VariantClear(&path_variant);
 
     if (!g_wmi_state.uma_path) {
-        std::cerr << "[WMI] Failed to get __PATH" << std::endl;
+        log_error("[WMI] Failed to get __PATH");
         g_wmi_state.uma_instance->Release();
         g_wmi_state.uma_instance = nullptr;
         g_wmi_state.service->Release();
@@ -188,7 +192,7 @@ static bool wmi_init_thread() {
     // Get class object for method definitions
     hr = g_wmi_state.service->GetObject((BSTR)L"UMAInterface", 0, nullptr, &g_wmi_state.uma_class, nullptr);
     if (FAILED(hr) || !g_wmi_state.uma_class) {
-        std::cerr << "[WMI] GetObject(UMAInterface class) failed: 0x" << std::hex << hr << std::dec << std::endl;
+        log_error("[WMI] GetObject(UMAInterface class) failed: 0x" + std::to_string(hr));
         SysFreeString(g_wmi_state.uma_path);
         g_wmi_state.uma_path = nullptr;
         g_wmi_state.uma_instance->Release();
@@ -270,6 +274,7 @@ static constexpr uint16_t EC_BATTERY_LIMIT = 0x04A3;
 // =====================================================================
 #include "ADLXHelper.h"
 #include "IPerformanceMonitoring3.h"
+#include "ISystem3.h"
 
 using namespace adlx;
 
@@ -421,14 +426,14 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 
         switch (LOWORD(lParam)) {
             case WM_LBUTTONUP:
-                std::cout << "[tray] Left click received" << std::endl;
+                log_debug("[tray] Left click received");
                 if (callbacks->on_left_click) {
                     callbacks->on_left_click();
                 }
                 return 0;
 
             case WM_RBUTTONUP:
-                std::cout << "[tray] Right click received" << std::endl;
+                log_debug("[tray] Right click received");
                 if (callbacks->on_right_click) {
                     callbacks->on_right_click();
                 }
@@ -461,24 +466,24 @@ public:
         // Initialize GDI+ for image loading (tray icon)
         Gdiplus::GdiplusStartupInput gdiplusStartupInput;
         if (Gdiplus::GdiplusStartup(&gdiplus_token_, &gdiplusStartupInput, nullptr) != Gdiplus::Ok) {
-            std::cerr << "[Hardware] Warning: GDI+ initialization failed (tray icon will use fallback)" << std::endl;
+            log_warn("[Hardware] GDI+ initialization failed (tray icon will use fallback)");
         }
 
         // Initialize PawnIO driver and load blobs
         if (!init_pawnio()) {
-            std::cerr << "[Hardware] Warning: PawnIO initialization failed (SMU and Super I/O writes will fail)" << std::endl;
+            log_warn("[Hardware] PawnIO initialization failed (SMU and Super I/O writes will fail)");
             success = false;
         }
 
         // Initialize ADLX GPU telemetry
         if (!init_adlx()) {
-            std::cerr << "[Hardware] Warning: ADLX initialization failed (GPU metrics will be unavailable)" << std::endl;
+            log_warn("[Hardware] ADLX initialization failed (GPU metrics will be unavailable)");
             success = false;
         }
 
         // Initialize Task Scheduler (lazy init on first use, but try to connect early)
         if (!init_task_scheduler()) {
-            std::cerr << "[Hardware] Warning: Task Scheduler initialization failed (auto-start will be unavailable)" << std::endl;
+            log_warn("[Hardware] Task Scheduler initialization failed (auto-start will be unavailable)");
             success = false;
         }
 
@@ -505,14 +510,14 @@ public:
         }
 
         if (pawnio_device_ == INVALID_HANDLE_VALUE) {
-            std::cerr << "[PawnIO] Cannot open PawnIO device (error " << GetLastError() << ")" << std::endl;
+            log_error("[PawnIO] Cannot open PawnIO device (error " + std::to_string(GetLastError()) + ")");
             return false;
         }
 
         // Create serialization mutex
         pawnio_mutex_ = CreateMutexW(nullptr, FALSE, L"Global\\Access_PCI");
         if (!pawnio_mutex_) {
-            std::cerr << "[PawnIO] Cannot create mutex (error " << GetLastError() << ")" << std::endl;
+            log_error("[PawnIO] Cannot create mutex (error " + std::to_string(GetLastError()) + ")");
             CloseHandle(pawnio_device_);
             pawnio_device_ = INVALID_HANDLE_VALUE;
             return false;
@@ -522,7 +527,7 @@ public:
         wchar_t exe_path[MAX_PATH];
         DWORD len = GetModuleFileNameW(nullptr, exe_path, MAX_PATH);
         if (len == 0 || len >= MAX_PATH) {
-            std::cerr << "[PawnIO] Cannot get executable path" << std::endl;
+            log_error("[PawnIO] Cannot get executable path");
             CloseHandle(pawnio_mutex_);
             pawnio_mutex_ = nullptr;
             CloseHandle(pawnio_device_);
@@ -539,7 +544,7 @@ public:
         if (pawnio_load_blob(smu_path.c_str())) {
             pawnio_smu_loaded_ = true;
         } else {
-            std::cerr << "[PawnIO] Warning: RyzenSMU.bin not loaded (SMU writes will fail)" << std::endl;
+            log_warn("[PawnIO] RyzenSMU.bin not loaded (SMU writes will fail)");
         }
 
         // Load LpcIO.bin
@@ -547,7 +552,7 @@ public:
         if (pawnio_load_blob(lpcio_path.c_str())) {
             pawnio_lpcio_loaded_ = true;
         } else {
-            std::cerr << "[PawnIO] Warning: LpcIO.bin not loaded (Super I/O writes will fail)" << std::endl;
+            log_warn("[PawnIO] LpcIO.bin not loaded (Super I/O writes will fail)");
         }
 
         return true;
@@ -558,7 +563,7 @@ private:
     bool pawnio_load_blob(const char* path) {
         FILE* f = fopen(path, "rb");
         if (!f) {
-            std::cerr << "[PawnIO] Cannot open blob: " << path << std::endl;
+            log_error("[PawnIO] Cannot open blob: " + std::string(path));
             return false;
         }
         fseek(f, 0, SEEK_END);
@@ -570,7 +575,7 @@ private:
         fclose(f);
 
         if (read != static_cast<size_t>(size)) {
-            std::cerr << "[PawnIO] Failed to read blob: " << path << std::endl;
+            log_error("[PawnIO] Failed to read blob: " + std::string(path));
             return false;
         }
 
@@ -585,7 +590,7 @@ private:
             if (error == ERROR_ALREADY_INITIALIZED) {
                 return true;
             }
-            std::cerr << "[PawnIO] Blob load failed (error " << error << "): " << path << std::endl;
+            log_error("[PawnIO] Blob load failed (error " + std::to_string(error) + "): " + std::string(path));
             return false;
         }
 
@@ -892,14 +897,14 @@ public:
             std::filesystem::path self_dir = std::filesystem::path(self_buffer).parent_path();
             std::filesystem::path client_dir = client_path.parent_path();
             info.verified = (filename == "XmaX.exe" && client_dir == self_dir);
-            std::cout << "[verify_peer] client: " << client_path.string()
-                      << " (filename=" << filename << ")" << std::endl;
-            std::cout << "[verify_peer] self_dir: " << self_dir.string() << std::endl;
-            std::cout << "[verify_peer] client_dir: " << client_dir.string() << std::endl;
-            std::cout << "[verify_peer] verified: " << (info.verified ? "true" : "false") << std::endl;
+            log_debug("[verify_peer] client: " + client_path.string()
+                      + " (filename=" + filename + ")");
+            log_debug("[verify_peer] self_dir: " + self_dir.string());
+            log_debug("[verify_peer] client_dir: " + client_dir.string());
+            log_debug("[verify_peer] verified: " + std::string(info.verified ? "true" : "false"));
         } else {
             info.verified = false;
-            std::cerr << "[verify_peer] QueryFullProcessImageNameW(self) failed" << std::endl;
+            log_error("[verify_peer] QueryFullProcessImageNameW(self) failed");
         }
 
         return info;
@@ -1179,7 +1184,7 @@ public:
         return result;
     }
 
-    auto spawn_frontend(const std::filesystem::path& exe_path) -> Result<ChildProcess> override {
+    auto spawn_frontend(const std::filesystem::path& exe_path, bool debug) -> Result<ChildProcess> override {
         // Create Job Object if not already created
         if (!job_handle_) {
             HANDLE job = CreateJobObjectW(nullptr, nullptr);
@@ -1206,6 +1211,12 @@ public:
         }
 
         std::wstring path_wide = exe_path.wstring();
+        // Build command line: "path" [--debug]
+        std::wstring cmd_line = L"\"" + path_wide + L"\"";
+        if (debug) {
+            cmd_line += L" --debug";
+        }
+
         STARTUPINFOW si{};
         si.cb = sizeof(STARTUPINFOW);
         PROCESS_INFORMATION pi{};
@@ -1222,7 +1233,7 @@ public:
             FreeSid(admin_group);
         }
 
-        std::cout << "[spawn_frontend] Backend elevated: " << (is_admin ? "yes" : "no") << std::endl;
+        log_debug("[spawn_frontend] Backend elevated: " + std::string(is_admin ? "yes" : "no"));
 
         BOOL success = FALSE;
 
@@ -1234,7 +1245,7 @@ public:
             HWND explorer_hwnd = FindWindowW(L"Progman", nullptr); // Desktop window
             if (explorer_hwnd) {
                 GetWindowThreadProcessId(explorer_hwnd, &explorer_pid);
-                std::cout << "[spawn_frontend] Found explorer via Progman, PID: " << explorer_pid << std::endl;
+                log_debug("[spawn_frontend] Found explorer via Progman, PID: " + std::to_string(explorer_pid));
             }
 
             if (explorer_pid == 0) {
@@ -1247,7 +1258,7 @@ public:
                         do {
                             if (_wcsicmp(pe.szExeFile, L"explorer.exe") == 0) {
                                 explorer_pid = pe.th32ProcessID;
-                                std::cout << "[spawn_frontend] Found explorer via snapshot, PID: " << explorer_pid << std::endl;
+                                log_debug("[spawn_frontend] Found explorer via snapshot, PID: " + std::to_string(explorer_pid));
                                 break;
                             }
                         } while (Process32NextW(snapshot, &pe));
@@ -1259,17 +1270,17 @@ public:
             if (explorer_pid != 0) {
                 HANDLE explorer_process = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, explorer_pid);
                 if (explorer_process) {
-                    std::cout << "[spawn_frontend] Opened explorer process" << std::endl;
+                    log_debug("[spawn_frontend] Opened explorer process");
                     HANDLE explorer_token = nullptr;
                     if (OpenProcessToken(explorer_process, TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY | TOKEN_QUERY | TOKEN_ADJUST_DEFAULT, &explorer_token)) {
-                        std::cout << "[spawn_frontend] Got explorer token" << std::endl;
+                        log_debug("[spawn_frontend] Got explorer token");
                         HANDLE duplicated_token = nullptr;
                         if (DuplicateTokenEx(explorer_token, TOKEN_ALL_ACCESS, nullptr, SecurityImpersonation, TokenPrimary, &duplicated_token)) {
-                            std::cout << "[spawn_frontend] Duplicated token, calling CreateProcessWithTokenW" << std::endl;
+                            log_debug("[spawn_frontend] Duplicated token, calling CreateProcessWithTokenW");
                             success = CreateProcessWithTokenW(
                                 duplicated_token,
                                 0,
-                                path_wide.c_str(),
+                                cmd_line.data(),
                                 nullptr,
                                 0,
                                 nullptr,
@@ -1278,32 +1289,32 @@ public:
                                 &pi
                             );
                             if (!success) {
-                                std::cout << "[spawn_frontend] CreateProcessWithTokenW failed: " << GetLastError() << std::endl;
+                                log_error("[spawn_frontend] CreateProcessWithTokenW failed: " + std::to_string(GetLastError()));
                             } else {
-                                std::cout << "[spawn_frontend] CreateProcessWithTokenW result: success" << std::endl;
+                                log_debug("[spawn_frontend] CreateProcessWithTokenW result: success");
                             }
                             CloseHandle(duplicated_token);
                         } else {
-                            std::cout << "[spawn_frontend] DuplicateTokenEx failed: " << GetLastError() << std::endl;
+                            log_error("[spawn_frontend] DuplicateTokenEx failed: " + std::to_string(GetLastError()));
                         }
                         CloseHandle(explorer_token);
                     } else {
-                        std::cout << "[spawn_frontend] OpenProcessToken failed: " << GetLastError() << std::endl;
+                        log_error("[spawn_frontend] OpenProcessToken failed: " + std::to_string(GetLastError()));
                     }
                     CloseHandle(explorer_process);
                 } else {
-                    std::cout << "[spawn_frontend] OpenProcess failed: " << GetLastError() << std::endl;
+                    log_error("[spawn_frontend] OpenProcess failed: " + std::to_string(GetLastError()));
                 }
             } else {
-                std::cout << "[spawn_frontend] Could not find explorer process" << std::endl;
+                log_error("[spawn_frontend] Could not find explorer process");
             }
 
             if (!success) {
                 // Fallback: use CreateProcessW (will inherit elevated token)
-                std::cout << "[spawn_frontend] Falling back to CreateProcessW" << std::endl;
+                log_debug("[spawn_frontend] Falling back to CreateProcessW");
                 success = CreateProcessW(
-                    path_wide.c_str(),
                     nullptr,
+                    cmd_line.data(),
                     nullptr,
                     nullptr,
                     FALSE,
@@ -1316,10 +1327,10 @@ public:
             }
         } else {
             // Backend is not elevated - use normal CreateProcessW
-            std::cout << "[spawn_frontend] Using CreateProcessW (non-elevated)" << std::endl;
+            log_debug("[spawn_frontend] Using CreateProcessW (non-elevated)");
             success = CreateProcessW(
-                path_wide.c_str(),
                 nullptr,
+                cmd_line.data(),
                 nullptr,
                 nullptr,
                 FALSE,
@@ -1332,7 +1343,7 @@ public:
         }
 
         if (!success) {
-            std::cout << "[spawn_frontend] Final CreateProcess failed: " << GetLastError() << std::endl;
+            log_error("[spawn_frontend] Final CreateProcess failed: " + std::to_string(GetLastError()));
             return std::unexpected(ErrorCode::HardwareBusy);
         }
 
@@ -1348,7 +1359,7 @@ public:
         child.pid = pi.dwProcessId;
         child.process_handle = pi.hProcess;
 
-        std::cout << "[spawn_frontend] Frontend spawned with PID: " << child.pid << std::endl;
+        log_debug("[spawn_frontend] Frontend spawned with PID: " + std::to_string(child.pid));
 
         return child;
     }
@@ -1458,13 +1469,20 @@ public:
         if (last_slash != std::wstring::npos) {
             logo_path = logo_path.substr(0, last_slash) + L"\\assets\\logo.png";
         }
-        std::wcout << L"[Tray] Loading icon from: " << logo_path << std::endl;
+        // Convert wstring to string for logging
+        int wide_len = static_cast<int>(logo_path.size());
+        int utf8_len = WideCharToMultiByte(CP_UTF8, 0, logo_path.c_str(), wide_len, nullptr, 0, nullptr, nullptr);
+        std::string logo_path_str(utf8_len, '\0');
+        if (utf8_len > 0) {
+            WideCharToMultiByte(CP_UTF8, 0, logo_path.c_str(), wide_len, &logo_path_str[0], utf8_len, nullptr, nullptr);
+        }
+        log_debug("[Tray] Loading icon from: " + logo_path_str);
         HICON hIcon = load_png_as_icon(logo_path.c_str(), 16);
         if (!hIcon) {
-            std::cerr << "[Tray] Failed to load PNG, using fallback icon" << std::endl;
+            log_error("[Tray] Failed to load PNG, using fallback icon");
             hIcon = LoadIconW(nullptr, MAKEINTRESOURCEW(32512));  // IDI_APPLICATION fallback
         } else {
-            std::cout << "[Tray] Loaded PNG icon successfully" << std::endl;
+            log_debug("[Tray] Loaded PNG icon successfully");
         }
 
         // Add tray icon
@@ -1588,7 +1606,7 @@ public:
         SysFreeString(folder_path);
 
         if (FAILED(hr) || !root_folder) {
-            std::cerr << "[TaskScheduler] Cannot get root folder (error 0x" << std::hex << hr << ")" << std::endl;
+            log_error("[TaskScheduler] Cannot get root folder (error 0x" + std::to_string(hr) + ")");
             return std::unexpected(ErrorCode::HardwareBusy);
         }
 
@@ -1600,7 +1618,7 @@ public:
             root_folder->Release();
 
             if (FAILED(hr) && hr != 0x80070002) {  // 0x80070002 = file not found
-                std::cerr << "[TaskScheduler] Cannot delete task (error 0x" << std::hex << hr << ")" << std::endl;
+                log_error("[TaskScheduler] Cannot delete task (error 0x" + std::to_string(hr) + ")");
                 return std::unexpected(ErrorCode::HardwareBusy);
             }
             return {};
@@ -1684,7 +1702,7 @@ public:
         root_folder->Release();
 
         if (FAILED(hr) || !registered_task) {
-            std::cerr << "[TaskScheduler] Cannot register task (error 0x" << std::hex << hr << ")" << std::endl;
+            log_error("[TaskScheduler] Cannot register task (error 0x" + std::to_string(hr) + ")");
             return std::unexpected(ErrorCode::HardwareBusy);
         }
 
@@ -1769,7 +1787,7 @@ public:
         // Initialize ADLX (uses COM interfaces provided by AMD driver)
         ADLX_RESULT res = adlx_helper_->Initialize();
         if (ADLX_FAILED(res)) {
-            std::cerr << "[ADLX] Initialization failed (result: " << res << ")" << std::endl;
+            log_error("[ADLX] Initialization failed (result: " + std::to_string(res) + ")");
             delete adlx_helper_;
             adlx_helper_ = nullptr;
             return false;
@@ -1798,7 +1816,7 @@ public:
         HRESULT hr = CoCreateInstance(CLSID_TaskScheduler, nullptr, CLSCTX_INPROC_SERVER,
                                       IID_ITaskService, reinterpret_cast<void**>(&task_service_));
         if (FAILED(hr) || !task_service_) {
-            std::cerr << "[TaskScheduler] Cannot create ITaskService (error 0x" << std::hex << hr << ")" << std::endl;
+            log_error("[TaskScheduler] Cannot create ITaskService (error 0x" + std::to_string(hr) + ")");
             task_service_ = nullptr;
             return false;
         }
@@ -1806,7 +1824,7 @@ public:
         // Connect to Task Scheduler (nullptr = local machine, current user)
         hr = task_service_->Connect(_variant_t(), _variant_t(), _variant_t(), _variant_t());
         if (FAILED(hr)) {
-            std::cerr << "[TaskScheduler] Cannot connect (error 0x" << std::hex << hr << ")" << std::endl;
+            log_error("[TaskScheduler] Cannot connect (error 0x" + std::to_string(hr) + ")");
             task_service_->Release();
             task_service_ = nullptr;
             return false;
@@ -1903,25 +1921,273 @@ public:
             }
         }
 
-        // GPU VRAM (MB)
+        // GPU VRAM (ADLX reports MB, convert to bytes)
         if (ADLX_SUCCEEDED(metricsSupport->IsSupportedGPUVRAM(&supported)) && supported) {
             if (ADLX_SUCCEEDED(metrics->GPUVRAM(&intValue))) {
-                telemetry.vram_used_mb = static_cast<uint32_t>(intValue);
+                telemetry.vram_used_bytes = static_cast<uint64_t>(intValue) * 1024ULL * 1024ULL;
             }
         }
 
-        // GPU Shared Memory (MB) - total VRAM including shared
-        IADLXGPUMetricsSupport2Ptr metricsSupport2(metricsSupport);
-        if (metricsSupport2) {
-            if (ADLX_SUCCEEDED(metricsSupport2->IsSupportedGPUSharedMemory(&supported)) && supported) {
-                IADLXGPUMetrics2Ptr metrics2(metrics);
-                if (metrics2 && ADLX_SUCCEEDED(metrics2->GPUSharedMemory(&intValue))) {
-                    telemetry.vram_total_mb = static_cast<uint32_t>(intValue);
+        // Get total dedicated VRAM via DXGI (ADLX doesn't expose this directly)
+        IDXGIFactory1* dxgi_factory = nullptr;
+        if (SUCCEEDED(CreateDXGIFactory1(__uuidof(IDXGIFactory1), (void**)&dxgi_factory))) {
+            IDXGIAdapter1* adapter = nullptr;
+            for (UINT i = 0; dxgi_factory->EnumAdapters1(i, &adapter) != DXGI_ERROR_NOT_FOUND; i++) {
+                DXGI_ADAPTER_DESC1 desc;
+                if (SUCCEEDED(adapter->GetDesc1(&desc))) {
+                    // Pick first discrete GPU (has dedicated video memory, not software renderer)
+                    if (desc.DedicatedVideoMemory > 0 && (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) == 0) {
+                        telemetry.vram_total_bytes = static_cast<uint64_t>(desc.DedicatedVideoMemory);
+                        adapter->Release();
+                        break;
+                    }
                 }
+                adapter->Release();
             }
+            dxgi_factory->Release();
         }
 
         return telemetry;
+    }
+
+    // ===== UMA (Variable Graphics Memory) =====
+
+    auto uma_supported() -> Result<bool> override {
+        if (!adlx_initialized_ || !adlx_helper_) {
+            log_debug("[UMA] ADLX not initialized");
+            return false;
+        }
+
+        std::lock_guard<std::mutex> lock(adlx_mutex_);
+
+        // Get IADLXSystem3 from existing IADLXSystem
+        IADLXSystem3Ptr system3;
+        ADLX_RESULT res = adlx_helper_->GetSystemServices()->QueryInterface(
+            IADLXSystem3::IID(), reinterpret_cast<void**>(&system3));
+        if (ADLX_FAILED(res) || !system3) {
+            log_debug("[UMA] QueryInterface IADLXSystem3 failed: " + std::to_string(res));
+            return false;
+        }
+
+        IADLXVariableGraphicsMemoryPtr vgm;
+        res = system3->GetVariableGraphicsMemory(&vgm);
+        if (ADLX_FAILED(res) || !vgm) {
+            log_debug("[UMA] GetVariableGraphicsMemory failed: " + std::to_string(res));
+            return false;
+        }
+
+        adlx_bool supported = false;
+        res = vgm->IsSupported(&supported);
+        if (ADLX_FAILED(res)) {
+            log_debug("[UMA] IsSupported check failed: " + std::to_string(res));
+            return false;
+        }
+
+        log_debug("[UMA] Variable Graphics Memory supported: " + std::string(supported ? "true" : "false"));
+        return supported != false;
+    }
+
+    auto uma_available_options() -> Result<std::vector<UmaOption>> override {
+        if (!adlx_initialized_ || !adlx_helper_) {
+            return std::unexpected(ErrorCode::SensorUnavailable);
+        }
+
+        std::lock_guard<std::mutex> lock(adlx_mutex_);
+
+        IADLXSystem3Ptr system3;
+        ADLX_RESULT res = adlx_helper_->GetSystemServices()->QueryInterface(
+            IADLXSystem3::IID(), reinterpret_cast<void**>(&system3));
+        if (ADLX_FAILED(res) || !system3) {
+            return std::unexpected(ErrorCode::SensorUnavailable);
+        }
+
+        IADLXVariableGraphicsMemoryPtr vgm;
+        res = system3->GetVariableGraphicsMemory(&vgm);
+        if (ADLX_FAILED(res) || !vgm) {
+            return std::unexpected(ErrorCode::SensorUnavailable);
+        }
+
+        IADLXVariableGraphicsMemoryOptionListPtr options;
+        res = vgm->GetAvailableOptions(&options);
+        if (ADLX_FAILED(res) || !options) {
+            return std::unexpected(ErrorCode::SensorUnavailable);
+        }
+
+        std::vector<UmaOption> result;
+        adlx_uint count = options->Size();
+
+        for (adlx_uint i = 0; i < count; i++) {
+            IADLXVariableGraphicsMemoryOptionPtr option;
+            res = options->At(i, &option);
+            if (ADLX_FAILED(res) || !option) continue;
+
+            UmaOption uma_opt;
+
+            const char* name = nullptr;
+            if (ADLX_SUCCEEDED(option->Name(&name)) && name) {
+                uma_opt.name = name;
+            }
+
+            ADLX_VARIABLE_GRAPHICS_MEMORY_MODE mode;
+            if (ADLX_SUCCEEDED(option->Mode(&mode))) {
+                uma_opt.mode = (mode == VARIABLE_GRAPHICS_MEMORY_MODE_CUSTOM)
+                    ? UmaOption::Mode::Custom
+                    : UmaOption::Mode::Auto;
+            }
+
+            adlx_double carved = 0.0;
+            if (ADLX_SUCCEEDED(option->MemoryCarved(&carved))) {
+                uma_opt.memory_carved_gb = carved;
+            }
+
+            adlx_double remaining = 0.0;
+            if (ADLX_SUCCEEDED(option->MemoryRemaining(&remaining))) {
+                uma_opt.memory_remaining_gb = remaining;
+            }
+
+            // Generate unique id: "<mode>:<memory_carved_gb>"
+            // memory_carved_gb is unique per option, making this a reliable key.
+            {
+                std::string mode_str = (uma_opt.mode == UmaOption::Mode::Custom) ? "custom" : "auto";
+                // Format carved with 1 decimal place for consistency
+                std::ostringstream oss;
+                oss << std::fixed << std::setprecision(1) << uma_opt.memory_carved_gb;
+                uma_opt.id = mode_str + ":" + oss.str();
+            }
+
+            log_debug("[UMA] Option[" + std::to_string(i) + "]: id='" + uma_opt.id
+                + "', name='" + uma_opt.name
+                + "', mode=" + std::to_string(static_cast<int>(uma_opt.mode))
+                + ", carved=" + std::to_string(uma_opt.memory_carved_gb)
+                + " GB, remaining=" + std::to_string(uma_opt.memory_remaining_gb) + " GB");
+
+            result.push_back(std::move(uma_opt));
+        }
+
+        return result;
+    }
+
+    auto uma_current_option() -> Result<UmaOption> override {
+        if (!adlx_initialized_ || !adlx_helper_) {
+            return std::unexpected(ErrorCode::SensorUnavailable);
+        }
+
+        std::lock_guard<std::mutex> lock(adlx_mutex_);
+
+        IADLXSystem3Ptr system3;
+        ADLX_RESULT res = adlx_helper_->GetSystemServices()->QueryInterface(
+            IADLXSystem3::IID(), reinterpret_cast<void**>(&system3));
+        if (ADLX_FAILED(res) || !system3) {
+            return std::unexpected(ErrorCode::SensorUnavailable);
+        }
+
+        IADLXVariableGraphicsMemoryPtr vgm;
+        res = system3->GetVariableGraphicsMemory(&vgm);
+        if (ADLX_FAILED(res) || !vgm) {
+            return std::unexpected(ErrorCode::SensorUnavailable);
+        }
+
+        IADLXVariableGraphicsMemoryOptionPtr option;
+        res = vgm->GetOption(&option);
+        if (ADLX_FAILED(res) || !option) {
+            return std::unexpected(ErrorCode::SensorUnavailable);
+        }
+
+        UmaOption uma_opt;
+
+        const char* name = nullptr;
+        if (ADLX_SUCCEEDED(option->Name(&name)) && name) {
+            uma_opt.name = name;
+        }
+
+        ADLX_VARIABLE_GRAPHICS_MEMORY_MODE mode;
+        if (ADLX_SUCCEEDED(option->Mode(&mode))) {
+            uma_opt.mode = (mode == VARIABLE_GRAPHICS_MEMORY_MODE_CUSTOM)
+                ? UmaOption::Mode::Custom
+                : UmaOption::Mode::Auto;
+        }
+
+        adlx_double carved = 0.0;
+        if (ADLX_SUCCEEDED(option->MemoryCarved(&carved))) {
+            uma_opt.memory_carved_gb = carved;
+        }
+
+        adlx_double remaining = 0.0;
+        if (ADLX_SUCCEEDED(option->MemoryRemaining(&remaining))) {
+            uma_opt.memory_remaining_gb = remaining;
+        }
+
+        // Generate unique id (same scheme as uma_available_options)
+        {
+            std::string mode_str = (uma_opt.mode == UmaOption::Mode::Custom) ? "custom" : "auto";
+            std::ostringstream oss;
+            oss << std::fixed << std::setprecision(1) << uma_opt.memory_carved_gb;
+            uma_opt.id = mode_str + ":" + oss.str();
+        }
+
+        return uma_opt;
+    }
+
+    auto uma_set_option(const std::string& option_id) -> Result<void> override {
+        if (!adlx_initialized_ || !adlx_helper_) {
+            return std::unexpected(ErrorCode::SensorUnavailable);
+        }
+
+        std::lock_guard<std::mutex> lock(adlx_mutex_);
+
+        IADLXSystem3Ptr system3;
+        ADLX_RESULT res = adlx_helper_->GetSystemServices()->QueryInterface(
+            IADLXSystem3::IID(), reinterpret_cast<void**>(&system3));
+        if (ADLX_FAILED(res) || !system3) {
+            return std::unexpected(ErrorCode::SensorUnavailable);
+        }
+
+        IADLXVariableGraphicsMemoryPtr vgm;
+        res = system3->GetVariableGraphicsMemory(&vgm);
+        if (ADLX_FAILED(res) || !vgm) {
+            return std::unexpected(ErrorCode::SensorUnavailable);
+        }
+
+        // Find the option by name
+        IADLXVariableGraphicsMemoryOptionListPtr options;
+        res = vgm->GetAvailableOptions(&options);
+        if (ADLX_FAILED(res) || !options) {
+            return std::unexpected(ErrorCode::SensorUnavailable);
+        }
+
+        adlx_uint count = options->Size();
+
+        for (adlx_uint i = 0; i < count; i++) {
+            IADLXVariableGraphicsMemoryOptionPtr option;
+            res = options->At(i, &option);
+            if (ADLX_FAILED(res) || !option) continue;
+
+            // Build the same unique id we use in uma_available_options
+            const char* raw_name = nullptr;
+            if (!ADLX_SUCCEEDED(option->Name(&raw_name))) continue;
+
+            ADLX_VARIABLE_GRAPHICS_MEMORY_MODE mode_val;
+            if (!ADLX_SUCCEEDED(option->Mode(&mode_val))) continue;
+
+            adlx_double carved_val = 0.0;
+            if (!ADLX_SUCCEEDED(option->MemoryCarved(&carved_val))) continue;
+
+            std::string mode_str = (mode_val == VARIABLE_GRAPHICS_MEMORY_MODE_CUSTOM) ? "custom" : "auto";
+            std::ostringstream oss;
+            oss << std::fixed << std::setprecision(1) << carved_val;
+            std::string id = mode_str + ":" + oss.str();
+
+            if (id == option_id) {
+                // Found it - set this option (triggers reboot)
+                res = vgm->SetOption(option);
+                if (ADLX_FAILED(res)) {
+                    return std::unexpected(ErrorCode::HardwareBusy);
+                }
+                return {};
+            }
+        }
+
+        return std::unexpected(ErrorCode::ProfileNotFound);
     }
 };
 

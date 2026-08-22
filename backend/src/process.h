@@ -35,8 +35,8 @@ public:
     ~ProcessManager();
 
     // Spawn frontend process.
-    // Stores the exe path for respawn.
-    auto spawn(const std::filesystem::path& exe_path) -> Result<void>;
+    // Stores the exe path and debug flag for respawn.
+    auto spawn(const std::filesystem::path& exe_path, bool debug) -> Result<void>;
 
     // Show or hide frontend window.
     auto show_window(bool visible) -> Result<void>;
@@ -73,6 +73,7 @@ private:
 
     mutable std::mutex mutex_;
     std::filesystem::path exe_path_;
+    bool debug_ = false;
     ChildProcess child_;
     bool has_child_ = false;
 

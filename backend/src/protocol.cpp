@@ -119,21 +119,21 @@ std::string serialize_metrics(const Metrics& metrics) {
     } else {
         j["gpu"]["power_w"] = nullptr;
     }
-    if (metrics.gpu.vram_used_mb.has_value()) {
-        j["gpu"]["vram_used_mb"] = metrics.gpu.vram_used_mb.value();
+    if (metrics.gpu.vram_used_bytes.has_value()) {
+        j["gpu"]["vram_used_bytes"] = metrics.gpu.vram_used_bytes.value();
     } else {
-        j["gpu"]["vram_used_mb"] = nullptr;
+        j["gpu"]["vram_used_bytes"] = nullptr;
     }
-    if (metrics.gpu.vram_total_mb.has_value()) {
-        j["gpu"]["vram_total_mb"] = metrics.gpu.vram_total_mb.value();
+    if (metrics.gpu.vram_total_bytes.has_value()) {
+        j["gpu"]["vram_total_bytes"] = metrics.gpu.vram_total_bytes.value();
     } else {
-        j["gpu"]["vram_total_mb"] = nullptr;
+        j["gpu"]["vram_total_bytes"] = nullptr;
     }
 
     // RAM
-    j["ram"]["used_gb"] = metrics.ram.used_gb;
-    j["ram"]["total_gb"] = metrics.ram.total_gb;
-    j["ram"]["avail_gb"] = metrics.ram.avail_gb;
+    j["ram"]["used_bytes"] = metrics.ram.used_bytes;
+    j["ram"]["total_bytes"] = metrics.ram.total_bytes;
+    j["ram"]["avail_bytes"] = metrics.ram.avail_bytes;
     j["ram"]["load_pct"] = metrics.ram.load_pct;
 
     // Fan

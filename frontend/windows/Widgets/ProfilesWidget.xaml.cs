@@ -176,12 +176,20 @@ public sealed partial class ProfilesWidget : UserControl
                 ProfileId = profile.Id,
                 DisplayName = profile.Name,
                 IsAdaptive = profile.IsAdaptive,
-                Info = GetProfileInfo(profile),
                 FanCurveData = fanCurve,
                 IsSelected = isActive,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 VerticalAlignment = VerticalAlignment.Top,
             };
+
+            if (profile.IsAdaptive)
+            {
+                card.Info = profile.Tuning.ToUpper();
+            }
+            else
+            {
+                card.TdpValues = profile.Tdp;
+            }
 
             if (_cardHeight > 0)
             {
@@ -213,18 +221,6 @@ public sealed partial class ProfilesWidget : UserControl
         };
 
         return container;
-    }
-
-    /// <summary>
-    /// Get info text for a profile.
-    /// </summary>
-    private string GetProfileInfo(Profile profile)
-    {
-        if (profile.IsAdaptive)
-        {
-            return profile.Tuning.ToUpper();
-        }
-        return $"{profile.Tdp.Stapm}W · {profile.Tdp.Fast}W · {profile.Tdp.Slow}W";
     }
 
     private async void OnProfileCardTapped(object? sender, EventArgs e)
@@ -314,7 +310,24 @@ public sealed partial class ProfilesWidget : UserControl
             CloseButtonText = Loc.Button_Ok,
             XamlRoot = this.XamlRoot,
         };
-        await dialog.ShowAsync();
+
+        // Prevent light dismiss — only allow closing via button click
+        bool buttonClicked = false;
+        dialog.CloseButtonClick += (s, args) => buttonClicked = true;
+        dialog.Closing += (s, args) =>
+        {
+            if (!buttonClicked) args.Cancel = true;
+        };
+
+        App.MainWindow?.SetModalDialogOpen(true);
+        try
+        {
+            await dialog.ShowAsync();
+        }
+        finally
+        {
+            App.MainWindow?.SetModalDialogOpen(false);
+        }
     }
 }
 

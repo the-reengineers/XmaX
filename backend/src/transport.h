@@ -127,6 +127,9 @@ private:
     auto handle_set_config(const Command& cmd) -> Response;
     auto handle_set_session_persist(const Command& cmd) -> Response;
     auto handle_restore_defaults(const Command& cmd) -> Response;
+    auto handle_get_uma_options(const Command& cmd) -> Response;
+    auto handle_set_uma_option(const Command& cmd) -> Response;
+    auto handle_reboot(const Command& cmd) -> Response;
 
     // Apply all configured settings to hardware (used when session_persist transitions to true)
     void apply_all_settings();

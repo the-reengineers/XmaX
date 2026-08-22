@@ -124,8 +124,8 @@ public class ServiceTests
         var eventJson = """
         {
             "cpu": { "util_pct": 50.5, "clock_mhz": 3500, "temp_c": 82, "package_watts": 65.0 },
-            "gpu": { "util_pct": 95.0, "clock_mhz": 2100, "temp_c": 78, "power_w": 120.0, "vram_used_mb": 8192, "vram_total_mb": 16384 },
-            "ram": { "used_gb": 32.5, "total_gb": 64.0, "avail_gb": 31.5, "load_pct": 50.8 },
+            "gpu": { "util_pct": 95.0, "clock_mhz": 2100, "temp_c": 78, "power_w": 120.0, "vram_used_bytes": 8589934592, "vram_total_bytes": 17179869184 },
+            "ram": { "used_bytes": 34896609280, "total_bytes": 68719476736, "avail_bytes": 33822867456, "load_pct": 50.8 },
             "fan": { "mode": "curve", "speed_pct": 85.0, "rpm": 4200 },
             "power": { "mode": "dc_in", "label": "DC-In", "battery_pct": 100, "charge_limit_pct": 90 },
             "ts": 1722000000

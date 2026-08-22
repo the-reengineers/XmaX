@@ -10,6 +10,7 @@
 #include "process.h"
 #include "transport.h"
 #include "tray.h"
+#include "logger.h"
 
 #include <atomic>
 #include <chrono>
@@ -134,17 +135,27 @@ static void on_terminate() {
 }
 
 int main(int argc, char* argv[]) {
+    // Parse --debug flag before any logging
+    bool debug_enabled = false;
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "--debug") {
+            debug_enabled = true;
+            break;
+        }
+    }
+    init_logger(debug_enabled);
+
 #ifdef _WIN32
     // Check if running elevated; if not, re-launch self as elevated
     if (!is_elevated()) {
-        std::cout << "Requesting elevated permissions...\n";
+        log_info("Requesting elevated permissions...");
         if (relaunch_elevated(argc, argv)) {
             // Successfully launched elevated instance, exit this one
             return 0;
         } else {
             // Failed to elevate (user cancelled or other error)
             // Exit immediately - backend requires elevation for hardware access
-            std::cerr << "Error: Elevated permissions required. Exiting.\n";
+            log_error("Elevated permissions required. Exiting.");
             return 1;
         }
     }
@@ -175,7 +186,7 @@ int main(int argc, char* argv[]) {
         // Failures are non-fatal -- hardware methods will return errors at call time
         bool hw_init = platform->init_hardware();
         if (!hw_init) {
-            std::cerr << "Warning: Some hardware initialization failed (see warnings above)" << std::endl;
+            log_warn("Some hardware initialization failed (see warnings above)");
         }
 
         // Set up signal handlers for graceful shutdown
@@ -185,7 +196,7 @@ int main(int argc, char* argv[]) {
         // Single instance check
         auto lock_result = platform->single_instance_lock();
         if (!lock_result) {
-            std::cerr << "Another instance is already running" << std::endl;
+            log_error("Another instance is already running");
             return 1;
         }
 
@@ -200,9 +211,9 @@ int main(int argc, char* argv[]) {
         Config config = load_config(config_path);
         ProfileStorage profiles = load_profiles(profiles_path);
 
-        std::cout << "XmaX Backend starting..." << std::endl;
-        std::cout << "Data directory: " << data_path.string() << std::endl;
-        std::cout << "Config: persist=" << (config.persist ? "true" : "false") << std::endl;
+        log_info("XmaX Backend starting...");
+        log_info("Data directory: " + data_path.string());
+        log_info("Config: persist=" + std::string(config.persist ? "true" : "false"));
 
         // Create controllers
         auto fan = std::make_unique<FanController>(*platform);
@@ -217,22 +228,22 @@ int main(int argc, char* argv[]) {
         // Detect current power state
         power->update_power_state();
         auto current_power_state = power->current_state();
-        std::cout << "Power state: " << static_cast<int>(current_power_state) << std::endl;
+        log_info("Power state: " + std::to_string(static_cast<int>(current_power_state)));
 
         // If session_persist=true, apply settings from config
         if (config.session_persist) {
-            std::cout << "Applying persisted settings..." << std::endl;
+            log_info("Applying persisted settings...");
 
             // Set initial power state TDP ceiling from hardcoded max
             int initial_tdp_ceiling = power_state_max_tdp(current_power_state);
             adaptive->set_power_state_ceiling(initial_tdp_ceiling);
-            std::cout << "Initial power state TDP ceiling: " << initial_tdp_ceiling << "W" << std::endl;
+            log_info("Initial power state TDP ceiling: " + std::to_string(initial_tdp_ceiling) + "W");
 
             // Apply charge limit
             if (config.charge_limit_pct >= 75 && config.charge_limit_pct <= 100) {
                 auto cl_result = power->write_charge_limit(static_cast<uint8_t>(config.charge_limit_pct));
                 if (!cl_result) {
-                    std::cerr << "Failed to apply charge limit" << std::endl;
+                    log_error("Failed to apply charge limit");
                 }
             }
 
@@ -254,12 +265,12 @@ int main(int argc, char* argv[]) {
                     else if (assigned->tuning == "performance") preset = TuningPreset::Performance;
 
                     adaptive->activate(preset, assigned->target_temp_c, assigned->tdp_max_w, assigned->fan_max_pct);
-                    std::cout << "Applied adaptive profile: " << assigned->name << std::endl;
+                    log_info("Applied adaptive profile: " + assigned->name);
                 } else {
                     // Apply fixed profile
                     auto tdp_result = tdp->write_tdp(assigned->stapm_w, assigned->fast_w, assigned->slow_w);
                     if (!tdp_result) {
-                        std::cerr << "Failed to apply TDP limits" << std::endl;
+                        log_error("Failed to apply TDP limits");
                     }
 
                     if (assigned->fan_curve.has_value()) {
@@ -272,26 +283,26 @@ int main(int argc, char* argv[]) {
                         (void)fan->set_mode(FanState::Mode::Auto);
                     }
 
-                    std::cout << "Applied profile: " << assigned->name << std::endl;
+                    log_info("Applied profile: " + assigned->name);
                 }
             }
         } else {
-            std::cout << "Persist disabled -- hardware at BIOS defaults" << std::endl;
+            log_info("Persist disabled -- hardware at BIOS defaults");
         }
 
         // Start background threads
         poller->start();
-        std::cout << "Metrics poller started" << std::endl;
+        log_info("Metrics poller started");
 
         adaptive->start();
-        std::cout << "Adaptive controller started" << std::endl;
+        log_info("Adaptive controller started");
 
         button->init_app_fun_en();
         button->start();
-        std::cout << "Button monitor started" << std::endl;
+        log_info("Button monitor started");
 
         process_mgr->start_monitor();
-        std::cout << "Process monitor started" << std::endl;
+        log_info("Process monitor started");
 
         // Create transport service and start listening BEFORE spawning frontend,
         // so the pipe is ready when the frontend tries to connect.
@@ -300,19 +311,19 @@ int main(int argc, char* argv[]) {
             config, profiles, config_path, profiles_path
         );
         transport->start();
-        std::cout << "Transport server started" << std::endl;
+        log_info("Transport server started");
 
         // Spawn frontend (look for XmaX.exe next to xmaxsvc.exe)
         auto exe_path = fs::path(platform->self_exe_path()).parent_path() / "XmaX.exe";
         if (fs::exists(exe_path)) {
-            auto spawn_result = process_mgr->spawn(exe_path);
+            auto spawn_result = process_mgr->spawn(exe_path, debug_enabled);
             if (!spawn_result) {
-                std::cerr << "Failed to spawn frontend" << std::endl;
+                log_error("Failed to spawn frontend");
             } else {
-                std::cout << "Frontend spawned (hidden)" << std::endl;
+                log_info("Frontend spawned (hidden)");
             }
         } else {
-            std::cerr << "Frontend executable not found: " << exe_path.string() << std::endl;
+            log_error("Frontend executable not found: " + exe_path.string());
         }
 
         // Wire up callbacks
@@ -322,7 +333,7 @@ int main(int argc, char* argv[]) {
                 // Set power state TDP ceiling from hardcoded max
                 int new_tdp_ceiling = power_state_max_tdp(new_state);
                 adaptive->set_power_state_ceiling(new_tdp_ceiling);
-                std::cout << "[power] State changed, new TDP ceiling: " << new_tdp_ceiling << "W" << std::endl;
+                log_info("[power] State changed, new TDP ceiling: " + std::to_string(new_tdp_ceiling) + "W");
 
                 // Find default profile assigned to new power state
                 const Profile* assigned = nullptr;
@@ -341,7 +352,7 @@ int main(int argc, char* argv[]) {
                         else if (assigned->tuning == "performance") preset = TuningPreset::Performance;
 
                         adaptive->activate(preset, assigned->target_temp_c, assigned->tdp_max_w, assigned->fan_max_pct);
-                        std::cout << "[power] Auto-applied adaptive profile: " << assigned->name << std::endl;
+                        log_info("[power] Auto-applied adaptive profile: " + std::string(assigned->name));
                     } else {
                         (void)tdp->write_tdp(assigned->stapm_w, assigned->fast_w, assigned->slow_w);
 
@@ -356,7 +367,7 @@ int main(int argc, char* argv[]) {
                         }
 
                         adaptive->deactivate();
-                        std::cout << "[power] Auto-applied fixed profile: " << assigned->name << std::endl;
+                        log_info("[power] Auto-applied fixed profile: " + std::string(assigned->name));
                     }
                 }
 
@@ -366,13 +377,13 @@ int main(int argc, char* argv[]) {
                 evt.data = "{}";
                 transport->send_event(evt);
             } else {
-                std::cout << "[power] State changed (session_persist disabled, skipping HW update)" << std::endl;
+                log_info("[power] State changed (session_persist disabled, skipping HW update)");
             }
         });
 
         // Button press → send toggle event to frontend (frontend manages its own visibility)
         button->on_visibility_change([&](bool /*visible*/) {
-            std::cout << "[button] Visibility change callback" << std::endl;
+            log_info("[button] Visibility change callback");
             Event evt;
             evt.event = "show_toggle";
             evt.data = "{}";
@@ -381,7 +392,7 @@ int main(int argc, char* argv[]) {
 
         // Tray left-click → send toggle event to frontend (frontend manages its own visibility)
         tray->on_toggle([&]() {
-            std::cout << "[tray] Toggle callback fired" << std::endl;
+            log_info("[tray] Toggle callback fired");
             Event evt;
             evt.event = "show_toggle";
             evt.data = "{}";
@@ -397,17 +408,17 @@ int main(int argc, char* argv[]) {
         // Start tray icon
         auto tray_result = tray->start();
         if (!tray_result) {
-            std::cerr << "Failed to create tray icon" << std::endl;
+            log_error("Failed to create tray icon");
         } else {
-            std::cout << "Tray icon created" << std::endl;
+            log_info("Tray icon created");
         }
 
-        std::cout << "XmaX Backend ready" << std::endl;
+        log_info("XmaX Backend ready");
 
         // Enter message loop (blocks until quit)
         platform->run_message_loop();
 
-        std::cout << "XmaX Backend shutting down..." << std::endl;
+        log_info("XmaX Backend shutting down...");
 
         // Stop everything
         transport->stop();
@@ -420,7 +431,7 @@ int main(int argc, char* argv[]) {
         // Release single instance lock
         platform->release_instance_lock(*lock_result);
 
-        std::cout << "XmaX Backend stopped" << std::endl;
+        log_info("XmaX Backend stopped");
         return 0;
     } catch (const std::exception& e) {
         write_crash_log(std::string("Fatal exception: ") + e.what());

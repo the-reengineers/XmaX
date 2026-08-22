@@ -173,7 +173,6 @@ public sealed class WidgetService : INotifyPropertyChanged
         {
             if (!_pipe.IsConnected)
             {
-                System.Diagnostics.Debug.WriteLine("[WidgetService] SaveLayoutAsync skipped: pipe not connected");
                 return;
             }
 
@@ -211,9 +210,9 @@ public sealed class WidgetService : INotifyPropertyChanged
 
             await _pipe.SendCommandAsync("set_config", payload).ConfigureAwait(false);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            System.Diagnostics.Debug.WriteLine($"[WidgetService] SaveLayoutAsync failed: {ex.Message}");
+            // Silently ignore save failures (e.g., pipe disconnected during shutdown)
         }
     }
 }

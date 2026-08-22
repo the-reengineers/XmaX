@@ -21,8 +21,8 @@ public class ModelTests
         var json = """
         {
             "cpu": { "util_pct": 7.8, "clock_mhz": 3000, "temp_c": 79, "package_watts": 45.2 },
-            "gpu": { "util_pct": 93.0, "clock_mhz": 1783, "temp_c": 73, "power_w": 47.0, "vram_used_mb": 4096, "vram_total_mb": 16384 },
-            "ram": { "used_gb": 25.8, "total_gb": 111.6, "avail_gb": 85.8, "load_pct": 23.0 },
+            "gpu": { "util_pct": 93.0, "clock_mhz": 1783, "temp_c": 73, "power_w": 47.0, "vram_used_bytes": 4294967296, "vram_total_bytes": 17179869184 },
+            "ram": { "used_bytes": 27702798008, "total_bytes": 119810949607, "avail_bytes": 92108151599, "load_pct": 23.0 },
             "fan": { "mode": "auto", "speed_pct": 75.0, "rpm": 3200 },
             "power": { "mode": "dc_in", "label": "DC-In (dedicated charger)", "battery_pct": 91, "charge_limit_pct": 90 },
             "ts": 1722000000
@@ -42,12 +42,12 @@ public class ModelTests
         Assert.Equal(1783u, metrics.Gpu.ClockMhz);
         Assert.Equal(73, metrics.Gpu.TempC);
         Assert.Equal(47.0, metrics.Gpu.PowerW);
-        Assert.Equal(4096u, metrics.Gpu.VramUsedMb);
-        Assert.Equal(16384u, metrics.Gpu.VramTotalMb);
+        Assert.Equal(4294967296UL, metrics.Gpu.VramUsedBytes);
+        Assert.Equal(17179869184UL, metrics.Gpu.VramTotalBytes);
         // RAM
-        Assert.Equal(25.8, metrics.Ram.UsedGb);
-        Assert.Equal(111.6, metrics.Ram.TotalGb);
-        Assert.Equal(85.8, metrics.Ram.AvailGb);
+        Assert.Equal(27702798008UL, metrics.Ram.UsedBytes);
+        Assert.Equal(119810949607UL, metrics.Ram.TotalBytes);
+        Assert.Equal(92108151599UL, metrics.Ram.AvailBytes);
         Assert.Equal(23.0, metrics.Ram.LoadPercent);
         // Fan
         Assert.Equal("auto", metrics.Fan.Mode);
@@ -68,8 +68,8 @@ public class ModelTests
         var json = """
         {
             "cpu": { "util_pct": 5.0, "clock_mhz": 2000, "temp_c": null, "package_watts": null },
-            "gpu": { "util_pct": 0.0, "clock_mhz": 0, "temp_c": null, "power_w": null, "vram_used_mb": null, "vram_total_mb": null },
-            "ram": { "used_gb": 0, "total_gb": 0, "avail_gb": 0, "load_pct": 0 },
+            "gpu": { "util_pct": 0.0, "clock_mhz": 0, "temp_c": null, "power_w": null, "vram_used_bytes": null, "vram_total_bytes": null },
+            "ram": { "used_bytes": 0, "total_bytes": 0, "avail_bytes": 0, "load_pct": 0 },
             "fan": { "mode": "auto", "speed_pct": 0, "rpm": 0 },
             "power": { "mode": "battery", "label": "Battery only", "battery_pct": null, "charge_limit_pct": null },
             "ts": 0
@@ -83,8 +83,8 @@ public class ModelTests
         Assert.Null(metrics.Cpu.PackageWatts);
         Assert.Null(metrics.Gpu.TempC);
         Assert.Null(metrics.Gpu.PowerW);
-        Assert.Null(metrics.Gpu.VramUsedMb);
-        Assert.Null(metrics.Gpu.VramTotalMb);
+        Assert.Null(metrics.Gpu.VramUsedBytes);
+        Assert.Null(metrics.Gpu.VramTotalBytes);
         Assert.Null(metrics.Power.BatteryPercent);
         Assert.Null(metrics.Power.ChargeLimitPercent);
     }

@@ -29,10 +29,10 @@ public sealed partial class VramTile : UserControl
     private void UpdateDisplay()
     {
         var gpu = _metricsService.Metrics.Gpu;
-        if (gpu.VramUsedMb.HasValue && gpu.VramTotalMb.HasValue)
+        if (gpu.VramUsedBytes.HasValue && gpu.VramTotalBytes.HasValue)
         {
-            double vramUsedGb = gpu.VramUsedMb.Value / 1024.0;
-            double vramTotalGb = gpu.VramTotalMb.Value / 1024.0;
+            double vramUsedGb = gpu.VramUsedBytes.Value / (1024.0 * 1024.0 * 1024.0);
+            double vramTotalGb = gpu.VramTotalBytes.Value / (1024.0 * 1024.0 * 1024.0);
             UsageText.Text = Loc.F("metrics.vram_format", $"{vramUsedGb:F1}", $"{vramTotalGb:F1}");
         }
         else

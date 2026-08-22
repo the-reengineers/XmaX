@@ -29,7 +29,6 @@ public static class Loc
         ["button.revert_defaults"] = @"Revert to System Defaults",
         ["button.save"] = @"Save",
         ["button.silent"] = @"Silent",
-        ["dialog.error"] = @"Error",
         ["dialog.apply_failed"] = @"Apply Failed",
         ["dialog.create_failed"] = @"Create failed",
         ["dialog.create_fan_curve"] = @"Create Fan Curve",
@@ -37,6 +36,7 @@ public static class Loc
         ["dialog.delete_failed"] = @"Delete failed",
         ["dialog.edit_fan_curve"] = @"Edit Fan Curve",
         ["dialog.edit_profile"] = @"Edit Profile",
+        ["dialog.error"] = @"Error",
         ["dialog.invalid_fan_curve"] = @"Invalid Fan Curve",
         ["dialog.revert_message"] = @"This will reset all settings to their default values. Continue?",
         ["dialog.revert_title"] = @"Revert to System Defaults",
@@ -44,15 +44,14 @@ public static class Loc
         ["empty.no_fan_curves_hint"] = @"No fan curves yet. Create one above.",
         ["empty.no_profiles"] = @"No profiles yet",
         ["empty.no_profiles_hint"] = @"No profiles yet. Create one above.",
-        ["info.no_adaptive_profiles"] = @"No adaptive profiles",
         ["error.fan_curve_in_use"] = @"Fan curve is used by profile '{0}'. Remove the reference first.",
         ["error.fan_curve_max_points"] = @"Fan curve must have at most 10 points",
         ["error.fan_curve_min_points"] = @"Fan curve must have at least 2 points",
         ["error.fan_curve_sorted"] = @"Points must be sorted by ascending temperature",
         ["error.fan_curve_speed_range"] = @"Fan speed must be between 0 and 100%",
         ["error.fan_curve_temp_range"] = @"Temperature must be between 0 and 100°C",
-        ["error.profile_in_use"] = @"Profile is assigned to power state '{0}'. Remove the assignment first.",
         ["error.power_state_in_use"] = @"Power state '{0}' is already assigned to profile '{1}'.",
+        ["error.profile_in_use"] = @"Profile is assigned to power state '{0}'. Remove the assignment first.",
         ["form.fan_curve"] = @"Fan Curve",
         ["form.fan_curve_name"] = @"Fan curve name",
         ["form.fan_max"] = @"Fan Max (%)",
@@ -76,6 +75,7 @@ public static class Loc
 {1}%",
         ["format.points_count"] = @"{0} points",
         ["format.tdp_fan"] = @"TDP: {0}/{1}/{2}W  Fan: {3}",
+        ["info.no_adaptive_profiles"] = @"No adaptive profiles",
         ["label.fan_axis"] = @"Fan
 (%)",
         ["label.temperature_axis"] = @"Temperature (°C)",
@@ -122,6 +122,18 @@ public static class Loc
         ["settings.theme_dark"] = @"Dark",
         ["settings.theme_light"] = @"Light",
         ["settings.theme_system"] = @"System",
+        ["settings.uma"] = @"Variable Graphics Memory",
+        ["settings.uma_apply_failed"] = @"Failed to apply UMA setting.",
+        ["settings.uma_applying"] = @"Applying...",
+        ["settings.uma_auto"] = @"Auto (system managed)",
+        ["settings.uma_current_format"] = @"Current: {0}",
+        ["settings.uma_custom_format"] = @"{0:F1} GB VRAM / {1:F1} GB RAM remaining",
+        ["settings.uma_desc"] = @"Allocate system RAM for GPU use. Reboot required to apply changes.",
+        ["settings.uma_not_supported"] = @"Variable Graphics Memory is not supported on this system.",
+        ["settings.uma_reboot_button"] = @"Reboot Now",
+        ["settings.uma_reboot_confirm"] = @"The system will restart to apply the new memory allocation. Save any work before continuing.",
+        ["settings.uma_reboot_warning"] = @"WARNING: The system will reboot immediately after applying this change. Please save all your work before continuing.",
+        ["settings.uma_select"] = @"Select allocation",
         ["settings.widget_layout"] = @"Widget Layout",
         ["title.adaptive"] = @"Adaptive",
         ["title.charge_limit"] = @"Charge Limit",
@@ -158,7 +170,6 @@ public static class Loc
         ["button.revert_defaults"] = @"还原为系统默认值",
         ["button.save"] = @"保存",
         ["button.silent"] = @"静音",
-        ["dialog.error"] = @"错误",
         ["dialog.apply_failed"] = @"应用失败",
         ["dialog.create_failed"] = @"创建失败",
         ["dialog.create_fan_curve"] = @"创建风扇曲线",
@@ -166,6 +177,7 @@ public static class Loc
         ["dialog.delete_failed"] = @"删除失败",
         ["dialog.edit_fan_curve"] = @"编辑风扇曲线",
         ["dialog.edit_profile"] = @"编辑配置",
+        ["dialog.error"] = @"错误",
         ["dialog.invalid_fan_curve"] = @"无效的风扇曲线",
         ["dialog.revert_message"] = @"这将重置所有设置为默认值。继续吗？",
         ["dialog.revert_title"] = @"还原为系统默认值",
@@ -173,15 +185,14 @@ public static class Loc
         ["empty.no_fan_curves_hint"] = @"暂无风扇曲线。在上方创建一个。",
         ["empty.no_profiles"] = @"暂无配置",
         ["empty.no_profiles_hint"] = @"暂无配置。在上方创建一个。",
-        ["info.no_adaptive_profiles"] = @"暂无自适应配置",
         ["error.fan_curve_in_use"] = @"风扇曲线被配置 '{0}' 引用。请先移除引用。",
         ["error.fan_curve_max_points"] = @"风扇曲线最多 10 个点",
         ["error.fan_curve_min_points"] = @"风扇曲线至少需要 2 个点",
         ["error.fan_curve_sorted"] = @"点必须按温度升序排列",
         ["error.fan_curve_speed_range"] = @"风扇速度必须在 0 到 100% 之间",
         ["error.fan_curve_temp_range"] = @"温度必须在 0 到 100°C 之间",
-        ["error.profile_in_use"] = @"配置已分配给电源状态 '{0}'。请先移除分配。",
         ["error.power_state_in_use"] = @"电源状态 '{0}' 已分配给配置 '{1}'。",
+        ["error.profile_in_use"] = @"配置已分配给电源状态 '{0}'。请先移除分配。",
         ["form.fan_curve"] = @"风扇曲线",
         ["form.fan_curve_name"] = @"风扇曲线名称",
         ["form.fan_max"] = @"最大风扇 (%)",
@@ -205,6 +216,7 @@ public static class Loc
 {1}%",
         ["format.points_count"] = @"{0} 个点",
         ["format.tdp_fan"] = @"TDP：{0}/{1}/{2}W 风扇：{3}",
+        ["info.no_adaptive_profiles"] = @"暂无自适应配置",
         ["label.fan_axis"] = @"风扇
 （%）",
         ["label.temperature_axis"] = @"温度 (°C)",
@@ -251,6 +263,18 @@ public static class Loc
         ["settings.theme_dark"] = @"深色",
         ["settings.theme_light"] = @"浅色",
         ["settings.theme_system"] = @"系统",
+        ["settings.uma"] = @"可变显存",
+        ["settings.uma_apply_failed"] = @"应用可变显存设置失败。",
+        ["settings.uma_applying"] = @"应用中...",
+        ["settings.uma_auto"] = @"自动（系统管理）",
+        ["settings.uma_current_format"] = @"当前：{0}",
+        ["settings.uma_custom_format"] = @"{0:F1} GB 显存 / {1:F1} GB 内存剩余",
+        ["settings.uma_desc"] = @"分配系统内存给GPU使用。更改后需要重启系统。",
+        ["settings.uma_not_supported"] = @"此系统不支持可变显存。",
+        ["settings.uma_reboot_button"] = @"立即重启",
+        ["settings.uma_reboot_confirm"] = @"系统将重启以应用新的内存分配。请在继续之前保存所有工作。",
+        ["settings.uma_reboot_warning"] = @"警告：应用此更改后系统将立即重启。请在继续之前保存所有工作。",
+        ["settings.uma_select"] = @"选择分配",
         ["settings.widget_layout"] = @"小部件布局",
         ["title.adaptive"] = @"自适应",
         ["title.charge_limit"] = @"充电限制",
@@ -362,14 +386,14 @@ public static class Loc
     /// <summary>dialog.delete_failed</summary>
     public static string Dialog_DeleteFailed => Get("dialog.delete_failed");
 
-    /// <summary>dialog.error</summary>
-    public static string Dialog_Error => Get("dialog.error");
-
     /// <summary>dialog.edit_fan_curve</summary>
     public static string Dialog_EditFanCurve => Get("dialog.edit_fan_curve");
 
     /// <summary>dialog.edit_profile</summary>
     public static string Dialog_EditProfile => Get("dialog.edit_profile");
+
+    /// <summary>dialog.error</summary>
+    public static string Dialog_Error => Get("dialog.error");
 
     /// <summary>dialog.invalid_fan_curve</summary>
     public static string Dialog_InvalidFanCurve => Get("dialog.invalid_fan_curve");
@@ -392,9 +416,6 @@ public static class Loc
     /// <summary>empty.no_profiles_hint</summary>
     public static string Empty_NoProfilesHint => Get("empty.no_profiles_hint");
 
-    /// <summary>info.no_adaptive_profiles</summary>
-    public static string Info_NoAdaptiveProfiles => Get("info.no_adaptive_profiles");
-
     /// <summary>error.fan_curve_in_use</summary>
     public static string Error_FanCurveInUse => Get("error.fan_curve_in_use");
 
@@ -413,11 +434,11 @@ public static class Loc
     /// <summary>error.fan_curve_temp_range</summary>
     public static string Error_FanCurveTempRange => Get("error.fan_curve_temp_range");
 
-    /// <summary>error.profile_in_use</summary>
-    public static string Error_ProfileInUse => Get("error.profile_in_use");
-
     /// <summary>error.power_state_in_use</summary>
     public static string Error_PowerStateInUse => Get("error.power_state_in_use");
+
+    /// <summary>error.profile_in_use</summary>
+    public static string Error_ProfileInUse => Get("error.profile_in_use");
 
     /// <summary>form.fan_curve</summary>
     public static string Form_FanCurve => Get("form.fan_curve");
@@ -484,6 +505,9 @@ public static class Loc
 
     /// <summary>format.tdp_fan</summary>
     public static string Format_TdpFan => Get("format.tdp_fan");
+
+    /// <summary>info.no_adaptive_profiles</summary>
+    public static string Info_NoAdaptiveProfiles => Get("info.no_adaptive_profiles");
 
     /// <summary>label.fan_axis</summary>
     public static string Label_FanAxis => Get("label.fan_axis");
@@ -619,6 +643,42 @@ public static class Loc
 
     /// <summary>settings.theme_system</summary>
     public static string Settings_ThemeSystem => Get("settings.theme_system");
+
+    /// <summary>settings.uma</summary>
+    public static string Settings_Uma => Get("settings.uma");
+
+    /// <summary>settings.uma_apply_failed</summary>
+    public static string Settings_UmaApplyFailed => Get("settings.uma_apply_failed");
+
+    /// <summary>settings.uma_applying</summary>
+    public static string Settings_UmaApplying => Get("settings.uma_applying");
+
+    /// <summary>settings.uma_auto</summary>
+    public static string Settings_UmaAuto => Get("settings.uma_auto");
+
+    /// <summary>settings.uma_current_format</summary>
+    public static string Settings_UmaCurrentFormat => Get("settings.uma_current_format");
+
+    /// <summary>settings.uma_custom_format</summary>
+    public static string Settings_UmaCustomFormat => Get("settings.uma_custom_format");
+
+    /// <summary>settings.uma_desc</summary>
+    public static string Settings_UmaDesc => Get("settings.uma_desc");
+
+    /// <summary>settings.uma_not_supported</summary>
+    public static string Settings_UmaNotSupported => Get("settings.uma_not_supported");
+
+    /// <summary>settings.uma_reboot_button</summary>
+    public static string Settings_UmaRebootButton => Get("settings.uma_reboot_button");
+
+    /// <summary>settings.uma_reboot_confirm</summary>
+    public static string Settings_UmaRebootConfirm => Get("settings.uma_reboot_confirm");
+
+    /// <summary>settings.uma_reboot_warning</summary>
+    public static string Settings_UmaRebootWarning => Get("settings.uma_reboot_warning");
+
+    /// <summary>settings.uma_select</summary>
+    public static string Settings_UmaSelect => Get("settings.uma_select");
 
     /// <summary>settings.widget_layout</summary>
     public static string Settings_WidgetLayout => Get("settings.widget_layout");

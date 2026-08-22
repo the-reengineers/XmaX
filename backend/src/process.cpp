@@ -9,14 +9,15 @@ ProcessManager::~ProcessManager() {
     stop_monitor();
 }
 
-auto ProcessManager::spawn(const std::filesystem::path& exe_path) -> Result<void> {
-    auto result = platform_.spawn_frontend(exe_path);
+auto ProcessManager::spawn(const std::filesystem::path& exe_path, bool debug) -> Result<void> {
+    auto result = platform_.spawn_frontend(exe_path, debug);
     if (!result) {
         return std::unexpected(result.error());
     }
 
     std::lock_guard lock(mutex_);
     exe_path_ = exe_path;
+    debug_ = debug;
     child_ = result.value();
     has_child_ = true;
 
@@ -135,7 +136,7 @@ void ProcessManager::monitor_loop() {
                 path = exe_path_;
             }
 
-            auto spawn_result = platform_.spawn_frontend(path);
+            auto spawn_result = platform_.spawn_frontend(path, debug_);
             if (spawn_result) {
                 std::lock_guard lock(mutex_);
                 child_ = spawn_result.value();

@@ -29,7 +29,7 @@ public sealed class Metrics
 
     public override string ToString() =>
         $"Metrics(CPU:{Cpu.UtilPercent:F0}% {Cpu.TempC}°C, GPU:{Gpu.UtilPercent:F0}% {Gpu.TempC}°C, " +
-        $"RAM:{Ram.UsedGb:F1}/{Ram.TotalGb:F1}GB, Fan:{Fan.Mode} {Fan.Rpm}RPM, " +
+        $"RAM:{Ram.UsedBytes / (1024.0 * 1024.0 * 1024.0):F1}/{Ram.TotalBytes / (1024.0 * 1024.0 * 1024.0):F1}GB, Fan:{Fan.Mode} {Fan.Rpm}RPM, " +
         $"Power:{Power.Mode} {Power.BatteryPercent}%)";
 }
 
@@ -71,36 +71,39 @@ public sealed class GpuMetrics
     [JsonPropertyName("power_w")]
     public double? PowerW { get; set; }
 
-    /// <summary>VRAM used in MB. Null if sensor unavailable.</summary>
-    [JsonPropertyName("vram_used_mb")]
-    public uint? VramUsedMb { get; set; }
+    /// <summary>VRAM used in bytes. Null if sensor unavailable.</summary>
+    [JsonPropertyName("vram_used_bytes")]
+    public ulong? VramUsedBytes { get; set; }
 
-    /// <summary>VRAM total in MB. Null if sensor unavailable.</summary>
-    [JsonPropertyName("vram_total_mb")]
-    public uint? VramTotalMb { get; set; }
+    /// <summary>VRAM total in bytes. Null if sensor unavailable.</summary>
+    [JsonPropertyName("vram_total_bytes")]
+    public ulong? VramTotalBytes { get; set; }
 
     public override string ToString() =>
         $"GPU({UtilPercent:F0}%, {ClockMhz}MHz, {TempC?.ToString() ?? "?"}°C, {PowerW?.ToString("F1") ?? "?"}W, " +
-        $"VRAM:{VramUsedMb?.ToString() ?? "?"}/{VramTotalMb?.ToString() ?? "?"}MB)";
+        $"VRAM:{FormatBytes(VramUsedBytes)}/{FormatBytes(VramTotalBytes)})";
+
+    private static string FormatBytes(ulong? bytes) =>
+        bytes.HasValue ? $"{bytes.Value / (1024.0 * 1024.0 * 1024.0):F1}GB" : "?";
 }
 
 /// <summary>RAM metrics.</summary>
 public sealed class RamMetrics
 {
-    [JsonPropertyName("used_gb")]
-    public double UsedGb { get; set; }
+    [JsonPropertyName("used_bytes")]
+    public ulong UsedBytes { get; set; }
 
-    [JsonPropertyName("total_gb")]
-    public double TotalGb { get; set; }
+    [JsonPropertyName("total_bytes")]
+    public ulong TotalBytes { get; set; }
 
-    [JsonPropertyName("avail_gb")]
-    public double AvailGb { get; set; }
+    [JsonPropertyName("avail_bytes")]
+    public ulong AvailBytes { get; set; }
 
     [JsonPropertyName("load_pct")]
     public double LoadPercent { get; set; }
 
     public override string ToString() =>
-        $"RAM({UsedGb:F1}/{TotalGb:F1}GB, {LoadPercent:F0}% load)";
+        $"RAM({UsedBytes / (1024.0 * 1024.0 * 1024.0):F1}/{TotalBytes / (1024.0 * 1024.0 * 1024.0):F1}GB, {LoadPercent:F0}% load)";
 }
 
 /// <summary>Fan status snapshot.</summary>

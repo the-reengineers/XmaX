@@ -124,7 +124,12 @@ public:
         }
         return GpuTelemetry{};
     }
-    auto spawn_frontend(const std::filesystem::path& path) -> Result<ChildProcess> override {
+    // UMA stubs (not used in most tests)
+    auto uma_supported() -> Result<bool> override { return false; }
+    auto uma_available_options() -> Result<std::vector<UmaOption>> override { return std::vector<UmaOption>{}; }
+    auto uma_current_option() -> Result<UmaOption> override { return std::unexpected(ErrorCode::SensorUnavailable); }
+    auto uma_set_option(const std::string&) -> Result<void> override { return std::unexpected(ErrorCode::SensorUnavailable); }
+    auto spawn_frontend(const std::filesystem::path& path, bool /*debug*/) -> Result<ChildProcess> override {
         spawn_count++;
         last_spawn_path = path;
         if (spawn_should_fail) {
@@ -1066,7 +1071,7 @@ TEST_F(MetricsPollerTest, GetMetricsReturnsInitialState) {
     // Initially, all metrics should be at defaults
     EXPECT_EQ(metrics.cpu.util_pct, 0.0);
     EXPECT_EQ(metrics.gpu.util_pct, 0.0);
-    EXPECT_EQ(metrics.ram.used_gb, 0.0);
+    EXPECT_EQ(metrics.ram.used_bytes, 0);
     EXPECT_EQ(metrics.fan.rpm, 0);
     EXPECT_EQ(metrics.power.mode, PowerState::Source::Unknown);
 }
@@ -1078,8 +1083,8 @@ TEST_F(MetricsPollerTest, PollerUpdatesGpuMetrics) {
     telemetry.clock_mhz = 1800;
     telemetry.temp_c = 70;
     telemetry.power_w = 50.0;
-    telemetry.vram_used_mb = 4096;
-    telemetry.vram_total_mb = 8192;
+    telemetry.vram_used_bytes = 4294967296ULL;  // 4096 MB in bytes
+    telemetry.vram_total_bytes = 8589934592ULL;  // 8192 MB in bytes
     platform_.gpu_telemetry = telemetry;
 
     poller_->start();
@@ -1094,8 +1099,8 @@ TEST_F(MetricsPollerTest, PollerUpdatesGpuMetrics) {
     EXPECT_EQ(metrics.gpu.clock_mhz, 1800);
     EXPECT_EQ(metrics.gpu.temp_c.value(), 70);
     EXPECT_DOUBLE_EQ(metrics.gpu.power_w.value(), 50.0);
-    EXPECT_EQ(metrics.gpu.vram_used_mb.value(), 4096);
-    EXPECT_EQ(metrics.gpu.vram_total_mb.value(), 8192);
+    EXPECT_EQ(metrics.gpu.vram_used_bytes.value(), 4294967296ULL);
+    EXPECT_EQ(metrics.gpu.vram_total_bytes.value(), 8589934592ULL);
 
     poller_->stop();
 }
@@ -2106,7 +2111,7 @@ TEST_F(ProcessManagerTest, InitiallyNotRunning) {
 }
 
 TEST_F(ProcessManagerTest, SpawnStoresChildInfo) {
-    auto result = manager_->spawn("C:/xmax/xmax.exe");
+    auto result = manager_->spawn("C:/xmax/xmax.exe", false);
     ASSERT_TRUE(result.has_value());
 
     EXPECT_TRUE(manager_->is_running());
@@ -2121,14 +2126,14 @@ TEST_F(ProcessManagerTest, SpawnStoresChildInfo) {
 TEST_F(ProcessManagerTest, SpawnFailureReturnsError) {
     platform_.spawn_should_fail = true;
 
-    auto result = manager_->spawn("C:/xmax/xmax.exe");
+    auto result = manager_->spawn("C:/xmax/xmax.exe", false);
     ASSERT_FALSE(result.has_value());
     EXPECT_EQ(result.error(), ErrorCode::HardwareBusy);
     EXPECT_FALSE(manager_->is_running());
 }
 
 TEST_F(ProcessManagerTest, ShowWindowCallsPlatform) {
-    manager_->spawn("C:/xmax/xmax.exe");
+    manager_->spawn("C:/xmax/xmax.exe", false);
 
     auto result = manager_->show_window(true);
     ASSERT_TRUE(result.has_value());
@@ -2150,7 +2155,7 @@ TEST_F(ProcessManagerTest, ShowWindowNoChildCallsPlatformFallback) {
 }
 
 TEST_F(ProcessManagerTest, StartAndStopMonitor) {
-    manager_->spawn("C:/xmax/xmax.exe");
+    manager_->spawn("C:/xmax/xmax.exe", false);
 
     // Make wait block briefly (default mock behavior)
     platform_.wait_returns_immediately = false;
@@ -2163,7 +2168,7 @@ TEST_F(ProcessManagerTest, StartAndStopMonitor) {
 }
 
 TEST_F(ProcessManagerTest, MonitorDetectsCrash) {
-    manager_->spawn("C:/xmax/xmax.exe");
+    manager_->spawn("C:/xmax/xmax.exe", false);
 
     // Make wait return immediately with exit code 1 (crash)
     platform_.wait_returns_immediately = true;
@@ -2189,7 +2194,7 @@ TEST_F(ProcessManagerTest, MonitorDetectsCrash) {
 }
 
 TEST_F(ProcessManagerTest, RespawnAfterCrash) {
-    manager_->spawn("C:/xmax/xmax.exe");
+    manager_->spawn("C:/xmax/xmax.exe", false);
     EXPECT_EQ(platform_.spawn_count, 1);
 
     // Make wait return immediately (crash)
@@ -2210,7 +2215,7 @@ TEST_F(ProcessManagerTest, RespawnAfterCrash) {
 }
 
 TEST_F(ProcessManagerTest, TerminateCallsPlatform) {
-    manager_->spawn("C:/xmax/xmax.exe");
+    manager_->spawn("C:/xmax/xmax.exe", false);
     EXPECT_TRUE(manager_->is_running());
 
     manager_->terminate();
@@ -2224,7 +2229,7 @@ TEST_F(ProcessManagerTest, TerminateWithoutSpawnIsNoOp) {
 }
 
 TEST_F(ProcessManagerTest, StopMonitorTerminatesChild) {
-    manager_->spawn("C:/xmax/xmax.exe");
+    manager_->spawn("C:/xmax/xmax.exe", false);
 
     platform_.wait_returns_immediately = false;
     manager_->start_monitor();
@@ -2237,7 +2242,7 @@ TEST_F(ProcessManagerTest, StopMonitorTerminatesChild) {
 }
 
 TEST_F(ProcessManagerTest, DestructorStopsMonitor) {
-    manager_->spawn("C:/xmax/xmax.exe");
+    manager_->spawn("C:/xmax/xmax.exe", false);
     platform_.wait_returns_immediately = false;
     manager_->start_monitor();
     EXPECT_TRUE(manager_->is_monitoring());
@@ -2249,7 +2254,7 @@ TEST_F(ProcessManagerTest, DestructorStopsMonitor) {
 }
 
 TEST_F(ProcessManagerTest, WaitFailureStopsMonitor) {
-    manager_->spawn("C:/xmax/xmax.exe");
+    manager_->spawn("C:/xmax/xmax.exe", false);
 
     // Make wait fail (simulates invalid handle)
     platform_.wait_returns_immediately = true;

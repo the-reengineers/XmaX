@@ -1,7 +1,7 @@
 #include "profiles.h"
+#include "logger.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
-#include <iostream>
 #include <algorithm>
 #include <cctype>
 
@@ -45,7 +45,7 @@ ProfileStorage load_profiles(const std::filesystem::path& profiles_path) {
     try {
         std::ifstream file(profiles_path);
         if (!file.is_open()) {
-            std::cerr << "Failed to open profiles file: " << profiles_path << std::endl;
+            log_error("Failed to open profiles file: " + profiles_path.string());
             save_profiles(profiles_path, storage);
             return storage;
         }
@@ -134,7 +134,7 @@ ProfileStorage load_profiles(const std::filesystem::path& profiles_path) {
         }
 
     } catch (const json::exception& e) {
-        std::cerr << "Profiles file corrupted, using empty storage: " << e.what() << std::endl;
+        log_error("Profiles file corrupted, using empty storage: " + std::string(e.what()));
         // Keep builtins, clear only user data
         storage.profiles.clear();
         for (auto it = storage.fan_curves.begin(); it != storage.fan_curves.end(); ) {
@@ -216,7 +216,7 @@ bool save_profiles(const std::filesystem::path& profiles_path, const ProfileStor
         return true;
 
     } catch (const std::exception& e) {
-        std::cerr << "Failed to save profiles: " << e.what() << std::endl;
+        log_error("Failed to save profiles: " + std::string(e.what()));
         return false;
     }
 }

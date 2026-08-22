@@ -36,11 +36,41 @@ public sealed partial class ProfileCard : UserControl
         set => TypeIcon.Text = value ? "\U0000EFFE" : "\U0000EDDE";
     }
 
-    /// <summary>Additional info text (e.g., TDP values, temp target).</summary>
+    /// <summary>Additional info text (e.g., temp target for adaptive profiles).</summary>
     public string Info
     {
         get => InfoText.Text;
         set => InfoText.Text = value;
+    }
+
+    /// <summary>TDP limits to display stacked in the left column. If null, shows Info text instead.</summary>
+    public XmaX.Models.TdpLimits? TdpValues
+    {
+        set => PopulateTdpPanel(value);
+    }
+
+    private void PopulateTdpPanel(XmaX.Models.TdpLimits? tdp)
+    {
+        TdpPanel.Children.Clear();
+        if (tdp == null)
+        {
+            TdpPanel.Visibility = Visibility.Collapsed;
+            return;
+        }
+        TdpPanel.Visibility = Visibility.Visible;
+
+        TdpPanel.Children.Add(MakeTdpValue($"{tdp.Stapm}W"));
+        TdpPanel.Children.Add(MakeTdpValue($"{tdp.Fast}W"));
+        TdpPanel.Children.Add(MakeTdpValue($"{tdp.Slow}W"));
+    }
+
+    private static TextBlock MakeTdpValue(string value)
+    {
+        return new TextBlock
+        {
+            Text = value,
+            Style = (Microsoft.UI.Xaml.Style)Application.Current.Resources["CaptionTextBlockStyle"],
+        };
     }
 
     /// <summary>Fan curve data for the mini chart at the bottom of the card.</summary>

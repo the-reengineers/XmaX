@@ -53,6 +53,17 @@
                 </StackPanel>
             </StackPanel>
 
+            <!-- Variable Graphics Memory (UMA) -->
+            <StackPanel x:Name="UmaPanel" Spacing="4" Visibility="Collapsed">
+                <TextBlock x:Name="UmaLabel" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <TextBlock x:Name="UmaDescLabel"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{StaticResource TextFillColorSecondaryBrush}"
+                           TextWrapping="Wrap" />
+                <ComboBox x:Name="UmaCombo" HorizontalAlignment="Stretch"
+                          SelectionChanged="OnUmaSelectionChanged" />
+            </StackPanel>
+
             <!-- Sub-page navigation -->
             <StackPanel Spacing="4" Margin="0,8,0,0">
                 <Button Click="OnNavigateProfiles" HorizontalAlignment="Stretch"

@@ -56,8 +56,8 @@ struct GpuTelemetry {
     uint32_t clock_mhz = 0;
     std::optional<int> temp_c;
     std::optional<double> power_w;
-    std::optional<uint32_t> vram_used_mb;
-    std::optional<uint32_t> vram_total_mb;
+    std::optional<uint64_t> vram_used_bytes;
+    std::optional<uint64_t> vram_total_bytes;
 };
 
 // Abstract platform interface
@@ -136,10 +136,24 @@ public:
     // Read GPU metrics via platform-specific API (ADLX on Windows, sysfs on Linux)
     virtual auto gpu_metrics() -> Result<GpuTelemetry> = 0;
 
+    // ===== UMA (Variable Graphics Memory) =====
+
+    // Check if Variable Graphics Memory (UMA) is supported
+    virtual auto uma_supported() -> Result<bool> = 0;
+
+    // Get available UMA presets
+    virtual auto uma_available_options() -> Result<std::vector<UmaOption>> = 0;
+
+    // Get current UMA option
+    virtual auto uma_current_option() -> Result<UmaOption> = 0;
+
+    // Set UMA option by unique id (triggers reboot)
+    virtual auto uma_set_option(const std::string& option_id) -> Result<void> = 0;
+
     // ===== Process Management =====
 
     // Spawn frontend process
-    virtual auto spawn_frontend(const std::filesystem::path& exe_path) -> Result<ChildProcess> = 0;
+    virtual auto spawn_frontend(const std::filesystem::path& exe_path, bool debug) -> Result<ChildProcess> = 0;
 
     // Show or hide frontend window
     virtual auto show_window(ChildProcess& process, bool visible) -> Result<void> = 0;

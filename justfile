@@ -34,6 +34,7 @@ default:
 generate-assets:
     python scripts/generate_icon.py shared/assets/logo.png backend/logo.ico
     python scripts/generate_icon.py shared/assets/logo.png frontend/windows/Assets/logo.ico
+    python scripts/generate_locales.py
     {{ if _os == "windows" { "Copy-Item -Path 'frontend/assets/tabler-icons-300.ttf' -Destination 'frontend/windows/Assets/' -Force" } else { "cp frontend/assets/tabler-icons-300.ttf frontend/windows/Assets/" } }}
 
 # Build backend
@@ -75,14 +76,14 @@ run-fe: copy
 dev: copy
     @echo "Starting {{_be_name}} ({{config}}) — frontend spawned automatically"
     @echo "Press Ctrl+C to stop both"
-    {{ if _os == "windows" { "& " } else { "" } }}"{{_out}}/{{_be_name}}"
+    {{ if _os == "windows" { "& " } else { "" } }}"{{_out}}/{{_be_name}}" --debug
 
 # Run without rebuilding (copies existing build outputs to out/). Errors if outputs are missing.
 run:
     {{ if _os == "windows" { "if (-not (Test-Path '" + _be_out + "')) { Write-Host 'Error: Backend build not found. Run `just build` first.' -ForegroundColor Red; exit 1 }; if (-not (Test-Path '" + _fe_build + "')) { Write-Host 'Error: Frontend build not found. Run `just build` first.' -ForegroundColor Red; exit 1 }; New-Item -ItemType Directory -Path '" + _out + "' -Force | Out-Null; Copy-Item -Path '" + _be_out + "\\*' -Destination '" + _out + "' -Recurse -Force; Copy-Item -Path '" + _fe_build + "\\*' -Destination '" + _out + "' -Recurse -Force" } else { "if [ ! -d '" + _be_out + "' ]; then echo 'Error: Backend build not found. Run `just build` first.' >&2; exit 1; fi; if [ ! -d '" + _fe_build + "' ]; then echo 'Error: Frontend build not found. Run `just build` first.' >&2; exit 1; fi; mkdir -p " + _out + " && cp -rv " + _be_out + "/* " + _out + "/ && cp -rv " + _fe_build + "/* " + _out + "/" } }}
     @echo "Starting {{_be_name}} ({{config}}) — frontend spawned automatically"
     @echo "Press Ctrl+C to stop both"
-    {{ if _os == "windows" { "& " } else { "" } }}"{{_out}}/{{_be_name}}"
+    {{ if _os == "windows" { "& " } else { "" } }}"{{_out}}/{{_be_name}}" --debug
 
 # Clean build artifacts
 clean:

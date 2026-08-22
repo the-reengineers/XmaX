@@ -30,7 +30,14 @@
                 <TextBlock x:Name="InfoText" Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </StackPanel>
-            <widgets:MiniFanCurveChart x:Name="FanCurveChart" Grid.Row="1" Margin="0,6,0,0" />
+            <Grid Grid.Row="1" Margin="0,6,0,0" ColumnSpacing="6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <StackPanel x:Name="TdpPanel" Grid.Column="0" Spacing="2" VerticalAlignment="Center" />
+                <widgets:MiniFanCurveChart x:Name="FanCurveChart" Grid.Column="1" />
+            </Grid>
         </Grid>
     </Border>
 

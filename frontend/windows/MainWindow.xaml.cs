@@ -63,6 +63,7 @@ public sealed partial class MainWindow : Window
 
     // Suppress deactivation handler briefly when showing window
     private bool _suppressDeactivation;
+    private bool _modalDialogOpen;
     private DateTime _lastShowTime;
 
     // Top-edge resize state (edit mode only)
@@ -657,14 +658,24 @@ public sealed partial class MainWindow : Window
         // If window is being deactivated, hide it (unless suppressed during show
         // or the window was shown less than 500ms ago — prevents focus-stealing
         // from immediately hiding the window after a tray/button toggle).
-        // Don't hide if in edit mode (home editor window is visible).
+        // Don't hide if in edit mode (home editor window is visible) or if a modal dialog is open.
         if (e.WindowActivationState == WindowActivationState.Deactivated
             && !_suppressDeactivation
+            && !_modalDialogOpen
             && (DateTime.Now - _lastShowTime).TotalMilliseconds > 500
             && !_isEditMode)
         {
             HideWindow();
         }
+    }
+
+    /// <summary>
+    /// Suppress window deactivation while a modal dialog is open.
+    /// Call with true before showing a dialog, false after it closes.
+    /// </summary>
+    public void SetModalDialogOpen(bool isOpen)
+    {
+        _modalDialogOpen = isOpen;
     }
 
     // --- Low-level mouse hook: dismisses window on click outside ---

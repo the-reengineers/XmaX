@@ -19,14 +19,14 @@ struct GpuMetrics {
     uint32_t clock_mhz = 0;
     std::optional<int> temp_c;
     std::optional<double> power_w;
-    std::optional<uint32_t> vram_used_mb;
-    std::optional<uint32_t> vram_total_mb;
+    std::optional<uint64_t> vram_used_bytes;
+    std::optional<uint64_t> vram_total_bytes;
 };
 
 struct RamMetrics {
-    double used_gb = 0.0;
-    double total_gb = 0.0;
-    double avail_gb = 0.0;
+    uint64_t used_bytes = 0;
+    uint64_t total_bytes = 0;
+    uint64_t avail_bytes = 0;
     double load_pct = 0.0;
 };
 
@@ -49,6 +49,17 @@ struct PowerState {
     std::string label;
     std::optional<int> battery_pct;
     std::optional<int> charge_limit_pct;
+};
+
+// UMA (Unified Memory Architecture) option for Variable Graphics Memory
+// Represents a preset for RAM/VRAM split on APUs
+struct UmaOption {
+    enum class Mode { Auto, Custom };
+    std::string id;             // Unique identifier: "<mode>:<memory_carved_gb>"
+    std::string name;           // Human-readable name (e.g. "Auto", "Custom")
+    Mode mode = Mode::Auto;     // Auto or Custom mode
+    double memory_carved_gb = 0.0;   // System RAM dedicated to VRAM (GB)
+    double memory_remaining_gb = 0.0; // Remaining system RAM (GB)
 };
 
 struct Metrics {

@@ -1,9 +1,14 @@
 #include "transport.h"
+#include "logger.h"
 #include <nlohmann/json.hpp>
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
 
 #include <algorithm>
 #include <chrono>
-#include <iostream>
 #include <vector>
 
 using json = nlohmann::json;
@@ -85,8 +90,8 @@ auto TransportService::is_running() const -> bool {
 
 void TransportService::send_event(const Event& event) {
     // write_line enqueues for the writer thread — never blocks the caller.
-    std::cout << "[transport] Sending event: " << event.event
-              << " (connected=" << client_connected_ << ")" << std::endl;
+    log_debug("[transport] Sending event: " + event.event
+              + " (connected=" + std::to_string(client_connected_) + ")");
     if (client_connected_) {
         send_event_immediate(event);
     }
@@ -168,7 +173,7 @@ auto TransportService::write_line(const std::string& line) -> bool {
 }
 
 void TransportService::write_loop() {
-    std::cout << "[write_loop] Writer thread started" << std::endl;
+    log_debug("[write_loop] Writer thread started");
     while (running_.load()) {
         // Collect all pending writes
         std::vector<std::string> batch;
@@ -195,11 +200,10 @@ void TransportService::write_loop() {
         for (const auto& line : batch) {
             auto result = platform_.pipe_write(server_, line.data(), line.size());
             if (!result.has_value()) {
-                std::cerr << "[write_loop] pipe_write FAILED (" << line.size() << " bytes)" << std::endl;
+                log_error("[write_loop] pipe_write FAILED (" + std::to_string(line.size()) + " bytes)");
                 break;
             } else {
-                std::cout << "[write_loop] Wrote " << line.size() << " bytes (first 80: "
-                          << line.substr(0, std::min<size_t>(80, line.size())) << ")" << std::endl;
+                log_debug("[write_loop] Wrote " + std::to_string(line.size()) + " bytes");
             }
         }
     }
@@ -236,7 +240,7 @@ void TransportService::connection_loop() {
         // Create pipe
         auto listen_result = platform_.listen();
         if (!listen_result) {
-            std::cerr << "[transport] listen() failed, retrying in 1s" << std::endl;
+            log_warn("[transport] listen() failed, retrying in 1s");
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
             continue;
         }
@@ -248,7 +252,7 @@ void TransportService::connection_loop() {
             platform_.close_server(server_);
             continue;
         }
-        std::cout << "[transport] Client connected (pid=" << accept_result.value().process_id << ")" << std::endl;
+        log_info("[transport] Client connected (pid=" + std::to_string(accept_result.value().process_id) + ")");
 
         // Bail out if shutdown was requested while waiting for a connection
         if (!running_.load()) {
@@ -261,11 +265,11 @@ void TransportService::connection_loop() {
         // Verify peer
         auto verify_result = platform_.verify_peer(current_peer_);
         if (!verify_result || !verify_result.value().verified) {
-            std::cerr << "[transport] Peer verification FAILED — rejecting connection" << std::endl;
+            log_error("[transport] Peer verification FAILED — rejecting connection");
             platform_.close_server(server_);
             continue;
         }
-        std::cout << "[transport] Peer verified, entering read loop" << std::endl;
+        log_info("[transport] Peer verified, entering read loop");
 
         client_connected_ = true;
         read_buffer_.clear();
@@ -275,7 +279,7 @@ void TransportService::connection_loop() {
             std::lock_guard lock(state_mutex_);
             metrics_subscribed_ = false;
         }
-        std::cout << "[metrics] Subscription reset (new connection)" << std::endl;
+        log_debug("[metrics] Subscription reset (new connection)");
 
         // Read loop
         while (running_.load() && client_connected_) {
@@ -285,7 +289,7 @@ void TransportService::connection_loop() {
                 if (!running_.load()) break;
                 // Could be partial read -- try again, or disconnected
                 if (read_buffer_.empty()) {
-                    std::cout << "[transport] Client disconnected (empty buffer)" << std::endl;
+                    log_info("[transport] Client disconnected (empty buffer)");
                     break;  // Client disconnected
                 }
                 continue;
@@ -295,12 +299,12 @@ void TransportService::connection_loop() {
                 continue;  // Skip empty lines
             }
 
-            std::cout << "[transport] Received: " << *line << std::endl;
+            log_debug("[transport] Received: " + *line);
 
             // Parse command
             auto cmd = parse_command(*line);
             if (!cmd.has_value()) {
-                std::cerr << "[transport] Parse failed for: " << *line << std::endl;
+                log_error("[transport] Parse failed for: " + *line);
                 // Malformed JSON
                 ErrorMessage err;
                 err.error = ErrorCode::ParseError;
@@ -310,8 +314,8 @@ void TransportService::connection_loop() {
 
             // Dispatch and send response
             Response resp = dispatch(cmd.value());
-            std::cout << "[transport] Sending response for " << cmd.value().method
-                      << " (ok=" << resp.ok << ")" << std::endl;
+            log_debug("[transport] Sending response for " + std::string(cmd.value().method)
+                      + " (ok=" + std::to_string(resp.ok) + ")");
             send_response(resp);
         }
 
@@ -322,7 +326,7 @@ void TransportService::connection_loop() {
                 std::lock_guard state_lock(state_mutex_);
                 metrics_subscribed_ = false;
             }
-            std::cout << "[metrics] Subscription reset (client disconnected)" << std::endl;
+            log_debug("[metrics] Subscription reset (client disconnected)");
             // Drain pending writes — they'll fail since client is gone
             {
                 std::lock_guard wq_lock(write_queue_mutex_);
@@ -375,13 +379,19 @@ void TransportService::metrics_push_loop() {
             evt.data = metrics_json;
 
             // Debug: Log metric values being sent
-            std::cout << "[metrics] Sending: cpu_util=" << m.cpu.util_pct
-                      << " cpu_temp=" << (m.cpu.temp_c.has_value() ? std::to_string(m.cpu.temp_c.value()) : "null")
-                      << " gpu_util=" << m.gpu.util_pct
-                      << " ram_used=" << m.ram.used_gb << "GB"
-                      << " fan_rpm=" << m.fan.rpm
-                      << " power_mode=" << static_cast<int>(m.power.mode)
-                      << std::endl;
+            std::string cpu_temp_str = m.cpu.temp_c.has_value() ? std::to_string(m.cpu.temp_c.value()) : "null";
+            std::string gpu_temp_str = m.gpu.temp_c.has_value() ? std::to_string(m.gpu.temp_c.value()) : "null";
+            std::string gpu_power_str = m.gpu.power_w.has_value() ? std::to_string(m.gpu.power_w.value()) + "W" : "null";
+            log_debug("[metrics] Sending: cpu_util=" + std::to_string(m.cpu.util_pct)
+                      + " cpu_temp=" + cpu_temp_str
+                      + " gpu_util=" + std::to_string(m.gpu.util_pct)
+                      + " gpu_clock=" + std::to_string(m.gpu.clock_mhz) + "MHz"
+                      + " gpu_temp=" + gpu_temp_str
+                      + " gpu_power=" + gpu_power_str
+                      + " vram=" + std::to_string(m.gpu.vram_used_bytes.value_or(0)) + "/" + std::to_string(m.gpu.vram_total_bytes.value_or(0)) + "B"
+                      + " ram_used=" + std::to_string(m.ram.used_bytes) + "B"
+                      + " fan_rpm=" + std::to_string(m.fan.rpm)
+                      + " power_mode=" + std::to_string(static_cast<int>(m.power.mode)));
 
             send_event_immediate(evt);
         }
@@ -428,6 +438,9 @@ auto TransportService::dispatch(const Command& cmd) -> Response {
     if (cmd.method == "set_config") return handle_set_config(cmd);
     if (cmd.method == "set_session_persist") return handle_set_session_persist(cmd);
     if (cmd.method == "restore_defaults") return handle_restore_defaults(cmd);
+    if (cmd.method == "get_uma_options") return handle_get_uma_options(cmd);
+    if (cmd.method == "set_uma_option") return handle_set_uma_option(cmd);
+    if (cmd.method == "reboot") return handle_reboot(cmd);
 
     // Unknown command
     Response resp;
@@ -478,7 +491,7 @@ auto TransportService::handle_subscribe_metrics(const Command& cmd) -> Response 
         metrics_interval_ms_ = 2000;
     }
 
-    std::cout << "[metrics] Subscribed (interval=" << interval_ms << "ms)" << std::endl;
+    log_info("[metrics] Subscribed (interval=" + std::to_string(interval_ms) + "ms)");
     event_cv_.notify_one();
 
     Response resp;
@@ -494,7 +507,7 @@ auto TransportService::handle_unsubscribe_metrics(const Command& cmd) -> Respons
         metrics_subscribed_ = false;
     }
 
-    std::cout << "[metrics] Unsubscribed" << std::endl;
+    log_info("[metrics] Unsubscribed");
 
     Response resp;
     resp.id = cmd.id;
@@ -1308,6 +1321,159 @@ auto TransportService::handle_restore_defaults(const Command& cmd) -> Response {
     Response resp;
     resp.id = cmd.id;
     resp.ok = true;
+    return resp;
+}
+
+auto TransportService::handle_get_uma_options(const Command& cmd) -> Response {
+    Response resp;
+    resp.id = cmd.id;
+
+    // Check if UMA is supported
+    auto supported_result = platform_.uma_supported();
+    if (!supported_result) {
+        resp.ok = false;
+        resp.error = ErrorCode::SensorUnavailable;
+        return resp;
+    }
+
+    json result;
+    result["supported"] = supported_result.value();
+
+    if (supported_result.value()) {
+        // Get available options
+        auto options_result = platform_.uma_available_options();
+        if (options_result) {
+            json options_array = json::array();
+            for (const auto& opt : options_result.value()) {
+                json opt_json;
+                opt_json["id"] = opt.id;
+                opt_json["name"] = opt.name;
+                opt_json["mode"] = (opt.mode == UmaOption::Mode::Custom) ? "custom" : "auto";
+                opt_json["memory_carved_gb"] = opt.memory_carved_gb;
+                opt_json["memory_remaining_gb"] = opt.memory_remaining_gb;
+                options_array.push_back(opt_json);
+            }
+            result["available_options"] = options_array;
+        }
+
+        // Get current option
+        auto current_result = platform_.uma_current_option();
+        if (current_result) {
+            const auto& current = current_result.value();
+            json current_json;
+            current_json["id"] = current.id;
+            current_json["name"] = current.name;
+            current_json["mode"] = (current.mode == UmaOption::Mode::Custom) ? "custom" : "auto";
+            current_json["memory_carved_gb"] = current.memory_carved_gb;
+            current_json["memory_remaining_gb"] = current.memory_remaining_gb;
+            result["current_option"] = current_json;
+        }
+    }
+
+    resp.ok = true;
+    resp.data = result.dump();
+    return resp;
+}
+
+auto TransportService::handle_set_uma_option(const Command& cmd) -> Response {
+    Response resp;
+    resp.id = cmd.id;
+
+    // Parse payload
+    json payload;
+    try {
+        payload = json::parse(cmd.payload);
+    } catch (...) {
+        resp.ok = false;
+        resp.error = ErrorCode::ParseError;
+        return resp;
+    }
+
+    if (!payload.contains("option_id") || !payload["option_id"].is_string()) {
+        resp.ok = false;
+        resp.error = ErrorCode::ParseError;
+        return resp;
+    }
+
+    std::string option_id = payload["option_id"].get<std::string>();
+
+    // Set the option
+    auto result = platform_.uma_set_option(option_id);
+    if (!result) {
+        resp.ok = false;
+        resp.error = result.error();
+        return resp;
+    }
+
+    // Reboot immediately after setting UMA (2s delay allows response to be sent)
+#ifdef _WIN32
+    STARTUPINFOA si = {};
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi = {};
+
+    BOOL ok = CreateProcessA(
+        nullptr,
+        const_cast<char*>("shutdown.exe /r /t 2"),
+        nullptr, nullptr, FALSE,
+        CREATE_NO_WINDOW,
+        nullptr, nullptr,
+        &si, &pi);
+
+    if (!ok) {
+        log_error("[uma] CreateProcess for shutdown.exe failed");
+        resp.ok = false;
+        resp.error = ErrorCode::HardwareBusy;
+        return resp;
+    }
+
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    log_info("[uma] System reboot initiated via shutdown.exe (2s delay)");
+#else
+    log_warn("[uma] Reboot not implemented on this platform");
+#endif
+
+    resp.ok = true;
+    return resp;
+}
+
+auto TransportService::handle_reboot(const Command& cmd) -> Response {
+    Response resp;
+    resp.id = cmd.id;
+
+#ifdef _WIN32
+    // Spawn a detached shutdown.exe process with a 2-second delay.
+    // This gives the backend time to write the response to the pipe
+    // before the system actually reboots.
+    STARTUPINFOA si = {};
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi = {};
+
+    BOOL ok = CreateProcessA(
+        nullptr,
+        const_cast<char*>("shutdown.exe /r /t 2"),
+        nullptr, nullptr, FALSE,
+        CREATE_NO_WINDOW,
+        nullptr, nullptr,
+        &si, &pi);
+
+    if (!ok) {
+        log_error("[reboot] CreateProcess for shutdown.exe failed");
+        resp.ok = false;
+        resp.error = ErrorCode::HardwareBusy;
+        return resp;
+    }
+
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+
+    log_info("[reboot] System reboot initiated via shutdown.exe (2s delay)");
+    resp.ok = true;
+#else
+    log_warn("[reboot] Reboot not implemented on this platform");
+    resp.ok = false;
+    resp.error = ErrorCode::SensorUnavailable;
+#endif
     return resp;
 }
 

@@ -1,8 +1,10 @@
+using CommunityToolkit.WinUI.Controls;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using XmaX.Models;
 using XmaX.ViewModels;
+using XmaX.Widgets;
 
 namespace XmaX.Pages;
 
@@ -57,41 +59,63 @@ public sealed partial class CoolingSubPage : Page
         FanCurvesList.ItemTemplate = null;
     }
 
-    private Grid BuildFanCurveCard(FanCurve curve)
+    private SettingsExpander BuildFanCurveCard(FanCurve curve)
     {
-        var grid = new Grid
+        var expander = new SettingsExpander
         {
-            Padding = new Thickness(8),
-            ColumnSpacing = 8,
-            Background = (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"],
-            CornerRadius = new CornerRadius(8),
+            Header = curve.Name,
+            Description = Loc.F("format.points_count", curve.Points.Count),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
         };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var info = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        info.Children.Add(new TextBlock { Text = curve.Name, Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] });
-        info.Children.Add(new TextBlock
+        // Fan curve visual
+        var chartCard = new SettingsCard
         {
-            Text = Loc.F("format.points_count", curve.Points.Count),
-            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-            Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
-        });
-        Grid.SetColumn(info, 0);
-        grid.Children.Add(info);
+            Header = "Preview",
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+        };
+        var chart = new MiniFanCurveChart
+        {
+            Width = 96,
+            Height = 96,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            ShowAxis = false,
+            GridlineInterval = 10,
+        };
+        chart.SetCurve(curve);
+        chartCard.Content = chart;
+        expander.Items.Add(chartCard);
 
-        var editBtn = new Button { Content = Loc.Button_Edit, VerticalAlignment = VerticalAlignment.Center, Tag = curve };
+        // Edit button
+        var editCard = new SettingsCard
+        {
+            Header = "Edit this fan curve",
+        };
+        var editBtn = new Button
+        {
+            Content = Loc.Button_Edit,
+            Tag = curve,
+        };
         editBtn.Click += OnEditFanCurveClick;
-        Grid.SetColumn(editBtn, 1);
-        grid.Children.Add(editBtn);
+        editCard.Content = editBtn;
+        expander.Items.Add(editCard);
 
-        var deleteBtn = new Button { Content = Loc.Button_Delete, VerticalAlignment = VerticalAlignment.Center, Tag = curve };
-        deleteBtn.Click += OnDeleteFanCurveClick;
-        Grid.SetColumn(deleteBtn, 2);
-        grid.Children.Add(deleteBtn);
+        // Remove button
+        var removeCard = new SettingsCard
+        {
+            Header = "Remove this fan curve",
+        };
+        var removeBtn = new Button
+        {
+            Content = "Remove",
+            Tag = curve,
+        };
+        removeBtn.Click += OnDeleteFanCurveClick;
+        removeCard.Content = removeBtn;
+        expander.Items.Add(removeCard);
 
-        return grid;
+        return expander;
     }
 
     // ===== Fan Curve CRUD Handlers =====

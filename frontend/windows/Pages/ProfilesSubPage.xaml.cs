@@ -76,59 +76,58 @@ public sealed partial class ProfilesSubPage : Page
         };
 
         // Expanded items: Details + Actions
-        if (profile.IsAdaptive)
+        // Type row
+        var typeCard = new SettingsCard
         {
-            // Adaptive profile: Show tuning type
-            var tuningCard = new SettingsCard
+            Header = "Type",
+            Content = new TextBlock
             {
-                Header = Loc.Form_Tuning,
-                Description = GetTuningDisplayText(profile.Tuning),
+                Text = profile.IsAdaptive ? $"Adaptive: {GetTuningDisplayText(profile.Tuning)}" : "Fixed",
+                VerticalAlignment = VerticalAlignment.Center,
+            },
+        };
+        expander.Items.Add(typeCard);
+
+        // Power State row
+        var powerStateCard = new SettingsCard
+        {
+            Header = "Power State",
+            Content = new TextBlock
+            {
+                Text = profile.PowerState ?? "None",
+                VerticalAlignment = VerticalAlignment.Center,
+            },
+        };
+        expander.Items.Add(powerStateCard);
+
+        // TDP row (only for fixed profiles)
+        if (!profile.IsAdaptive)
+        {
+            var tdpCard = new SettingsCard
+            {
+                Header = Loc.Form_Tdp,
+                Content = new TextBlock
+                {
+                    Text = $"{profile.Tdp.Stapm}W • {profile.Tdp.Fast}W • {profile.Tdp.Slow}W",
+                    VerticalAlignment = VerticalAlignment.Center,
+                },
             };
-            expander.Items.Add(tuningCard);
+            expander.Items.Add(tdpCard);
         }
-        else
+
+        // Fan Curve row (only for fixed profiles)
+        if (!profile.IsAdaptive)
         {
-            // Fixed profile: Show TDP values and fan curve in one card
-            var detailsCard = new SettingsCard
+            var fanCurveCard = new SettingsCard
             {
-                Header = "Profile Details",
+                Header = Loc.Form_FanCurve,
+                Content = new TextBlock
+                {
+                    Text = profile.FanCurve,
+                    VerticalAlignment = VerticalAlignment.Center,
+                },
             };
-
-            // Create custom content for TDP and fan curve
-            var detailsPanel = new StackPanel { Spacing = 8 };
-
-            // TDP section
-            var tdpStack = new StackPanel { Spacing = 2 };
-            tdpStack.Children.Add(new TextBlock
-            {
-                Text = Loc.Form_Tdp,
-                Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
-            });
-            tdpStack.Children.Add(new TextBlock
-            {
-                Text = GetTdpDisplayText(profile.Tdp),
-                Style = (Style)Application.Current.Resources["BodyTextBlockStyle"],
-            });
-            detailsPanel.Children.Add(tdpStack);
-
-            // Fan curve section
-            var fanCurveStack = new StackPanel { Spacing = 2 };
-            fanCurveStack.Children.Add(new TextBlock
-            {
-                Text = Loc.Form_FanCurve,
-                Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
-            });
-            fanCurveStack.Children.Add(new TextBlock
-            {
-                Text = profile.FanCurve,
-                Style = (Style)Application.Current.Resources["BodyTextBlockStyle"],
-            });
-            detailsPanel.Children.Add(fanCurveStack);
-
-            detailsCard.Content = detailsPanel;
-            expander.Items.Add(detailsCard);
+            expander.Items.Add(fanCurveCard);
         }
 
         // Edit button

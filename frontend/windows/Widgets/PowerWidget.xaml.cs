@@ -1,6 +1,7 @@
-using Microsoft.UI.Xaml.Controls;
+using System.ComponentModel;
 using XmaX.Models;
 using XmaX.Services;
+using XmaX.WidgetFramework;
 
 namespace XmaX.Widgets;
 
@@ -8,11 +9,8 @@ namespace XmaX.Widgets;
 /// Power state tile showing current power source and TDP limit.
 /// Displays a Material icon below the power state text.
 /// </summary>
-public sealed partial class PowerWidget : UserControl
+public sealed partial class PowerWidget : WidgetBase
 {
-    private readonly MetricsService _metricsService;
-    private readonly ProfileService _profileService;
-
     // Hardcoded max TDP per power state (must match backend power_state_max_tdp)
     private static readonly Dictionary<string, int> MaxTdpByState = new()
     {
@@ -33,37 +31,37 @@ public sealed partial class PowerWidget : UserControl
     private static readonly string GlyphBolt = char.ConvertFromUtf32(0xEA38);
     private static readonly string GlyphDcIn = char.ConvertFromUtf32(0xEBD9);
 
-    public PowerWidget()
+    public PowerWidget(IWidgetApi api) : base(api, "power")
     {
         this.InitializeComponent();
-        _metricsService = App.MetricsService;
-        _profileService = App.ProfileService;
-        _metricsService.PropertyChanged += OnMetricsChanged;
-        _profileService.PropertyChanged += OnProfileServiceChanged;
-        UpdateDisplay();
+
+        // Subscribe to metrics and profile updates
+        Metrics.PropertyChanged += OnMetricsChanged;
+        Profiles.PropertyChanged += OnProfileServiceChanged;
+        Refresh();
     }
 
-    private void OnMetricsChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    private void OnMetricsChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(MetricsService.Metrics))
         {
-            DispatcherQueue.TryEnqueue(UpdateDisplay);
+            ScheduleRefresh();
         }
     }
 
-    private void OnProfileServiceChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    private void OnProfileServiceChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(ProfileService.ActiveProfileId) ||
             e.PropertyName == nameof(ProfileService.IsAdaptiveActive) ||
             e.PropertyName == nameof(ProfileService.Profiles))
         {
-            DispatcherQueue.TryEnqueue(UpdateDisplay);
+            ScheduleRefresh();
         }
     }
 
-    private void UpdateDisplay()
+    public override void Refresh()
     {
-        var power = _metricsService.Metrics.Power;
+        var power = Metrics.Metrics.Power;
 
         // Map power mode to locale string
         StateText.Text = power.Mode switch
@@ -91,10 +89,10 @@ public sealed partial class PowerWidget : UserControl
     {
         var stateMax = MaxTdpByState.TryGetValue(powerMode, out var m) ? m : 55;
 
-        if (_profileService.IsAdaptiveActive && !string.IsNullOrEmpty(_profileService.ActiveProfileId))
+        if (Profiles.IsAdaptiveActive && !string.IsNullOrEmpty(Profiles.ActiveProfileId))
         {
-            var activeProfile = _profileService.Profiles
-                .FirstOrDefault(p => p.Id == _profileService.ActiveProfileId);
+            var activeProfile = Profiles.Profiles
+                .FirstOrDefault(p => p.Id == Profiles.ActiveProfileId);
             if (activeProfile != null && activeProfile.IsAdaptive)
             {
                 return Math.Min(activeProfile.TdpMaxW, stateMax);

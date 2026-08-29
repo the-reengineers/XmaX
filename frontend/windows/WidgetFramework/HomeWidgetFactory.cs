@@ -32,14 +32,14 @@ public static class HomeWidgetFactory
     /// Create a GridWidget for the given ID with default size and content.
     /// Returns null if the ID is unknown.
     /// </summary>
-    public static GridWidget? CreateWidget(string id)
+    public static GridWidget? CreateWidget(string id, IWidgetApi? api = null)
     {
         if (!Defaults.TryGetValue(id, out var def))
             return null;
 
         var widget = new GridWidget(id, def.colSpan, def.rowSpan, def.alwaysFillRow);
         ApplySizeConstraints(widget, id);
-        widget.Content = CreateContent(id);
+        widget.Content = CreateContent(id, api);
         return widget;
     }
 
@@ -47,14 +47,14 @@ public static class HomeWidgetFactory
     /// Create a GridWidget for the given ID with overridden size.
     /// Returns null if the ID is unknown.
     /// </summary>
-    public static GridWidget? CreateWidget(string id, int colSpan, int rowSpan)
+    public static GridWidget? CreateWidget(string id, int colSpan, int rowSpan, IWidgetApi? api = null)
     {
         if (!Defaults.TryGetValue(id, out var def))
             return null;
 
         var widget = new GridWidget(id, colSpan, rowSpan, def.alwaysFillRow);
         ApplySizeConstraints(widget, id);
-        widget.Content = CreateContent(id);
+        widget.Content = CreateContent(id, api);
         return widget;
     }
 
@@ -82,12 +82,12 @@ public static class HomeWidgetFactory
     /// <summary>
     /// Get all default home widgets in their default order.
     /// </summary>
-    public static List<GridWidget> GetDefaultWidgets()
+    public static List<GridWidget> GetDefaultWidgets(IWidgetApi? api = null)
     {
         var widgets = new List<GridWidget>();
         foreach (var id in Defaults.Keys)
         {
-            var w = CreateWidget(id);
+            var w = CreateWidget(id, api: api);
             if (w != null) widgets.Add(w);
         }
         return widgets;
@@ -96,28 +96,35 @@ public static class HomeWidgetFactory
     /// <summary>
     /// Create the UI content for a widget ID.
     /// </summary>
-    private static object CreateContent(string id)
+    private static object CreateContent(string id, IWidgetApi? api = null)
     {
+        // Note: all widgets are now migrated to accept IWidgetApi.
         return id switch
         {
-            "cpu" => new CpuTile(),
-            "gpu" => new GpuTile(),
-            "ram" => new RamTile(),
-            "vram" => new VramTile(),
-            "power" => new PowerWidget(),
-            "charge_limit" => new ChargeLimitWidget(),
-            "adaptive" => new AdaptiveWidget(),
-            "profiles" => CreateProfilesContent(),
+            "cpu" => new CpuTile(api!),
+            "gpu" => new GpuTile(api!),
+            "ram" => new RamTile(api!),
+            "vram" => new VramTile(api!),
+            "power" => new PowerWidget(api!),
+            "charge_limit" => new ChargeLimitWidget(api!),
+            "adaptive" => new AdaptiveWidget(api!),
+            "profiles" => new ProfilesWidget(api!),
             _ => throw new ArgumentException($"Unknown widget ID: {id}"),
         };
     }
 
     /// <summary>
-    /// Create profiles widget with built-in scrolling.
-    /// The widget handles vertical overflow internally.
+    /// Validate that every ID in DefaultOrder has a CreateContent case.
+    /// Call at startup to fail fast if a widget is missing.
     /// </summary>
-    private static object CreateProfilesContent()
+    public static void ValidateRegistration()
     {
-        return new ProfilesWidget();
+        foreach (var id in DefaultOrder)
+        {
+            if (!Defaults.ContainsKey(id))
+            {
+                throw new InvalidOperationException($"Widget ID '{id}' is in DefaultOrder but not in Defaults dictionary");
+            }
+        }
     }
 }

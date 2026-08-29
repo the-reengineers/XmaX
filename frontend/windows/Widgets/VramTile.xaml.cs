@@ -1,34 +1,33 @@
-using Microsoft.UI.Xaml.Controls;
 using XmaX.Services;
+using XmaX.WidgetFramework;
 
 namespace XmaX.Widgets;
 
 /// <summary>
 /// VRAM metric tile showing GPU memory usage.
 /// </summary>
-public sealed partial class VramTile : UserControl
+public sealed partial class VramTile : WidgetBase
 {
-    private readonly MetricsService _metricsService;
-
-    public VramTile()
+    public VramTile(IWidgetApi api) : base(api, "vram")
     {
         this.InitializeComponent();
-        _metricsService = App.MetricsService;
-        _metricsService.PropertyChanged += OnMetricsChanged;
-        UpdateDisplay();
+
+        // Subscribe to metrics updates
+        Metrics.PropertyChanged += OnMetricsChanged;
+        Refresh();
     }
 
     private void OnMetricsChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(MetricsService.Metrics))
         {
-            DispatcherQueue.TryEnqueue(UpdateDisplay);
+            ScheduleRefresh();
         }
     }
 
-    private void UpdateDisplay()
+    public override void Refresh()
     {
-        var gpu = _metricsService.Metrics.Gpu;
+        var gpu = Metrics.Metrics.Gpu;
         if (gpu.VramUsedBytes.HasValue && gpu.VramTotalBytes.HasValue)
         {
             double vramUsedGb = gpu.VramUsedBytes.Value / (1024.0 * 1024.0 * 1024.0);

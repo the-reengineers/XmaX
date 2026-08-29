@@ -25,7 +25,7 @@ public sealed partial class HomePage : Page
         // Create widgets via factory — one instance each, stored for reuse
         foreach (var id in HomeWidgetFactory.DefaultOrder)
         {
-            var gridWidget = HomeWidgetFactory.CreateWidget(id);
+            var gridWidget = HomeWidgetFactory.CreateWidget(id, api: App.WidgetApi);
             if (gridWidget != null)
             {
                 _gridWidgets[id] = gridWidget;
@@ -61,7 +61,7 @@ public sealed partial class HomePage : Page
             // Use widget order and sizes from config
             foreach (var id in configIds)
             {
-                var gw = HomeWidgetFactory.CreateWidget(id);
+                var gw = HomeWidgetFactory.CreateWidget(id, api: App.WidgetApi);
                 if (gw != null)
                 {
                     var (colSpan, rowSpan) = _widgetService.GetWidgetSpan(id);
@@ -77,7 +77,7 @@ public sealed partial class HomePage : Page
             // First run or no config — show all widgets with default sizes
             foreach (var id in HomeWidgetFactory.DefaultOrder)
             {
-                var gw = HomeWidgetFactory.CreateWidget(id);
+                var gw = HomeWidgetFactory.CreateWidget(id, api: App.WidgetApi);
                 if (gw != null)
                 {
                     _gridWidgets[id] = gw;

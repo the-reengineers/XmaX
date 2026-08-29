@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using XmaX.Models;
 using XmaX.Services;
+using XmaX.WidgetFramework;
 
 namespace XmaX.Widgets;
 
@@ -10,19 +11,15 @@ namespace XmaX.Widgets;
 /// Each card represents an adaptive profile. Tap to apply.
 /// Active adaptive profile is visually highlighted.
 /// </summary>
-public sealed partial class AdaptiveWidget : UserControl
+public sealed partial class AdaptiveWidget : WidgetBase
 {
-    private readonly ProfileService _profileService;
-    private readonly WidgetService _widgetService;
-
-    public AdaptiveWidget()
+    public AdaptiveWidget(IWidgetApi api) : base(api, "adaptive")
     {
         this.InitializeComponent();
         TitleText.Text = Loc.Title_Adaptive;
-        _profileService = App.ProfileService;
-        _widgetService = App.WidgetService;
-        _profileService.PropertyChanged += OnProfileServiceChanged;
-        _widgetService.PropertyChanged += OnWidgetServiceChanged;
+
+        // Subscribe to profile updates
+        Profiles.PropertyChanged += OnProfileServiceChanged;
         BuildProfileCards();
         UpdateDisplay();
     }
@@ -42,12 +39,15 @@ public sealed partial class AdaptiveWidget : UserControl
         }
     }
 
-    private void OnWidgetServiceChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    public override void OnColumnsChanged(int columns)
     {
-        if (e.PropertyName == nameof(WidgetService.Columns))
-        {
-            DispatcherQueue.TryEnqueue(BuildProfileCards);
-        }
+        ScheduleRefresh();
+    }
+
+    public override void Refresh()
+    {
+        BuildProfileCards();
+        UpdateDisplay();
     }
 
     /// <summary>
@@ -59,7 +59,7 @@ public sealed partial class AdaptiveWidget : UserControl
         PresetGrid.ColumnDefinitions.Clear();
         PresetGrid.RowDefinitions.Clear();
 
-        var adaptiveProfiles = _profileService.Profiles
+        var adaptiveProfiles = Profiles.Profiles
             .Where(p => p.IsAdaptive)
             .ToList();
 
@@ -73,13 +73,13 @@ public sealed partial class AdaptiveWidget : UserControl
                 VerticalAlignment = VerticalAlignment.Center,
             };
             placeholder.SetValue(Grid.RowProperty, 0);
-            placeholder.SetValue(Grid.ColumnSpanProperty, Math.Max(1, _widgetService.Columns));
+            placeholder.SetValue(Grid.ColumnSpanProperty, Math.Max(1, WidgetService.Columns));
             PresetGrid.Children.Add(placeholder);
             return;
         }
 
         // Use columns matching widget's actual column span, up to the number of profiles
-        var columns = Math.Min(adaptiveProfiles.Count, _widgetService.Columns);
+        var columns = Math.Min(adaptiveProfiles.Count, WidgetService.Columns);
 
         for (int c = 0; c < columns; c++)
         {
@@ -118,8 +118,8 @@ public sealed partial class AdaptiveWidget : UserControl
 
     private void UpdateDisplay()
     {
-        var activeId = _profileService.ActiveProfileId;
-        var isAdaptive = _profileService.IsAdaptiveActive;
+        var activeId = Profiles.ActiveProfileId;
+        var isAdaptive = Profiles.IsAdaptiveActive;
 
         foreach (var child in PresetGrid.Children)
         {
@@ -130,11 +130,16 @@ public sealed partial class AdaptiveWidget : UserControl
         }
     }
 
-    private void OnProfileCardTapped(object? sender, EventArgs e)
+    private async void OnProfileCardTapped(object? sender, EventArgs e)
     {
         if (sender is ProfileCard card && !string.IsNullOrEmpty(card.ProfileId))
         {
-            _ = _profileService.ApplyProfileAsync(card.ProfileId);
+            var result = await Api.ApplyProfileAsync(card.ProfileId);
+            if (!result.IsSuccess)
+            {
+                // Could show error toast here in the future
+                // For now, UI will revert on next profile update
+            }
         }
     }
 }

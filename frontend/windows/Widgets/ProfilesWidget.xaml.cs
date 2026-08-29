@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using XmaX.Models;
 using XmaX.Services;
+using XmaX.WidgetFramework;
 
 namespace XmaX.Widgets;
 
@@ -12,21 +13,18 @@ namespace XmaX.Widgets;
 /// Uses ScrollViewer with mandatory vertical snap points so each row of cards
 /// snaps into place — touch, mouse wheel, and kinetic panning all snap row-by-row.
 /// </summary>
-public sealed partial class ProfilesWidget : UserControl
+public sealed partial class ProfilesWidget : WidgetBase
 {
-    private readonly ProfileService _profileService;
-    private readonly WidgetService _widgetService;
     private bool _isRebuildingRows;
     private double _cardHeight;
 
-    public ProfilesWidget()
+    public ProfilesWidget(IWidgetApi api) : base(api, "profiles")
     {
         this.InitializeComponent();
         TitleText.Text = Loc.Title_Profiles;
-        _profileService = App.ProfileService;
-        _widgetService = App.WidgetService;
-        _profileService.PropertyChanged += OnProfileServiceChanged;
-        _widgetService.PropertyChanged += OnWidgetServiceChanged;
+
+        // Subscribe to profile updates
+        Profiles.PropertyChanged += OnProfileServiceChanged;
         RowsScroller.SizeChanged += (_, _) => RebuildRows();
 
         RebuildRows();
@@ -44,16 +42,18 @@ public sealed partial class ProfilesWidget : UserControl
         if (e.PropertyName == nameof(ProfileService.Profiles) ||
             e.PropertyName == nameof(ProfileService.ActiveProfileId))
         {
-            DispatcherQueue.TryEnqueue(RebuildRows);
+            ScheduleRefresh();
         }
     }
 
-    private void OnWidgetServiceChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    public override void Refresh()
     {
-        if (e.PropertyName == nameof(WidgetService.Columns))
-        {
-            DispatcherQueue.TryEnqueue(RebuildRows);
-        }
+        RebuildRows();
+    }
+
+    public override void OnColumnsChanged(int columns)
+    {
+        ScheduleRefresh();
     }
 
     private void RebuildRows()
@@ -76,8 +76,8 @@ public sealed partial class ProfilesWidget : UserControl
     {
         RowsPanel.Children.Clear();
 
-        var profiles = _profileService.Profiles;
-        var columns = _widgetService.Columns;
+        var profiles = Profiles.Profiles;
+        var columns = WidgetService.Columns;
         if (columns <= 0) columns = 1;
 
         // Compute card height to match the widget grid's standard row height.
@@ -141,7 +141,7 @@ public sealed partial class ProfilesWidget : UserControl
     /// </summary>
     private double ComputeCellWidth()
     {
-        var columns = _widgetService.Columns;
+        var columns = WidgetService.Columns;
         var width = RowsScroller.ActualWidth;
         if (width <= 0 || columns <= 0) return 0;
         return width / columns;
@@ -153,7 +153,7 @@ public sealed partial class ProfilesWidget : UserControl
     /// </summary>
     private UIElement CreateRowElement(List<Profile> profiles)
     {
-        var activeId = _profileService.ActiveProfileId;
+        var activeId = Profiles.ActiveProfileId;
         var rowGrid = new Grid
         {
             ColumnSpacing = 12,
@@ -169,7 +169,7 @@ public sealed partial class ProfilesWidget : UserControl
         {
             var profile = profiles[c];
             var isActive = profile.Id == activeId;
-            var fanCurve = _profileService.FanCurves.FirstOrDefault(f => f.Id == profile.FanCurve);
+            var fanCurve = Profiles.FanCurves.FirstOrDefault(f => f.Id == profile.FanCurve);
 
             var card = new ProfileCard
             {
@@ -202,7 +202,7 @@ public sealed partial class ProfilesWidget : UserControl
         }
 
         // Partial rows: left-align at normal column width so cards don't stretch
-        var totalColumns = Math.Max(1, _widgetService.Columns);
+        var totalColumns = Math.Max(1, WidgetService.Columns);
         const double columnSpacing = 12;
         if (profiles.Count < totalColumns)
         {
@@ -229,13 +229,10 @@ public sealed partial class ProfilesWidget : UserControl
         var card = FindParent<ProfileCard>(sender as DependencyObject);
         if (card != null && !string.IsNullOrEmpty(card.ProfileId))
         {
-            try
+            var result = await Api.ApplyProfileAsync(card.ProfileId);
+            if (!result.IsSuccess)
             {
-                await _profileService.ApplyProfileAsync(card.ProfileId);
-            }
-            catch (Exception ex)
-            {
-                await ShowErrorAsync(Loc.Dialog_ApplyFailed, ex.Message);
+                await ShowErrorAsync(Loc.Dialog_ApplyFailed, result.ErrorMessage ?? "Unknown error");
             }
         }
     }
@@ -330,4 +327,3 @@ public sealed partial class ProfilesWidget : UserControl
         }
     }
 }
-

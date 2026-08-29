@@ -1,7 +1,6 @@
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using XmaX.Services;
+using XmaX.WidgetFramework;
 
 namespace XmaX.Widgets;
 
@@ -9,34 +8,31 @@ namespace XmaX.Widgets;
 /// Charge limit widget - entire widget is clickable to cycle charge limits.
 /// Card background applied by HomePage (IsInteractiveCard = true).
 /// </summary>
-public sealed partial class ChargeLimitWidget : UserControl
+public sealed partial class ChargeLimitWidget : WidgetBase
 {
     /// <summary>Charge limit steps in percent, cycling order.</summary>
     private static readonly int[] ChargeSteps = { 75, 80, 85, 90, 95, 100 };
 
-    private readonly MetricsService _metricsService;
-    private readonly PipeClient _pipe;
-
-    public ChargeLimitWidget()
+    public ChargeLimitWidget(IWidgetApi api) : base(api, "charge_limit")
     {
         this.InitializeComponent();
-        _metricsService = App.MetricsService;
-        _pipe = App.Pipe;
-        _metricsService.PropertyChanged += OnMetricsChanged;
-        UpdateDisplay();
+
+        // Subscribe to metrics updates
+        Metrics.PropertyChanged += OnMetricsChanged;
+        Refresh();
     }
 
     private void OnMetricsChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(MetricsService.Metrics))
         {
-            DispatcherQueue.TryEnqueue(UpdateDisplay);
+            ScheduleRefresh();
         }
     }
 
-    private void UpdateDisplay()
+    public override void Refresh()
     {
-        var limit = _metricsService.Metrics.Power.ChargeLimitPercent;
+        var limit = Metrics.Metrics.Power.ChargeLimitPercent;
         ChargeLimitText.Text = limit.HasValue ? Loc.F("widget.charge_format", limit.Value) : Loc.Metrics_NoData;
         ChargeGauge.Value = limit ?? 0;
     }
@@ -46,30 +42,27 @@ public sealed partial class ChargeLimitWidget : UserControl
         _ = CycleChargeLimitAsync();
     }
 
-    private void OnPointerEntered(object sender, PointerRoutedEventArgs e)
+    private void OnPointerEntered(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
     {
         // Hover effect - slightly brighter
         Opacity = 0.8;
     }
 
-    private void OnPointerExited(object sender, PointerRoutedEventArgs e)
+    private void OnPointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
     {
         Opacity = 1.0;
     }
 
     private async Task CycleChargeLimitAsync()
     {
-        var current = _metricsService.Metrics.Power.ChargeLimitPercent ?? 100;
+        var current = Metrics.Metrics.Power.ChargeLimitPercent ?? 100;
         var next = GetNextLimit(current);
 
-        try
-        {
-            var payload = new System.Text.Json.Nodes.JsonObject { ["percent"] = next };
-            await _pipe.SendCommandAsync("set_charge_limit", payload);
-        }
-        catch
+        var result = await Api.SetChargeLimitAsync(next);
+        if (!result.IsSuccess)
         {
             // Command failed (e.g., persist=false) — UI will revert on next metrics update
+            // Could show error toast here in the future
         }
     }
 

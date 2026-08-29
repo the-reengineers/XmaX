@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ── Text styles ─────────────────────────────────────────────────── -->
+
+    <!-- Widget title / label (e.g. "CPU", "GPU", "Power State") -->
+    <Style x:Key="WidgetTitleStyle" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
+        <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+    </Style>
+
+    <!-- Widget primary value (e.g. temperature, utilization percentage) -->
+    <Style x:Key="WidgetValueStyle" TargetType="TextBlock" BasedOn="{StaticResource SubtitleTextBlockStyle}" />
+
+    <!-- Widget secondary label / description -->
+    <Style x:Key="WidgetLabelStyle" TargetType="TextBlock" BasedOn="{StaticResource BodyTextBlockStyle}" />
+
+    <!-- ── Layout styles ───────────────────────────────────────────────── -->
+
+    <!-- Default root panel for simple widgets (metric tiles, etc.) -->
+    <Style x:Key="WidgetRootPanelStyle" TargetType="StackPanel">
+        <Setter Property="Spacing" Value="4" />
+        <Setter Property="Padding" Value="10" />
+    </Style>
+
+</ResourceDictionary>

@@ -109,6 +109,7 @@ public partial class App : Application
         ProfileService = new ProfileService(Pipe);
         WidgetService = new WidgetService(Pipe);
         UmaService = new UmaService(Pipe);
+        WidgetApi = new WidgetFramework.WidgetApi(ProfileService, Pipe);
 
         // Connect to backend
         Pipe.Connect();
@@ -158,6 +159,9 @@ public partial class App : Application
 
     /// <summary>UMA (Variable Graphics Memory) management service.</summary>
     public static UmaService UmaService { get; private set; } = null!;
+
+    /// <summary>Widget API for commands (apply profile, set charge limit, etc.).</summary>
+    public static WidgetFramework.IWidgetApi WidgetApi { get; private set; } = null!;
 
     // ===== Shared ViewModel accessors =====
 

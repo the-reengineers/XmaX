@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<UserControl x:Class="XmaX.Widgets.ChargeLimitWidget"
+<framework:WidgetBase x:Class="XmaX.Widgets.ChargeLimitWidget"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:framework="using:XmaX.WidgetFramework"
              mc:Ignorable="d"
              Tapped="OnWidgetTapped"
              PointerEntered="OnPointerEntered"
@@ -21,19 +22,17 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <TextBlock Text="CHARGE LIMIT" Style="{StaticResource CaptionTextBlockStyle}"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <TextBlock Text="CHARGE LIMIT" Style="{StaticResource WidgetTitleStyle}" />
 
             <TextBlock x:Name="ChargeLimitText" Grid.Row="1"
-                       Style="{StaticResource SubtitleTextBlockStyle}" />
+                       Style="{StaticResource WidgetValueStyle}" />
 
             <ProgressBar x:Name="ChargeGauge" Grid.Row="3"
                          Minimum="0" Maximum="100" Value="0"
                          Height="8" />
 
-            <TextBlock Grid.Row="4" Style="{StaticResource CaptionTextBlockStyle}"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+            <TextBlock Grid.Row="4" Style="{StaticResource WidgetTitleStyle}"
                        Text="Tap to cycle" />
         </Grid>
     </Border>
-</UserControl>
+</framework:WidgetBase>

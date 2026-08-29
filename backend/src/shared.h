@@ -12,6 +12,11 @@ struct CpuMetrics {
     uint32_t clock_mhz = 0;
     std::optional<int> temp_c;
     std::optional<double> package_watts;
+    // SmartShift: -100 (all CPU) to +100 (all GPU), 0 = balanced
+    std::optional<int> smart_shift;
+    // PowerDistribution: APU power shift value and limit
+    std::optional<int> apu_shift_value;
+    std::optional<int> apu_shift_limit;
 };
 
 struct GpuMetrics {

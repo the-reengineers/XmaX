@@ -6,6 +6,7 @@
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <wbemidl.h>
 #endif
 
 // EC register addresses for power state and charge limit
@@ -17,6 +18,76 @@ static constexpr uint8_t POWER_STATE_BATTERY     = 1;
 static constexpr uint8_t POWER_STATE_USB_C_SLOW  = 8;  // or 9
 static constexpr uint8_t POWER_STATE_USB_C_FAST  = 2;  // or 3
 static constexpr uint8_t POWER_STATE_DC_IN       = 4;  // or 5 or 0x85
+
+#ifdef _WIN32
+// Read battery percentage via WMI Win32_Battery (driver-free)
+static auto battery_pct_wmi() -> std::optional<int> {
+    HRESULT hr;
+    IWbemServices* cimv2_svc = nullptr;
+    std::optional<int> result;
+
+    hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if (FAILED(hr) && hr != RPC_E_CHANGED_MODE) {
+        return std::nullopt;
+    }
+
+    IWbemLocator* locator = nullptr;
+    hr = CoCreateInstance(CLSID_WbemLocator, nullptr, CLSCTX_INPROC_SERVER,
+                          IID_IWbemLocator, reinterpret_cast<void**>(&locator));
+    if (FAILED(hr)) {
+        CoUninitialize();
+        return std::nullopt;
+    }
+
+    hr = locator->ConnectServer((BSTR)L"ROOT\\CIMV2", nullptr, nullptr, nullptr, 0, nullptr, nullptr, &cimv2_svc);
+    locator->Release();
+    if (FAILED(hr)) {
+        CoUninitialize();
+        return std::nullopt;
+    }
+
+    hr = CoSetProxyBlanket(cimv2_svc, RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE, nullptr,
+                           RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE, nullptr, EOAC_NONE);
+    if (FAILED(hr)) {
+        cimv2_svc->Release();
+        CoUninitialize();
+        return std::nullopt;
+    }
+
+    IEnumWbemClassObject* enumerator = nullptr;
+    hr = cimv2_svc->ExecQuery(
+        (BSTR)L"WQL",
+        (BSTR)L"SELECT EstimatedChargeRemaining FROM Win32_Battery",
+        WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
+        nullptr, &enumerator);
+
+    if (SUCCEEDED(hr) && enumerator) {
+        IWbemClassObject* obj = nullptr;
+        ULONG ret = 0;
+        hr = enumerator->Next(WBEM_INFINITE, 1, &obj, &ret);
+
+        if (SUCCEEDED(hr) && ret > 0 && obj) {
+            VARIANT v;
+            VariantInit(&v);
+            hr = obj->Get((BSTR)L"EstimatedChargeRemaining", 0, &v, nullptr, nullptr);
+
+            if (SUCCEEDED(hr) && (v.vt == VT_I4 || v.vt == VT_UI2 || v.vt == VT_I2)) {
+                int pct = (v.vt == VT_I4) ? v.lVal : v.iVal;
+                if (pct >= 0 && pct <= 100) {
+                    result = pct;
+                }
+            }
+            VariantClear(&v);
+            obj->Release();
+        }
+        enumerator->Release();
+    }
+
+    cimv2_svc->Release();
+    CoUninitialize();
+    return result;
+}
+#endif
 
 MetricsPoller::MetricsPoller(Platform& platform, FanController& fan_ctrl, TdpController& tdp_ctrl)
     : platform_(platform)
@@ -67,6 +138,13 @@ void MetricsPoller::poll_loop() {
         poll_fan();
         poll_power();
 
+        // Update fan curve if in Curve mode
+        // This must be called periodically to apply the fan curve
+        {
+            std::lock_guard lock(metrics_mutex_);
+            fan_ctrl_.tick(current_metrics_.cpu.temp_c, current_metrics_.gpu.temp_c);
+        }
+
         // Update timestamp
         {
             std::lock_guard lock(metrics_mutex_);
@@ -112,8 +190,8 @@ void MetricsPoller::poll_cpu() {
         has_prev = true;
     }
 
-    // CPU clock speed via WMI (Win32_Processor.MaxClockSpeed)
-    // TODO: Implement WMI query for CPU clock
+    // CPU clock speed via WMI (Win32_Processor.CurrentClockSpeed)
+    current_metrics_.cpu.clock_mhz = platform_.cpu_clock_mhz();
 
     // CPU temperature via EC register 0x0470
     auto temp_result = platform_.ec_read(0x0470);
@@ -121,8 +199,19 @@ void MetricsPoller::poll_cpu() {
         current_metrics_.cpu.temp_c = static_cast<int>(temp_result.value());
     }
 
-    // CPU package power via SMU mailbox
-    // TODO: Implement SMU query for package power
+    // CPU package power via SMU PM table
+    // TODO: Requires specific PM table command ID (not documented in tdp_test.cpp)
+    // The blob's ioctl_send_smu_command reads from PM table but we need the command ID
+    // for package power specifically (different from TDP limits)
+
+    // SmartShift and PowerDistribution via ADLX
+    auto sys_result = platform_.system_metrics();
+    if (sys_result) {
+        const auto& sys = sys_result.value();
+        current_metrics_.cpu.smart_shift = sys.smart_shift;
+        current_metrics_.cpu.apu_shift_value = sys.apu_shift_value;
+        current_metrics_.cpu.apu_shift_limit = sys.apu_shift_limit;
+    }
 #endif
 }
 
@@ -208,6 +297,8 @@ void MetricsPoller::poll_power() {
         current_metrics_.power.charge_limit_pct = std::nullopt;
     }
 
-    // Battery percentage would come from a separate source (e.g., WMI or sysfs)
-    // For now, leave as nullopt
+#ifdef _WIN32
+    // Battery percentage via WMI Win32_Battery (driver-free)
+    current_metrics_.power.battery_pct = battery_pct_wmi();
+#endif
 }

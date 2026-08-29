@@ -1,4 +1,5 @@
 #include "fan.h"
+#include "logger.h"
 
 #include <algorithm>
 #include <cmath>
@@ -14,12 +15,13 @@ auto FanController::set_mode(FanState::Mode mode) -> Result<void> {
     // Write mode to EC
     uint8_t ec_mode = (mode == FanState::Mode::Auto) ? EC_MODE_AUTO : EC_MODE_MANUAL;
     auto result = platform_.ec_write(EC_FAN_MODE, ec_mode);
-    if (!result) {
-        return result;
-    }
 
+    // Update internal state regardless of EC write success
+    // This ensures tick() will attempt to control the fan even if EC write failed
+    // (next tick will retry the EC write)
     mode_ = mode;
-    return {};
+
+    return result;
 }
 
 auto FanController::mode() const -> FanState::Mode {
@@ -42,11 +44,13 @@ void FanController::tick(std::optional<int> cpu_temp, std::optional<int> gpu_tem
 
     // No-op in Auto mode -- BIOS controls the fan
     if (mode_ != FanState::Mode::Curve) {
+        log_debug("[fan] tick: mode is not Curve, skipping");
         return;
     }
 
     // Need a curve to interpolate
     if (!active_curve_.has_value()) {
+        log_debug("[fan] tick: no active curve, skipping");
         return;
     }
 
@@ -60,7 +64,8 @@ void FanController::tick(std::optional<int> cpu_temp, std::optional<int> gpu_tem
     } else if (gpu_temp.has_value()) {
         temp = gpu_temp;
     } else {
-        return;  // No temperature data available
+        log_debug("[fan] tick: no temperature data, skipping");
+        return;
     }
 
     // Interpolate speed from curve
@@ -69,6 +74,7 @@ void FanController::tick(std::optional<int> cpu_temp, std::optional<int> gpu_tem
 
     // Convert to duty cycle and write to EC
     uint8_t duty = pct_to_duty(last_speed_pct_);
+    log_debug("[fan] tick: temp=" + std::to_string(temp.value()) + "C, speed=" + std::to_string(speed_pct) + "%, duty=" + std::to_string(duty));
     (void)platform_.ec_write(EC_FAN_DUTY, duty);  // Ignore errors -- retry on next tick
 }
 

@@ -319,6 +319,9 @@ public sealed partial class ProfileEditorPage : Page
                 await viewModel.UpdateProfileAsync(profile);
             }
 
+            // Mark as clean before navigating back to avoid unsaved changes dialog
+            _isDirty = false;
+
             // Navigate back — ProfilesSubPage will refresh via ViewModel.PropertyChanged
             if (Frame.CanGoBack)
             {

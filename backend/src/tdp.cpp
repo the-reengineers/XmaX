@@ -10,22 +10,23 @@ auto TdpController::read_tdp() -> Result<TdpState> {
 
     TdpState state;
 
-    // Read STAPM limit from SMU
-    auto stapm_result = platform_.smu_send(SMU_MSG_READ_STAPM, 0);
+    // Read STAPM limit via safe blob handler (returns milliwatts)
+    // WARNING: Do NOT use smu_send for reads - SET opcodes with arg=0 will set TDP to 0mW
+    auto stapm_result = platform_.smu_read_safe(SMU_MSG_READ_STAPM);
     if (stapm_result) {
-        state.stapm_w = stapm_result.value();
+        state.stapm_w = stapm_result.value() / 1000;  // Convert mW to W
     }
 
-    // Read Fast limit from SMU
-    auto fast_result = platform_.smu_send(SMU_MSG_READ_FAST, 0);
+    // Read Fast limit via safe blob handler
+    auto fast_result = platform_.smu_read_safe(SMU_MSG_READ_FAST);
     if (fast_result) {
-        state.fast_w = fast_result.value();
+        state.fast_w = fast_result.value() / 1000;  // Convert mW to W
     }
 
-    // Read Slow limit from SMU
-    auto slow_result = platform_.smu_send(SMU_MSG_READ_SLOW, 0);
+    // Read Slow limit via safe blob handler
+    auto slow_result = platform_.smu_read_safe(SMU_MSG_READ_SLOW);
     if (slow_result) {
-        state.slow_w = slow_result.value();
+        state.slow_w = slow_result.value() / 1000;  // Convert mW to W
     }
 
     last_state_ = state;
@@ -46,22 +47,25 @@ auto TdpController::write_tdp(uint32_t stapm_w, uint32_t fast_w, uint32_t slow_w
 
     std::lock_guard lock(mutex_);
 
-    // Write STAPM limit to SMU
-    // TODO: Implement dual-dispatch write sequence if required by hardware
-    // (some AMD SMUs require a prepare/unlock command before the actual write)
-    auto stapm_result = platform_.smu_send(SMU_MSG_WRITE_STAPM, stapm_w);
+    // Convert watts to milliwatts (SMU expects mW)
+    uint32_t stapm_mW = stapm_w * 1000;
+    uint32_t fast_mW = fast_w * 1000;
+    uint32_t slow_mW = slow_w * 1000;
+
+    // Write STAPM limit to SMU via MP1 mailbox (HC-style)
+    auto stapm_result = platform_.smu_send(SMU_MSG_WRITE_STAPM, stapm_mW);
     if (!stapm_result) {
         return std::unexpected(stapm_result.error());
     }
 
-    // Write Fast limit to SMU
-    auto fast_result = platform_.smu_send(SMU_MSG_WRITE_FAST, fast_w);
+    // Write Fast limit to SMU via MP1 mailbox
+    auto fast_result = platform_.smu_send(SMU_MSG_WRITE_FAST, fast_mW);
     if (!fast_result) {
         return std::unexpected(fast_result.error());
     }
 
-    // Write Slow limit to SMU
-    auto slow_result = platform_.smu_send(SMU_MSG_WRITE_SLOW, slow_w);
+    // Write Slow limit to SMU via MP1 mailbox
+    auto slow_result = platform_.smu_send(SMU_MSG_WRITE_SLOW, slow_mW);
     if (!slow_result) {
         return std::unexpected(slow_result.error());
     }

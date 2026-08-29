@@ -235,6 +235,87 @@ static void wmi_cleanup_thread() {
 }
 
 // =====================================================================
+// CPU Clock via WMI (ROOT\CIMV2 - separate from EC WMI)
+// =====================================================================
+
+// Read CPU current clock speed in MHz via WMI Win32_Processor
+// This is driver-free and uses standard Windows APIs
+auto cpu_clock_mhz_wmi() -> uint32_t {
+    HRESULT hr;
+    IWbemServices* cimv2_svc = nullptr;
+    uint32_t clock_mhz = 0;
+
+    // Initialize COM for this call (may already be initialized)
+    hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if (FAILED(hr) && hr != RPC_E_CHANGED_MODE) {
+        return 0;
+    }
+
+    // Create WMI locator
+    IWbemLocator* locator = nullptr;
+    hr = CoCreateInstance(CLSID_WbemLocator, nullptr, CLSCTX_INPROC_SERVER,
+                          IID_IWbemLocator, reinterpret_cast<void**>(&locator));
+    if (FAILED(hr)) {
+        CoUninitialize();
+        return 0;
+    }
+
+    // Connect to ROOT\CIMV2
+    hr = locator->ConnectServer((BSTR)L"ROOT\\CIMV2", nullptr, nullptr, nullptr, 0, nullptr, nullptr, &cimv2_svc);
+    locator->Release();
+    if (FAILED(hr)) {
+        CoUninitialize();
+        return 0;
+    }
+
+    // Set proxy security
+    hr = CoSetProxyBlanket(cimv2_svc, RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE, nullptr,
+                           RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE, nullptr, EOAC_NONE);
+    if (FAILED(hr)) {
+        cimv2_svc->Release();
+        CoUninitialize();
+        return 0;
+    }
+
+    // Query Win32_Processor for CurrentClockSpeed
+    IEnumWbemClassObject* enumerator = nullptr;
+    hr = cimv2_svc->ExecQuery(
+        (BSTR)L"WQL",
+        (BSTR)L"SELECT CurrentClockSpeed FROM Win32_Processor",
+        WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
+        nullptr, &enumerator);
+
+    if (SUCCEEDED(hr) && enumerator) {
+        IWbemClassObject* obj = nullptr;
+        ULONG ret = 0;
+        hr = enumerator->Next(WBEM_INFINITE, 1, &obj, &ret);
+
+        if (SUCCEEDED(hr) && ret > 0 && obj) {
+            VARIANT v;
+            VariantInit(&v);
+            hr = obj->Get((BSTR)L"CurrentClockSpeed", 0, &v, nullptr, nullptr);
+
+            if (SUCCEEDED(hr)) {
+                if (v.vt == VT_I4 || v.vt == VT_INT) {
+                    clock_mhz = static_cast<uint32_t>(v.lVal);
+                } else if (v.vt == VT_UI4) {
+                    clock_mhz = v.ulVal;
+                } else if (v.vt == VT_UI2 || v.vt == VT_I2) {
+                    clock_mhz = static_cast<uint32_t>(v.iVal);
+                }
+            }
+            VariantClear(&v);
+            obj->Release();
+        }
+        enumerator->Release();
+    }
+
+    cimv2_svc->Release();
+    CoUninitialize();
+    return clock_mhz;
+}
+
+// =====================================================================
 // PawnIO Constants
 // =====================================================================
 
@@ -682,14 +763,19 @@ public:
                       uint32_t command, const uint32_t* args, int arg_count,
                       uint32_t* response, int resp_count) {
         // Acquire serialization mutex
-        if (!pawnio_mutex_) return false;
+        if (!pawnio_mutex_) {
+            log_error("[SMU] Mutex is null");
+            return false;
+        }
         DWORD wait_result = WaitForSingleObject(pawnio_mutex_, 5000);
         if (wait_result != WAIT_OBJECT_0 && wait_result != WAIT_ABANDONED) {
+            log_error("[SMU] Mutex wait failed: " + std::to_string(wait_result));
             return false;
         }
 
         // Wait for mailbox ready
         if (!wait_mailbox_ready(rsp_addr)) {
+            log_error("[SMU] Mailbox not ready (initial wait), cmd=" + std::to_string(command));
             ReleaseMutex(pawnio_mutex_);
             return false;
         }
@@ -701,6 +787,7 @@ public:
         for (int i = 0; i < 6; i++) {
             uint32_t val = (args && i < arg_count) ? args[i] : 0;
             if (!write_smu_reg(args_addr + static_cast<uint32_t>(i * 4), val)) {
+                log_error("[SMU] Failed to write arg " + std::to_string(i) + ", cmd=" + std::to_string(command));
                 ReleaseMutex(pawnio_mutex_);
                 return false;
             }
@@ -708,12 +795,14 @@ public:
 
         // Write command to trigger execution
         if (!write_smu_reg(cmd_addr, command)) {
+            log_error("[SMU] Failed to write command, cmd=" + std::to_string(command));
             ReleaseMutex(pawnio_mutex_);
             return false;
         }
 
         // Wait for response
         if (!wait_mailbox_ready(rsp_addr)) {
+            log_error("[SMU] Mailbox not ready (response wait), cmd=" + std::to_string(command));
             ReleaseMutex(pawnio_mutex_);
             return false;
         }
@@ -722,6 +811,7 @@ public:
         uint32_t rsp_status = 0;
         read_smu_reg(rsp_addr, &rsp_status);
         if (rsp_status != SMU_OK) {
+            log_error("[SMU] Response status not OK: " + std::to_string(rsp_status) + ", cmd=" + std::to_string(command));
             ReleaseMutex(pawnio_mutex_);
             return false;
         }
@@ -973,19 +1063,17 @@ public:
     }
 
     auto read_data(PeerId peer, char* buffer, size_t size) -> Result<size_t> override {
-        // For simplicity, we'll use the pipe handle stored in TransportServer
-        // In a real implementation, we'd need to track per-peer handles
-        // This is a placeholder - actual implementation will be in transport.cpp
+        // Unused stub - transport uses pipe_read/pipe_write instead
         return std::unexpected(ErrorCode::HardwareBusy);
     }
 
     auto write_data(PeerId peer, const char* data, size_t size) -> Result<void> override {
-        // Placeholder - actual implementation will be in transport.cpp
+        // Unused stub - transport uses pipe_read/pipe_write instead
         return std::unexpected(ErrorCode::HardwareBusy);
     }
 
     void close_connection(PeerId peer) override {
-        // Placeholder - actual implementation will be in transport.cpp
+        // Unused stub - transport uses pipe_disconnect instead
     }
 
     void close_server(TransportServer& server) override {
@@ -1114,7 +1202,12 @@ public:
 
     auto smu_send(uint32_t msg, uint32_t arg) -> Result<uint32_t> override {
         // Check if PawnIO is initialized and SMU blob is loaded
-        if (pawnio_device_ == INVALID_HANDLE_VALUE || !pawnio_smu_loaded_) {
+        if (pawnio_device_ == INVALID_HANDLE_VALUE) {
+            log_error("[SMU] Device handle is invalid");
+            return std::unexpected(ErrorCode::HardwareBusy);
+        }
+        if (!pawnio_smu_loaded_) {
+            log_error("[SMU] SMU blob not loaded");
             return std::unexpected(ErrorCode::HardwareBusy);
         }
 
@@ -1127,6 +1220,27 @@ public:
         }
 
         return response[0];
+    }
+
+    // Safe SMU read via blob's internal PM table handler
+    auto smu_read_safe(uint32_t cmd_id) -> Result<uint32_t> override {
+        if (pawnio_device_ == INVALID_HANDLE_VALUE || !pawnio_smu_loaded_) {
+            return std::unexpected(ErrorCode::HardwareBusy);
+        }
+
+        // ioctl_send_smu_command signature: 7 input args, 6 output args
+        // in[0] = command ID, in[1..6] = arguments (0 for read)
+        uint64_t in[7] = {};
+        in[0] = cmd_id;  // Command ID (e.g., CMD_SET_STAPM for reading STAPM)
+        // in[1..6] are zeroed for read operations
+
+        uint64_t out[6] = {};
+        if (!pawnio_execute("ioctl_send_smu_command", in, 7, out, 6)) {
+            return std::unexpected(ErrorCode::HardwareBusy);
+        }
+
+        // Result is in out[0] (in milliwatts for TDP values)
+        return static_cast<uint32_t>(out[0]);
     }
 
     // ===== Hardware: Charge Limit (Super I/O) =====
@@ -1154,6 +1268,12 @@ public:
 
         ReleaseMutex(pawnio_mutex_);
         return {};
+    }
+
+    // ===== Hardware: CPU Clock (WMI) =====
+
+    auto cpu_clock_mhz() -> uint32_t override {
+        return cpu_clock_mhz_wmi();
     }
 
     // ===== GPU Telemetry =====
@@ -1945,6 +2065,73 @@ public:
                 adapter->Release();
             }
             dxgi_factory->Release();
+        }
+
+        return telemetry;
+    }
+
+    // Get system metrics via ADLX (SmartShift, PowerDistribution)
+    auto system_metrics() -> Result<SystemTelemetry> override {
+        // Check if ADLX is initialized
+        if (!adlx_initialized_ || !adlx_helper_) {
+            return std::unexpected(ErrorCode::SensorUnavailable);
+        }
+
+        // Lock mutex to serialize ADLX calls
+        std::lock_guard<std::mutex> lock(adlx_mutex_);
+
+        SystemTelemetry telemetry{};
+
+        // Get Performance Monitoring services
+        IADLXPerformanceMonitoringServicesPtr perfService;
+        ADLX_RESULT res = adlx_helper_->GetSystemServices()->GetPerformanceMonitoringServices(&perfService);
+        if (ADLX_FAILED(res) || !perfService) {
+            return std::unexpected(ErrorCode::SensorUnavailable);
+        }
+
+        // Check if system metrics are supported
+        IADLXSystemMetricsSupportPtr sysMetricsSupport;
+        res = perfService->GetSupportedSystemMetrics(&sysMetricsSupport);
+        if (ADLX_FAILED(res) || !sysMetricsSupport) {
+            return std::unexpected(ErrorCode::SensorUnavailable);
+        }
+
+        // Get current system metrics
+        IADLXSystemMetricsPtr sysMetrics;
+        res = perfService->GetCurrentSystemMetrics(&sysMetrics);
+        if (ADLX_FAILED(res) || !sysMetrics) {
+            return std::unexpected(ErrorCode::SensorUnavailable);
+        }
+
+        // SmartShift value (-100 to +100)
+        adlx_bool supported = false;
+        if (ADLX_SUCCEEDED(sysMetricsSupport->IsSupportedSmartShift(&supported)) && supported) {
+            adlx_int smart_shift = 0;
+            if (ADLX_SUCCEEDED(sysMetrics->SmartShift(&smart_shift))) {
+                telemetry.smart_shift = static_cast<int>(smart_shift);
+            }
+        }
+
+        // Try to get IADLXSystemMetrics1 for PowerDistribution
+        IADLXSystemMetrics1Ptr sysMetrics1;
+        res = sysMetrics->QueryInterface(IADLXSystemMetrics1::IID(), reinterpret_cast<void**>(&sysMetrics1));
+        if (ADLX_SUCCEEDED(res) && sysMetrics1) {
+            // Check if PowerDistribution is supported
+            IADLXSystemMetricsSupport1Ptr sysMetricsSupport1;
+            res = sysMetricsSupport->QueryInterface(IADLXSystemMetricsSupport1::IID(), reinterpret_cast<void**>(&sysMetricsSupport1));
+            if (ADLX_SUCCEEDED(res) && sysMetricsSupport1) {
+                adlx_bool pd_supported = false;
+                if (ADLX_SUCCEEDED(sysMetricsSupport1->IsSupportedPowerDistribution(&pd_supported)) && pd_supported) {
+                    adlx_int apu_value = 0, gpu_value = 0, apu_limit = 0, gpu_limit = 0, total_limit = 0;
+                    if (ADLX_SUCCEEDED(sysMetrics1->PowerDistribution(&apu_value, &gpu_value, &apu_limit, &gpu_limit, &total_limit))) {
+                        telemetry.apu_shift_value = static_cast<int>(apu_value);
+                        telemetry.gpu_shift_value = static_cast<int>(gpu_value);
+                        telemetry.apu_shift_limit = static_cast<int>(apu_limit);
+                        telemetry.gpu_shift_limit = static_cast<int>(gpu_limit);
+                        telemetry.total_shift_limit = static_cast<int>(total_limit);
+                    }
+                }
+            }
         }
 
         return telemetry;

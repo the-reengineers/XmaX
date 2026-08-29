@@ -34,6 +34,7 @@ public:
         uint32_t arg;
     };
     std::vector<SmuCall> smu_calls;
+    std::vector<uint32_t> smu_read_safe_calls;  // Track safe read calls
     std::map<uint32_t, uint32_t> smu_responses;  // msg → response value
     bool smu_should_fail = false;
 
@@ -96,6 +97,19 @@ public:
         return 0;  // Default response
     }
 
+    // Safe SMU read via blob's internal handler
+    auto smu_read_safe(uint32_t cmd_id) -> Result<uint32_t> override {
+        smu_read_safe_calls.push_back(cmd_id);
+        if (smu_should_fail) {
+            return std::unexpected(ErrorCode::HardwareBusy);
+        }
+        auto it = smu_responses.find(cmd_id);
+        if (it != smu_responses.end()) {
+            return it->second;
+        }
+        return 0;
+    }
+
     // Stub implementations for other methods (not used in tests)
     auto listen() -> Result<TransportServer> override { return std::unexpected(ErrorCode::HardwareBusy); }
     auto verify_peer(PeerId) -> Result<PeerInfo> override { return std::unexpected(ErrorCode::HardwareBusy); }
@@ -123,6 +137,12 @@ public:
             return gpu_telemetry.value();
         }
         return GpuTelemetry{};
+    }
+    auto system_metrics() -> Result<SystemTelemetry> override {
+        return SystemTelemetry{};
+    }
+    auto cpu_clock_mhz() -> uint32_t override {
+        return 0;
     }
     // UMA stubs (not used in most tests)
     auto uma_supported() -> Result<bool> override { return false; }
@@ -916,21 +936,29 @@ TEST_F(TdpControllerTest, ValidateTdpOutOfRange) {
 }
 
 TEST_F(TdpControllerTest, ReadTdp) {
-    // Set up SMU responses
-    platform_.smu_responses[0x00] = 45;  // STAPM
-    // All read messages use 0x00 placeholder, so last write wins
-    // In real implementation, each would have unique message IDs
+    // Set up SMU responses (in milliwatts - blob returns mW)
+    platform_.smu_responses[0x14] = 45000;  // STAPM: 45W in mW
+    platform_.smu_responses[0x15] = 50000;  // Fast: 50W in mW
+    platform_.smu_responses[0x16] = 45000;  // Slow: 45W in mW
 
     auto state = controller_->read_tdp();
     ASSERT_TRUE(state.has_value());
 
-    // Verify SMU was called 3 times (STAPM, Fast, Slow)
-    EXPECT_EQ(platform_.smu_calls.size(), 3);
+    // Verify smu_read_safe was called 3 times (STAPM, Fast, Slow)
+    EXPECT_EQ(platform_.smu_read_safe_calls.size(), 3);
 
-    // All values should be populated (from the same response in mock)
-    EXPECT_TRUE(state->stapm_w.has_value());
-    EXPECT_TRUE(state->fast_w.has_value());
-    EXPECT_TRUE(state->slow_w.has_value());
+    // Verify correct command IDs were used
+    EXPECT_EQ(platform_.smu_read_safe_calls[0], 0x14);  // STAPM
+    EXPECT_EQ(platform_.smu_read_safe_calls[1], 0x15);  // Fast
+    EXPECT_EQ(platform_.smu_read_safe_calls[2], 0x16);  // Slow
+
+    // All values should be populated (converted from mW to W)
+    ASSERT_TRUE(state->stapm_w.has_value());
+    ASSERT_TRUE(state->fast_w.has_value());
+    ASSERT_TRUE(state->slow_w.has_value());
+    EXPECT_EQ(state->stapm_w.value(), 45);  // 45000 mW -> 45 W
+    EXPECT_EQ(state->fast_w.value(), 50);   // 50000 mW -> 50 W
+    EXPECT_EQ(state->slow_w.value(), 45);   // 45000 mW -> 45 W
 }
 
 TEST_F(TdpControllerTest, ReadTdpHandlesSmuFailure) {
@@ -952,12 +980,17 @@ TEST_F(TdpControllerTest, WriteTdpSuccess) {
     // Verify SMU was called 3 times (write STAPM, Fast, Slow)
     EXPECT_EQ(platform_.smu_calls.size(), 3);
 
-    // Verify arguments
-    EXPECT_EQ(platform_.smu_calls[0].arg, 45);  // STAPM
-    EXPECT_EQ(platform_.smu_calls[1].arg, 50);  // Fast
-    EXPECT_EQ(platform_.smu_calls[2].arg, 45);  // Slow
+    // Verify arguments (converted to milliwatts)
+    EXPECT_EQ(platform_.smu_calls[0].arg, 45000);  // STAPM: 45W -> 45000mW
+    EXPECT_EQ(platform_.smu_calls[1].arg, 50000);  // Fast: 50W -> 50000mW
+    EXPECT_EQ(platform_.smu_calls[2].arg, 45000);  // Slow: 45W -> 45000mW
 
-    // Verify last state was updated
+    // Verify correct command IDs were used
+    EXPECT_EQ(platform_.smu_calls[0].msg, 0x14);  // STAPM
+    EXPECT_EQ(platform_.smu_calls[1].msg, 0x15);  // Fast
+    EXPECT_EQ(platform_.smu_calls[2].msg, 0x16);  // Slow
+
+    // Verify last state was updated (in watts)
     auto last = controller_->last_state();
     EXPECT_EQ(last.stapm_w.value(), 45);
     EXPECT_EQ(last.fast_w.value(), 50);

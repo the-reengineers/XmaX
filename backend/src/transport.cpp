@@ -1171,6 +1171,8 @@ auto TransportService::handle_set_config(const Command& cmd) -> Response {
     try {
         auto payload = json::parse(cmd.payload);
 
+        bool should_apply_settings = false;
+
         {
             std::lock_guard lock(state_mutex_);
 
@@ -1183,6 +1185,14 @@ auto TransportService::handle_set_config(const Command& cmd) -> Response {
             }
             if (payload.contains("persist")) {
                 config_.persist = payload["persist"].get<bool>();
+            }
+            if (payload.contains("session_persist")) {
+                bool old_session_persist = config_.session_persist;
+                config_.session_persist = payload["session_persist"].get<bool>();
+                // If transitioning from false to true, mark to apply settings after releasing lock
+                if (!old_session_persist && config_.session_persist) {
+                    should_apply_settings = true;
+                }
             }
             if (payload.contains("charge_limit_pct")) {
                 config_.charge_limit_pct = payload["charge_limit_pct"].get<int>();
@@ -1241,6 +1251,12 @@ auto TransportService::handle_set_config(const Command& cmd) -> Response {
             }
 
             save_config(config_path_, config_);
+        }
+
+        // If transitioning session_persist from false to true, apply all settings to hardware
+        // (called outside the lock to avoid blocking)
+        if (should_apply_settings) {
+            apply_all_settings();
         }
 
         // Return updated config
@@ -1511,7 +1527,11 @@ void TransportService::apply_all_settings() {
             adaptive_.activate(preset, assigned->target_temp_c, assigned->tdp_max_w, assigned->fan_max_pct);
         } else {
             // Apply fixed profile
-            (void)tdp_.write_tdp(assigned->stapm_w, assigned->fast_w, assigned->slow_w);
+            auto tdp_result = tdp_.write_tdp(assigned->stapm_w, assigned->fast_w, assigned->slow_w);
+            if (!tdp_result) {
+                log_error("[apply_all_settings] Failed to write TDP: error code " +
+                    std::to_string(static_cast<uint32_t>(tdp_result.error())));
+            }
 
             if (assigned->fan_curve.has_value()) {
                 auto curve_it = profiles_.fan_curves.find(assigned->fan_curve.value());
@@ -1522,6 +1542,12 @@ void TransportService::apply_all_settings() {
             } else {
                 (void)fan_.set_mode(FanState::Mode::Auto);
             }
+
+            // Deactivate adaptive controller for fixed profile
+            adaptive_.deactivate();
         }
+    } else {
+        // No default profile assigned - deactivate adaptive controller to ensure clean state
+        adaptive_.deactivate();
     }
 }

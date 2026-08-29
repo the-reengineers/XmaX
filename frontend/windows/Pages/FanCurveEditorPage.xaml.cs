@@ -136,6 +136,9 @@ public sealed partial class FanCurveEditorPage : Page
             };
             await _profileService.SaveFanCurveAsync(curve);
 
+            // Mark as clean before navigating back to avoid unsaved changes dialog
+            _isDirty = false;
+
             // Navigate back — CoolingSubPage will refresh via ViewModel.PropertyChanged
             if (Frame.CanGoBack)
             {

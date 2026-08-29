@@ -38,15 +38,20 @@ private:
     static constexpr uint32_t TDP_MIN_W = 6;
     static constexpr uint32_t TDP_MAX_W = 120;
 
-    // SMU message IDs for TDP operations
-    // TODO: Fill in actual opcodes from tdp_test.cpp / hardware documentation
-    // These are placeholder values -- the real opcodes are hardware-specific
-    static constexpr uint32_t SMU_MSG_READ_STAPM  = 0x00;  // Read STAPM limit
-    static constexpr uint32_t SMU_MSG_READ_FAST   = 0x00;  // Read Fast limit
-    static constexpr uint32_t SMU_MSG_READ_SLOW   = 0x00;  // Read Slow limit
-    static constexpr uint32_t SMU_MSG_WRITE_STAPM = 0x00;  // Write STAPM limit
-    static constexpr uint32_t SMU_MSG_WRITE_FAST  = 0x00;  // Write Fast limit
-    static constexpr uint32_t SMU_MSG_WRITE_SLOW  = 0x00;  // Write Slow limit
+    // SMU message IDs for TDP operations (Strix Halo MP1 opcodes)
+    // WARNING: No separate GET opcodes exist. Reading via mailbox sends will SET TDP.
+    // Use ioctl_send_smu_command (blob internal handler) for safe reads.
+    static constexpr uint32_t SMU_MSG_READ_STAPM  = 0x14;  // Same as WRITE (no separate read)
+    static constexpr uint32_t SMU_MSG_READ_FAST   = 0x15;  // Same as WRITE (no separate read)
+    static constexpr uint32_t SMU_MSG_READ_SLOW   = 0x16;  // Same as WRITE (no separate read)
+    static constexpr uint32_t SMU_MSG_WRITE_STAPM = 0x14;  // Write STAPM limit (mW)
+    static constexpr uint32_t SMU_MSG_WRITE_FAST  = 0x15;  // Write Fast limit (mW)
+    static constexpr uint32_t SMU_MSG_WRITE_SLOW  = 0x16;  // Write Slow limit (mW)
+
+    // RSMU opcodes for dual-dispatch (UXTU-style)
+    static constexpr uint32_t RSMU_SET_STAPM = 0x31;
+    static constexpr uint32_t RSMU_SET_FAST  = 0x32;
+    static constexpr uint32_t RSMU_SET_SLOW  = 0x33;
 
     Platform& platform_;
     mutable std::mutex mutex_;

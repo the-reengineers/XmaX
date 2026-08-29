@@ -94,10 +94,13 @@ public static class Loc
         ["metrics.util_format"] = @"{0}% util",
         ["metrics.vram"] = @"VRAM",
         ["metrics.vram_format"] = @"{0}/{1}G",
+        ["nav.app_name"] = @"XmaX",
+        ["nav.applied_not_persisted"] = @"Settings applied but not persisted after reboot",
         ["nav.apply"] = @"Apply",
         ["nav.cooling"] = @"Cooling",
         ["nav.cooling_desc"] = @"Create and edit fan curves",
         ["nav.home"] = @"Home",
+        ["nav.not_persisted"] = @"Settings not persisted or applied. Toggle to enable for testing",
         ["nav.playground_desc"] = @"Test drag-reflow with placeholder widgets",
         ["nav.power_states_desc"] = @"Assign profiles to power sources",
         ["nav.profiles"] = @"Profiles",
@@ -242,10 +245,13 @@ public static class Loc
         ["metrics.util_format"] = @"{0}% 使用率",
         ["metrics.vram"] = @"显存",
         ["metrics.vram_format"] = @"{0}/{1}G",
+        ["nav.app_name"] = @"XmaX",
+        ["nav.applied_not_persisted"] = @"设置已应用但重启后未持久化",
         ["nav.apply"] = @"应用",
         ["nav.cooling"] = @"散热",
         ["nav.cooling_desc"] = @"创建和编辑风扇曲线",
         ["nav.home"] = @"首页",
+        ["nav.not_persisted"] = @"设置未持久化或应用。切换以启用测试",
         ["nav.playground_desc"] = @"使用占位小部件测试拖拽重排",
         ["nav.power_states_desc"] = @"为电源分配配置",
         ["nav.profiles"] = @"配置",
@@ -574,6 +580,12 @@ public static class Loc
     /// <summary>metrics.vram_format</summary>
     public static string Metrics_VramFormat => Get("metrics.vram_format");
 
+    /// <summary>nav.app_name</summary>
+    public static string Nav_AppName => Get("nav.app_name");
+
+    /// <summary>nav.applied_not_persisted</summary>
+    public static string Nav_AppliedNotPersisted => Get("nav.applied_not_persisted");
+
     /// <summary>nav.apply</summary>
     public static string Nav_Apply => Get("nav.apply");
 
@@ -585,6 +597,9 @@ public static class Loc
 
     /// <summary>nav.home</summary>
     public static string Nav_Home => Get("nav.home");
+
+    /// <summary>nav.not_persisted</summary>
+    public static string Nav_NotPersisted => Get("nav.not_persisted");
 
     /// <summary>nav.playground_desc</summary>
     public static string Nav_PlaygroundDesc => Get("nav.playground_desc");

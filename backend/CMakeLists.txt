@@ -220,6 +220,9 @@ endif()
 target_link_libraries(${BACKEND_TARGET}_tests PRIVATE
     GTest::gtest_main
     nlohmann_json::nlohmann_json
+    ole32
+    oleaut32
+    wbemuuid
 )
 
 include(GoogleTest)

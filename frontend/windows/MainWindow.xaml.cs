@@ -86,6 +86,9 @@ public sealed partial class MainWindow : Window
     // Marquee animation state
     private Storyboard? _marqueeStoryboard;
 
+    // Bottom bar toggle state
+    private bool _updatingToggleState;
+
     // Window show/hide animation state (uses CompositionTarget.Rendering for smooth frame sync)
     private bool _isAnimating;
     private bool _isHidingAnimation;
@@ -295,6 +298,9 @@ public sealed partial class MainWindow : Window
         // Apply theme from config
         await ApplyThemeFromConfig();
 
+        // Update bottom bar based on persist state
+        await UpdateBottomBarContent();
+
         // Navigate to home page by default (after config is loaded)
         RootFrame.Navigate(typeof(HomePage), null, new SuppressNavigationTransitionInfo());
     }
@@ -383,8 +389,7 @@ public sealed partial class MainWindow : Window
         MarqueeContainer.SizeChanged += (_, _) => UpdateMarqueeAnimation();
         MarqueeContainer.Loaded += (_, _) => UpdateMarqueeAnimation();
 
-        // For now: show session mode message
-        MarqueeText.Text = Loc.Nav_TestMode;
+        // Initial text set by UpdateBottomBarContent() during initialization
     }
 
     private void UpdateMarqueeAnimation()
@@ -434,6 +439,101 @@ public sealed partial class MainWindow : Window
         _marqueeStoryboard = new Storyboard();
         _marqueeStoryboard.Children.Add(animation);
         _marqueeStoryboard.Begin();
+    }
+
+    // ===== Bottom Bar Content (Persist State) =====
+
+    /// <summary>
+    /// Update bottom bar text and toggle visibility based on persist state.
+    /// - Session=false, JSON=false: "Settings not persisted..." + toggle OFF
+    /// - Session=true, JSON=false: "Settings applied but not persisted..." + toggle ON
+    /// - Session=true, JSON=true: "XmaX" (no toggle)
+    /// </summary>
+    private async Task UpdateBottomBarContent()
+    {
+        try
+        {
+            var data = await App.Pipe.SendCommandAsync("get_config").ConfigureAwait(true);
+            var config = System.Text.Json.JsonSerializer.Deserialize<Models.AppConfig>(
+                data.ToJsonString(),
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = false }
+            );
+
+            if (config == null) return;
+
+            var sessionPersist = config.SessionPersist;
+            var jsonPersist = config.Persist;
+
+            // Update UI on main thread
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                _updatingToggleState = true;
+
+                if (sessionPersist && jsonPersist)
+                {
+                    // Fully persisted: show app name, hide toggle
+                    MarqueeText.Text = Loc.Nav_AppName;
+                    PersistToggle.Visibility = Visibility.Collapsed;
+                }
+                else if (sessionPersist && !jsonPersist)
+                {
+                    // Session only: show warning, toggle ON
+                    MarqueeText.Text = Loc.Nav_AppliedNotPersisted;
+                    PersistToggle.Visibility = Visibility.Visible;
+                    PersistToggle.IsOn = true;
+                }
+                else
+                {
+                    // Not persisted: show info, toggle OFF
+                    MarqueeText.Text = Loc.Nav_NotPersisted;
+                    PersistToggle.Visibility = Visibility.Visible;
+                    PersistToggle.IsOn = false;
+                }
+
+                _updatingToggleState = false;
+
+                // Refresh marquee animation for new text
+                UpdateMarqueeAnimation();
+            });
+        }
+        catch
+        {
+            // Failed to load config — keep default state
+        }
+    }
+
+    /// <summary>
+    /// Handle persist toggle changes. Updates session_persist in config.
+    /// </summary>
+    private async void OnPersistToggleChanged(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        // Skip if we're updating the toggle state programmatically
+        if (_updatingToggleState) return;
+
+        var isOn = PersistToggle.IsOn;
+
+        try
+        {
+            var payload = new System.Text.Json.Nodes.JsonObject();
+            payload["session_persist"] = isOn;
+            await App.Pipe.SendCommandAsync("set_config", payload).ConfigureAwait(true);
+
+            // Update UI locally without fetching from backend (backend may return stale state)
+            // The next app restart or natural refresh will pick up the correct state
+            if (isOn)
+            {
+                MarqueeText.Text = Loc.Nav_AppliedNotPersisted;
+            }
+            else
+            {
+                MarqueeText.Text = Loc.Nav_NotPersisted;
+            }
+            UpdateMarqueeAnimation();
+        }
+        catch
+        {
+            // Failed to update config
+        }
     }
 
     // ===== Keyboard Navigation =====

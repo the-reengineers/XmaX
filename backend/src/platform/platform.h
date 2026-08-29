@@ -60,6 +60,20 @@ struct GpuTelemetry {
     std::optional<uint64_t> vram_total_bytes;
 };
 
+// System metrics structure (returned by system_metrics())
+// SmartShift and PowerDistribution data via ADLX
+struct SystemTelemetry {
+    // SmartShift: -100 (all CPU) to +100 (all GPU), 0 = balanced
+    std::optional<int> smart_shift;
+
+    // PowerDistribution: APU/CPU power shift values and limits
+    std::optional<int> apu_shift_value;
+    std::optional<int> gpu_shift_value;
+    std::optional<int> apu_shift_limit;
+    std::optional<int> gpu_shift_limit;
+    std::optional<int> total_shift_limit;
+};
+
 // Abstract platform interface
 // All hardware and OS operations go through this interface
 // Shared code depends only on this interface
@@ -126,15 +140,30 @@ public:
     // Returns response value
     virtual auto smu_send(uint32_t msg, uint32_t arg) -> Result<uint32_t> = 0;
 
+    // Safe SMU read via blob's internal PM table handler (ioctl_send_smu_command)
+    // Use this for reading TDP values - mailbox sends are write-only on Strix Halo
+    virtual auto smu_read_safe(uint32_t cmd_id) -> Result<uint32_t> = 0;
+
     // ===== Hardware: Charge Limit (Super I/O) =====
 
     // Write battery charge limit percentage (75-100)
     virtual auto charge_limit_write(uint8_t percent) -> Result<void> = 0;
 
+    // ===== Hardware: CPU Clock (WMI) =====
+
+    // Read CPU current clock speed in MHz via WMI Win32_Processor.CurrentClockSpeed
+    // Returns 0 if unavailable
+    virtual auto cpu_clock_mhz() -> uint32_t = 0;
+
     // ===== GPU Telemetry =====
 
     // Read GPU metrics via platform-specific API (ADLX on Windows, sysfs on Linux)
     virtual auto gpu_metrics() -> Result<GpuTelemetry> = 0;
+
+    // ===== System Telemetry =====
+
+    // Read system metrics (SmartShift, PowerDistribution) via ADLX
+    virtual auto system_metrics() -> Result<SystemTelemetry> = 0;
 
     // ===== UMA (Variable Graphics Memory) =====
 

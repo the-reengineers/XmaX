@@ -83,13 +83,27 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <!-- Marquee banner (fills available space) -->
+                <!-- Marquee banner + persist toggle (fills available space) -->
                 <Grid x:Name="MarqueeContainer" Grid.Column="0" VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
                     <TextBlock x:Name="MarqueeText"
+                               Grid.Column="0"
                                VerticalAlignment="Center"
                                TextWrapping="NoWrap"
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <ToggleSwitch x:Name="PersistToggle"
+                                  Grid.Column="1"
+                                  Visibility="Collapsed"
+                                  OnContent=""
+                                  OffContent=""
+                                  MinWidth="0"
+                                  Margin="8,0,0,0"
+                                  VerticalAlignment="Center"
+                                  Toggled="OnPersistToggleChanged" />
                 </Grid>
 
                 <!-- Edit icon (visual only for now) -->

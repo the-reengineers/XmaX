@@ -18,8 +18,13 @@ _fe_rid := if _os == "windows" { "win-x64" } else { "linux-x64" }
 
 # Directories
 _be_src := "backend"
-_be_build := "backend/build"
-_be_out := _be_build + "/" + config
+# One build dir shared across OSes silently breaks when a Windows CMakeCache
+# (which bakes in absolute paths like d:/…) is re-read on Linux. Split per OS;
+# this matches scripts/linux/verify-build.sh, which builds into backend/build-linux.
+_be_build := if _os == "windows" { "backend/build" } else { "backend/build-linux" }
+# Multi-config generators (Visual Studio) nest binaries under <config>/;
+# single-config (Make/Ninja) drop them at the build-dir root.
+_be_out := if _os == "windows" { _be_build + "/" + config } else { _be_build }
 _fe_src := "frontend/windows"
 _fe_build := _fe_src + "/bin/" + config + "/net10.0-windows10.0.26100.0/" + _fe_rid + "/publish"
 
@@ -42,24 +47,24 @@ build-be: generate-assets
     cmake -B "{{_be_build}}" "{{_be_src}}"
     cmake --build "{{_be_build}}" --config {{config}}
 
-# Build frontend
+# Build frontend (Windows-only; the Linux UI is the GNOME extension)
 build-fe: generate-assets
-    dotnet publish "{{_fe_src}}/xmax.csproj" -c {{config}} -r {{_fe_rid}}
+    {{ if _os == "windows" { "dotnet publish " + _fe_src + "/xmax.csproj -c " + config + " -r " + _fe_rid } else { "echo '  (no Linux frontend build: the GNOME extension is prebuilt JS)'" } }}
 
 # Build both
 build: build-be build-fe
 
 # Copy both builds into out/<config>/ for unified testing
 copy: build
-    {{ if _os == "windows" { "New-Item -ItemType Directory -Path '" + _out + "' -Force | Out-Null; Copy-Item -Path '" + _be_out + "\\*' -Destination '" + _out + "' -Recurse -Force; Copy-Item -Path '" + _fe_build + "\\*' -Destination '" + _out + "' -Recurse -Force" } else { "mkdir -p " + _out + " && cp -rv " + _be_out + "/* " + _out + "/ && cp -rv " + _fe_build + "/* " + _out + "/" } }}
+    {{ if _os == "windows" { "New-Item -ItemType Directory -Path '" + _out + "' -Force | Out-Null; Copy-Item -Path '" + _be_out + "\\*' -Destination '" + _out + "' -Recurse -Force; Copy-Item -Path '" + _fe_build + "\\*' -Destination '" + _out + "' -Recurse -Force" } else { "mkdir -p " + _out + " && cp -v " + _be_out + "/xmaxd " + _out + "/ && cp -v " + _be_out + "/xmaxctl " + _out + "/" } }}
 
 # Run backend unit tests
 test-be: build-be
     ctest --test-dir "{{_be_build}}" --build-config {{config}} --output-on-failure
 
-# Run frontend unit tests
+# Run frontend unit tests (Windows-only)
 test-fe:
-    dotnet test "{{_fe_src}}/xmax.Tests/xmax.Tests.csproj" -c {{config}}
+    {{ if _os == "windows" { "dotnet test " + _fe_src + "/xmax.Tests/xmax.Tests.csproj -c " + config } else { "echo '  (no Windows frontend tests on Linux; skipping)'" } }}
 
 # Run all tests
 test: test-be test-fe
@@ -68,9 +73,13 @@ test: test-be test-fe
 run-be: copy
     {{ if _os == "windows" { "& " } else { "" } }}"{{_out}}/{{_be_name}}"
 
-# Start frontend only (requires backend already running)
+# Start frontend only (Windows-only: the Linux UI is the GNOME extension)
 run-fe: copy
-    {{ if _os == "windows" { "& " } else { "" } }}"{{_out}}/{{_fe_name}}"
+    {{ if _os == "windows" { "& " + _out + "/" + _fe_name } else { "echo '  (no Linux frontend binary: the GNOME Shell extension provides the UI)'" } }}
+
+# Reinstall the GNOME extension from source (FE-only, no daemon rebuild)
+reinstall-fe:
+    scripts/linux/reinstall-extension.sh
 
 # Dev mode: build both, copy to out/, start backend (which spawns the frontend). Ctrl+C stops both.
 dev: copy
@@ -78,9 +87,14 @@ dev: copy
     @echo "Press Ctrl+C to stop both"
     {{ if _os == "windows" { "& " } else { "" } }}"{{_out}}/{{_be_name}}" --debug
 
+# Rebuild daemon, reinstall the GNOME extension, and open a nested GNOME Shell for live FE testing
+dev-gui: build-be
+    scripts/linux/reinstall-extension.sh
+    scripts/linux/run-extension-nested.sh
+
 # Run without rebuilding (copies existing build outputs to out/). Errors if outputs are missing.
 run:
-    {{ if _os == "windows" { "if (-not (Test-Path '" + _be_out + "')) { Write-Host 'Error: Backend build not found. Run `just build` first.' -ForegroundColor Red; exit 1 }; if (-not (Test-Path '" + _fe_build + "')) { Write-Host 'Error: Frontend build not found. Run `just build` first.' -ForegroundColor Red; exit 1 }; New-Item -ItemType Directory -Path '" + _out + "' -Force | Out-Null; Copy-Item -Path '" + _be_out + "\\*' -Destination '" + _out + "' -Recurse -Force; Copy-Item -Path '" + _fe_build + "\\*' -Destination '" + _out + "' -Recurse -Force" } else { "if [ ! -d '" + _be_out + "' ]; then echo 'Error: Backend build not found. Run `just build` first.' >&2; exit 1; fi; if [ ! -d '" + _fe_build + "' ]; then echo 'Error: Frontend build not found. Run `just build` first.' >&2; exit 1; fi; mkdir -p " + _out + " && cp -rv " + _be_out + "/* " + _out + "/ && cp -rv " + _fe_build + "/* " + _out + "/" } }}
+    {{ if _os == "windows" { "if (-not (Test-Path '" + _be_out + "')) { Write-Host 'Error: Backend build not found. Run `just build` first.' -ForegroundColor Red; exit 1 }; if (-not (Test-Path '" + _fe_build + "')) { Write-Host 'Error: Frontend build not found. Run `just build` first.' -ForegroundColor Red; exit 1 }; New-Item -ItemType Directory -Path '" + _out + "' -Force | Out-Null; Copy-Item -Path '" + _be_out + "\\*' -Destination '" + _out + "' -Recurse -Force; Copy-Item -Path '" + _fe_build + "\\*' -Destination '" + _out + "' -Recurse -Force" } else { "if [ ! -d '" + _be_out + "' ]; then echo 'Error: Backend build not found. Run `just build` first.' >&2; exit 1; fi; mkdir -p " + _out + " && cp -v " + _be_out + "/xmaxd " + _out + "/ && cp -v " + _be_out + "/xmaxctl " + _out + "/" } }}
     @echo "Starting {{_be_name}} ({{config}}) — frontend spawned automatically"
     @echo "Press Ctrl+C to stop both"
     {{ if _os == "windows" { "& " } else { "" } }}"{{_out}}/{{_be_name}}" --debug
@@ -90,6 +104,12 @@ clean:
     -cmake --build "{{_be_build}}" --target clean
     -dotnet clean "{{_fe_src}}/xmax.csproj"
     {{ if _os == "windows" { "Remove-Item -Path 'out' -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item -Path 'backend/logo.ico' -Force -ErrorAction SilentlyContinue; Remove-Item -Path 'frontend/windows/Assets/logo.ico' -Force -ErrorAction SilentlyContinue" } else { "rm -rf out backend/logo.ico frontend/windows/Assets/logo.ico" } }}
+
+# Reverse the Linux dev (source) install: system files (root) + GNOME extension
+# (per-user). Local build artifacts are reverted separately by `just clean`.
+uninstall:
+    sudo scripts/linux/uninstall.sh
+    gnome-extensions uninstall xmax@local || true
 
 # Rebuild from scratch
 rebuild: clean build

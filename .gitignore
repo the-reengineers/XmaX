@@ -3,6 +3,7 @@ out/
 
 # --- C++ backend ---
 backend/build/
+backend/build-linux/
 backend/cmake-build-*/
 
 # CMake generated files

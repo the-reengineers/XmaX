@@ -423,6 +423,7 @@ auto TransportService::dispatch(const Command& cmd) -> Response {
     if (cmd.method == "unsubscribe_metrics") return handle_unsubscribe_metrics(cmd);
     if (cmd.method == "get_fan") return handle_get_fan(cmd);
     if (cmd.method == "set_fan") return handle_set_fan(cmd);
+    if (cmd.method == "set_tdp") return handle_set_tdp(cmd);
     if (cmd.method == "get_button") return handle_get_button(cmd);
     if (cmd.method == "get_power_mode") return handle_get_power_mode(cmd);
     if (cmd.method == "get_profiles") return handle_get_profiles(cmd);
@@ -588,6 +589,55 @@ auto TransportService::handle_set_fan(const Command& cmd) -> Response {
 
         json data;
         data["mode"] = mode_str;
+
+        Response resp;
+        resp.id = cmd.id;
+        resp.ok = true;
+        resp.data = data.dump();
+        return resp;
+    } catch (const json::exception&) {
+        Response resp;
+        resp.id = cmd.id;
+        resp.ok = false;
+        resp.error = ErrorCode::ParseError;
+        return resp;
+    }
+}
+
+auto TransportService::handle_set_tdp(const Command& cmd) -> Response {
+    // Persist gate
+    if (auto blocked = check_persist(cmd.id)) return blocked.value();
+
+    try {
+        auto payload = json::parse(cmd.payload);
+
+        // All three limits are required. (STAPM <= Slow <= Fast is a hardware
+        // convention, not enforced here; write_tdp validates the 6-120W range.)
+        if (!payload.contains("stapm") || !payload.contains("fast") || !payload.contains("slow")) {
+            Response resp;
+            resp.id = cmd.id;
+            resp.ok = false;
+            resp.error = ErrorCode::ParseError;
+            return resp;
+        }
+
+        uint32_t stapm = payload["stapm"].get<uint32_t>();
+        uint32_t fast = payload["fast"].get<uint32_t>();
+        uint32_t slow = payload["slow"].get<uint32_t>();
+
+        auto result = tdp_.write_tdp(stapm, fast, slow);
+        if (!result) {
+            Response resp;
+            resp.id = cmd.id;
+            resp.ok = false;
+            resp.error = result.error();
+            return resp;
+        }
+
+        json data;
+        data["stapm"] = stapm;
+        data["fast"] = fast;
+        data["slow"] = slow;
 
         Response resp;
         resp.id = cmd.id;
@@ -847,7 +897,8 @@ auto TransportService::handle_save_profile(const Command& cmd) -> Response {
                 Response resp;
                 resp.id = cmd.id;
                 resp.ok = false;
-                resp.error = ErrorCode::ProfileNotFound;  // Generic error
+                resp.error = ErrorCode::ProfileInUse;  // General save failure
+                resp.error_message = err.value();
                 return resp;
             }
             save_profiles(profiles_path_, profiles_);
@@ -884,6 +935,7 @@ auto TransportService::handle_delete_profile(const Command& cmd) -> Response {
                 resp.id = cmd.id;
                 resp.ok = false;
                 resp.error = ErrorCode::ProfileNotFound;
+                resp.error_message = err.value();
                 return resp;
             }
             save_profiles(profiles_path_, profiles_);

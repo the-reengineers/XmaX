@@ -12,6 +12,10 @@
 #include "tray.h"
 #include "logger.h"
 
+#ifndef _WIN32
+#include "dbus/dbus_service.h"
+#endif
+
 #include <atomic>
 #include <chrono>
 #include <csignal>
@@ -310,9 +314,23 @@ int main(int argc, char* argv[]) {
             *platform, *poller, *fan, *tdp, *power, *adaptive, *button,
             config, profiles, config_path, profiles_path
         );
+#ifndef _WIN32
+        std::unique_ptr<DbusService> dbus = std::make_unique<DbusService>(*transport, *platform);
+#endif
         transport->start();
         log_info("Transport server started");
 
+#ifndef _WIN32
+        // Expose org.xmax.Service on D-Bus. Non-fatal on an unprivileged dev
+        // box (no bus-name ownership) — the AF_UNIX socket still works.
+        if (dbus->start()) {
+            log_info("D-Bus service started");
+        } else {
+            log_warn("D-Bus service unavailable (system bus policy missing or not running privileged)");
+        }
+#endif
+
+        #ifdef _WIN32
         // Spawn frontend (look for XmaX.exe next to xmaxsvc.exe)
         auto exe_path = fs::path(platform->self_exe_path()).parent_path() / "XmaX.exe";
         if (fs::exists(exe_path)) {
@@ -325,6 +343,10 @@ int main(int argc, char* argv[]) {
         } else {
             log_error("Frontend executable not found: " + exe_path.string());
         }
+#else
+        // No windowed frontend on Linux — the UI is the GJS Shell extension.
+        log_info("No frontend to spawn (Linux uses the GJS Shell extension)");
+#endif
 
         // Wire up callbacks
         // Power state change → auto-apply assigned profile (if session_persist enabled)
@@ -421,6 +443,9 @@ int main(int argc, char* argv[]) {
         log_info("XmaX Backend shutting down...");
 
         // Stop everything
+#ifndef _WIN32
+        dbus->stop();
+#endif
         transport->stop();
         tray->stop();
         process_mgr->stop_monitor();

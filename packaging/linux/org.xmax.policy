@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
+<!--
+  polkit actions gate the privileged D-Bus methods on org.xmax.Service.
+  Install to: /usr/share/polkit-1/actions/org.xmax.policy
+-->
+<policyconfig>
+  <vendor>XmaX</vendor>
+  <vendor_url>https://example.invalid/xmax</vendor_url>
+  <icon_name>xmax</icon_name>
+
+  <action id="org.xmax.set-tdp">
+    <description>Set CPU TDP limits</description>
+    <message>Authentication is required to change the CPU TDP limits</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/xmaxd</annotate>
+  </action>
+
+  <action id="org.xmax.set-fan">
+    <description>Set fan mode</description>
+    <message>Authentication is required to change the fan mode</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/xmaxd</annotate>
+  </action>
+
+  <action id="org.xmax.set-charge-limit">
+    <description>Set battery charge limit</description>
+    <message>Authentication is required to change the battery charge limit</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/xmaxd</annotate>
+  </action>
+
+  <action id="org.xmax.set-auto-start">
+    <description>Enable or disable start at boot</description>
+    <message>Authentication is required to change the start-at-boot setting</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/xmaxd</annotate>
+  </action>
+
+  <action id="org.xmax.set-profile">
+    <description>Apply, save, or delete a power profile</description>
+    <message>Authentication is required to change power profiles</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/xmaxd</annotate>
+  </action>
+
+  <action id="org.xmax.set-fan-curve">
+    <description>Save or delete a fan curve</description>
+    <message>Authentication is required to change fan curves</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/xmaxd</annotate>
+  </action>
+</policyconfig>

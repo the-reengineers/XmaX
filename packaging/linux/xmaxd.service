@@ -1,0 +1,19 @@
+[Unit]
+Description=XmaX backend daemon
+Documentation=man:xmaxd(8)
+After=polkit.service dbus.service
+Requires=dbus.service
+
+[Service]
+Type=dbus
+BusName=org.xmax.Service
+ExecStart=/usr/local/bin/xmaxd
+User=root
+# Restart on unexpected exit; systemd treats a clean SIGTERM exit as success.
+Restart=on-failure
+# Give the process a moment to close the AF_UNIX socket and release the lock
+# before systemd considers it stopped.
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

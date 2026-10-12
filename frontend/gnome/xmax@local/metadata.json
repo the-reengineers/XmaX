@@ -1,0 +1,11 @@
+{
+  "uuid": "xmax@local",
+  "name": "XmaX",
+  "description": "Top-bar readouts and Quick Settings controls for the XmaX hardware daemon (org.xmax.Service).",
+  "shell-version": ["50"],
+  "session-modes": ["user", "unlock-dialog"],
+  "settings-schema": "org.xmax.shell",
+  "gettext-domain": "xmax",
+  "version-name": "0.1.0",
+  "url": "https://example.invalid/xmax"
+}

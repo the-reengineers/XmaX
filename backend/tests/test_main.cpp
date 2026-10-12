@@ -1898,6 +1898,49 @@ TEST_F(TransportServiceTest, SetFanInvalidMode) {
     EXPECT_EQ(resp.error.value(), ErrorCode::FanSpeedInvalid);
 }
 
+TEST_F(TransportServiceTest, SetTdpPersistDisabled) {
+    config_.persist = false;
+
+    auto cmd = make_command("set_tdp", "req_001", R"({"stapm":45,"fast":50,"slow":45})");
+    auto resp = service_->dispatch(cmd);
+
+    EXPECT_FALSE(resp.ok);
+    EXPECT_EQ(resp.error.value(), ErrorCode::PersistDisabled);
+}
+
+TEST_F(TransportServiceTest, SetTdpWritesSmu) {
+    config_.persist = true;
+    config_.session_persist = true;
+
+    auto cmd = make_command("set_tdp", "req_001", R"({"stapm":45,"fast":50,"slow":45})");
+    auto resp = service_->dispatch(cmd);
+
+    EXPECT_TRUE(resp.ok);
+    auto data = nlohmann::json::parse(resp.data.value());
+    EXPECT_EQ(data["stapm"], 45);
+    EXPECT_EQ(data["fast"], 50);
+    EXPECT_EQ(data["slow"], 45);
+
+    ASSERT_EQ(platform_.smu_calls.size(), 3u);
+    EXPECT_EQ(platform_.smu_calls[0].msg, 0x14u);
+    EXPECT_EQ(platform_.smu_calls[0].arg, 45000u);
+    EXPECT_EQ(platform_.smu_calls[1].msg, 0x15u);
+    EXPECT_EQ(platform_.smu_calls[1].arg, 50000u);
+    EXPECT_EQ(platform_.smu_calls[2].msg, 0x16u);
+    EXPECT_EQ(platform_.smu_calls[2].arg, 45000u);
+}
+
+TEST_F(TransportServiceTest, SetTdpOutOfRange) {
+    config_.persist = true;
+    config_.session_persist = true;
+
+    auto cmd = make_command("set_tdp", "req_001", R"({"stapm":200,"fast":50,"slow":45})");
+    auto resp = service_->dispatch(cmd);
+
+    EXPECT_FALSE(resp.ok);
+    EXPECT_EQ(resp.error.value(), ErrorCode::TdpOutOfRange);
+}
+
 TEST_F(TransportServiceTest, GetPowerMode) {
     platform_.ec_registers[0x04FE] = 4;  // DC-In
     power_->update_power_state();

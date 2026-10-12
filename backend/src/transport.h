@@ -112,6 +112,7 @@ private:
     auto handle_unsubscribe_metrics(const Command& cmd) -> Response;
     auto handle_get_fan(const Command& cmd) -> Response;
     auto handle_set_fan(const Command& cmd) -> Response;
+    auto handle_set_tdp(const Command& cmd) -> Response;
     auto handle_get_button(const Command& cmd) -> Response;
     auto handle_get_power_mode(const Command& cmd) -> Response;
     auto handle_get_profiles(const Command& cmd) -> Response;

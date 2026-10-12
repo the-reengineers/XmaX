@@ -36,8 +36,16 @@ ProfileStorage load_profiles(const std::filesystem::path& profiles_path) {
         storage.fan_curves[curve.id] = curve;
     }
 
+    // Register builtin profiles
+    for (auto& profile : get_builtin_profiles()) {
+        storage.builtin_profiles.insert(profile.id);
+    }
+
     if (!std::filesystem::exists(profiles_path)) {
-        // Create empty profiles file (builtins are already in storage)
+        // Seed builtin profiles into storage (no user profiles exist yet).
+        for (auto& profile : get_builtin_profiles()) {
+            storage.profiles[profile.id] = profile;
+        }
         save_profiles(profiles_path, storage);
         return storage;
     }
@@ -147,6 +155,37 @@ ProfileStorage load_profiles(const std::filesystem::path& profiles_path) {
         save_profiles(profiles_path, storage);
     }
 
+    // Seed builtin profiles for any power state that has no user default.
+    // If the user already saved their own default for a power state, the
+    // builtin for that state is suppressed — user profiles always win.
+    for (auto& builtin : get_builtin_profiles()) {
+        if (!builtin.power_state.has_value()) continue;
+        auto ps = builtin.power_state.value();
+
+        // Check whether a user profile already claims 'is_default' for this
+        // power state.  If so, skip the builtin — don't override the user's choice.
+        bool has_user_default = false;
+        for (const auto& [slug, profile] : storage.profiles) {
+            if (storage.builtin_profiles.count(slug)) continue;
+            if (profile.power_state.has_value() && profile.power_state.value() == ps
+                && profile.is_default) {
+                has_user_default = true;
+                break;
+            }
+        }
+
+        if (has_user_default) {
+            // Remove the builtin if it was already inserted (e.g. from a
+            // previous run where no user default existed yet).
+            storage.profiles.erase(builtin.id);
+            continue;
+        }
+
+        // Insert or update the builtin.  Use insert() so a user profile
+        // that happens to have the same ID is NOT overwritten.
+        storage.profiles.insert({builtin.id, builtin});
+    }
+
     return storage;
 }
 
@@ -171,9 +210,12 @@ bool save_profiles(const std::filesystem::path& profiles_path, const ProfileStor
         }
         j["fan_curves"] = fan_curves_json;
 
-        // Save profiles
+        // Save profiles (skip builtins — they are in code, not persisted to disk)
         json profiles_json;
         for (auto& [slug, profile] : storage.profiles) {
+            if (storage.builtin_profiles.count(slug)) {
+                continue;  // Builtins are not persisted to file
+            }
             json profile_json;
             profile_json["name"] = profile.name;
             profile_json["type"] = (profile.type == ProfileType::Adaptive) ? "adaptive" : "fixed";
@@ -341,6 +383,11 @@ std::optional<std::string> delete_fan_curve(ProfileStorage& storage, const std::
 }
 
 std::optional<std::string> save_profile(ProfileStorage& storage, Profile profile) {
+    // Reject saves that target a builtin profile ID.
+    if (is_builtin_profile(profile.id, storage)) {
+        return "Built-in profiles cannot be modified";
+    }
+
     if (profile.type == ProfileType::Fixed) {
         // Determine TDP ceiling: power state max if assigned, otherwise global max
         int tdp_ceiling = profile.power_state.has_value()
@@ -435,6 +482,11 @@ std::optional<std::string> save_profile(ProfileStorage& storage, Profile profile
 }
 
 std::optional<std::string> delete_profile(ProfileStorage& storage, const std::string& slug) {
+    // Builtin profiles cannot be deleted.
+    if (is_builtin_profile(slug, storage)) {
+        return "Built-in profiles cannot be deleted";
+    }
+
     // Check if profile exists
     auto it = storage.profiles.find(slug);
     if (it == storage.profiles.end()) {
@@ -477,6 +529,88 @@ std::vector<FanCurve> get_builtin_fan_curves() {
 
 bool is_builtin_curve(const std::string& slug, const ProfileStorage& storage) {
     return storage.builtin_curves.count(slug) > 0;
+}
+
+std::vector<Profile> get_builtin_profiles() {
+    // One safe fixed-profile fallback per power state. Each references the
+    // builtin "default" fan curve. Users can override these by creating their
+    // own profile for a power state and marking it as default.
+    std::vector<Profile> builtins;
+
+    {
+        Profile p;
+        p.id = "builtin_battery";
+        p.name = "Battery";
+        p.type = ProfileType::Fixed;
+        p.power_state = PowerState::Source::Battery;
+        p.is_default = true;
+        p.stapm_w = 15;
+        p.fast_w = 20;
+        p.slow_w = 10;
+        p.fan_curve = "default";
+        p.tuning = "default";
+        p.target_temp_c = 85;
+        p.tdp_max_w = 55;
+        p.fan_max_pct = 100;
+        builtins.push_back(std::move(p));
+    }
+    {
+        Profile p;
+        p.id = "builtin_usb_c_slow";
+        p.name = "USB-C Slow";
+        p.type = ProfileType::Fixed;
+        p.power_state = PowerState::Source::UsbCSlow;
+        p.is_default = true;
+        p.stapm_w = 12;
+        p.fast_w = 15;
+        p.slow_w = 8;
+        p.fan_curve = "default";
+        p.tuning = "default";
+        p.target_temp_c = 85;
+        p.tdp_max_w = 55;
+        p.fan_max_pct = 100;
+        builtins.push_back(std::move(p));
+    }
+    {
+        Profile p;
+        p.id = "builtin_usb_c_fast";
+        p.name = "USB-C Fast";
+        p.type = ProfileType::Fixed;
+        p.power_state = PowerState::Source::UsbCFast;
+        p.is_default = true;
+        p.stapm_w = 30;
+        p.fast_w = 40;
+        p.slow_w = 25;
+        p.fan_curve = "default";
+        p.tuning = "default";
+        p.target_temp_c = 85;
+        p.tdp_max_w = 55;
+        p.fan_max_pct = 100;
+        builtins.push_back(std::move(p));
+    }
+    {
+        Profile p;
+        p.id = "builtin_dc_in";
+        p.name = "DC-In";
+        p.type = ProfileType::Fixed;
+        p.power_state = PowerState::Source::DcIn;
+        p.is_default = true;
+        p.stapm_w = 55;
+        p.fast_w = 65;
+        p.slow_w = 45;
+        p.fan_curve = "default";
+        p.tuning = "default";
+        p.target_temp_c = 85;
+        p.tdp_max_w = 55;
+        p.fan_max_pct = 100;
+        builtins.push_back(std::move(p));
+    }
+
+    return builtins;
+}
+
+bool is_builtin_profile(const std::string& slug, const ProfileStorage& storage) {
+    return storage.builtin_profiles.count(slug) > 0;
 }
 
 int interpolate_fan_speed(const FanCurve& curve, int temp_c) {

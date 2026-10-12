@@ -24,6 +24,7 @@ struct Response {
     bool ok;
     std::optional<std::string> data;   // JSON string on success
     std::optional<ErrorCode> error;    // Error code on failure
+    std::optional<std::string> error_message;  // Human-readable detail on failure
 };
 
 // Event: BE → FE (unsolicited)

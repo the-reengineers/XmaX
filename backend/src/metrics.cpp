@@ -7,6 +7,8 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <wbemidl.h>
+#else
+#include "platform/linux/procfs.h"
 #endif
 
 // EC register addresses for power state and charge limit
@@ -189,8 +191,13 @@ void MetricsPoller::poll_cpu() {
         prev_user = user;
         has_prev = true;
     }
+#else
+    // CPU utilization via /proc/stat (prev-idle/prev-total deltas; 0 on first sample)
+    static procfs::CpuUtil cpu_util;
+    current_metrics_.cpu.util_pct = cpu_util.sample();
+#endif
 
-    // CPU clock speed via WMI (Win32_Processor.CurrentClockSpeed)
+    // CPU clock speed (platform-generic: WMI on Windows, cpufreq on Linux)
     current_metrics_.cpu.clock_mhz = platform_.cpu_clock_mhz();
 
     // CPU temperature via EC register 0x0470
@@ -204,7 +211,7 @@ void MetricsPoller::poll_cpu() {
     // The blob's ioctl_send_smu_command reads from PM table but we need the command ID
     // for package power specifically (different from TDP limits)
 
-    // SmartShift and PowerDistribution via ADLX
+    // SmartShift and PowerDistribution via ADLX (Linux reports an empty result)
     auto sys_result = platform_.system_metrics();
     if (sys_result) {
         const auto& sys = sys_result.value();
@@ -212,7 +219,6 @@ void MetricsPoller::poll_cpu() {
         current_metrics_.cpu.apu_shift_value = sys.apu_shift_value;
         current_metrics_.cpu.apu_shift_limit = sys.apu_shift_limit;
     }
-#endif
 }
 
 void MetricsPoller::poll_gpu() {
@@ -247,6 +253,14 @@ void MetricsPoller::poll_ram() {
         current_metrics_.ram.avail_bytes = mem_status.ullAvailPhys;
         current_metrics_.ram.used_bytes = current_metrics_.ram.total_bytes - current_metrics_.ram.avail_bytes;
         current_metrics_.ram.load_pct = static_cast<float>(mem_status.dwMemoryLoad);
+    }
+#else
+    auto mem = procfs::read_meminfo("/proc/meminfo");
+    if (mem) {
+        current_metrics_.ram.total_bytes = mem->total_bytes;
+        current_metrics_.ram.avail_bytes = mem->avail_bytes;
+        current_metrics_.ram.used_bytes = mem->used_bytes;
+        current_metrics_.ram.load_pct = mem->load_pct;
     }
 #endif
 }
@@ -284,9 +298,31 @@ void MetricsPoller::poll_power() {
             current_metrics_.power.label = "Unknown";
         }
     } else {
+#ifndef _WIN32
+        // EC unavailable — fall back to sysfs power_supply on Linux.
+        std::string src = procfs::power_source();
+        if (src == "battery") {
+            current_metrics_.power.mode = PowerState::Source::Battery;
+            current_metrics_.power.label = "Battery only";
+        } else if (src == "usb_c_slow") {
+            current_metrics_.power.mode = PowerState::Source::UsbCSlow;
+            current_metrics_.power.label = "USB-C (65W class)";
+        } else if (src == "usb_c_fast") {
+            current_metrics_.power.mode = PowerState::Source::UsbCFast;
+            current_metrics_.power.label = "USB-C (100W class)";
+        } else if (src == "dc_in") {
+            current_metrics_.power.mode = PowerState::Source::DcIn;
+            current_metrics_.power.label = "DC-In (dedicated charger)";
+        } else {
+            current_metrics_.power.mode = PowerState::Source::Unknown;
+            current_metrics_.power.label = "Unknown";
+        }
+        log_debug("[metrics] Power state from sysfs: " + src);
+#else
         current_metrics_.power.mode = PowerState::Source::Unknown;
         current_metrics_.power.label = "Unknown";
         log_warn("[metrics] Power state EC read failed (WMI may have failed)");
+#endif
     }
 
     // Poll charge limit from EC register 0x04A3
@@ -300,5 +336,8 @@ void MetricsPoller::poll_power() {
 #ifdef _WIN32
     // Battery percentage via WMI Win32_Battery (driver-free)
     current_metrics_.power.battery_pct = battery_pct_wmi();
+#else
+    // Battery percentage via sysfs BAT*/capacity
+    current_metrics_.power.battery_pct = procfs::battery_pct();
 #endif
 }

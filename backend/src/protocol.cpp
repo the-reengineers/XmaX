@@ -67,6 +67,9 @@ std::string serialize_response(const Response& response) {
         j["data"] = json::parse(response.data.value());
     } else if (!response.ok && response.error.has_value()) {
         j["error"] = error_code_to_string(response.error.value());
+        if (response.error_message.has_value()) {
+            j["error_message"] = response.error_message.value();
+        }
     }
 
     return j.dump() + "\n";

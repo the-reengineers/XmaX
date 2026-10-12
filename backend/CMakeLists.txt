@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 project(xmaxsvc VERSION 0.1.0 LANGUAGES CXX)
 
-set(ENV{https_proxy} "http://127.0.0.1:10808")
-set(ENV{HTTPS_PROXY} "http://127.0.0.1:10808")
-
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -17,6 +14,7 @@ endif()
 
 # Dependencies via FetchContent
 include(FetchContent)
+include(GNUInstallDirs)
 
 # nlohmann/json (header-only)
 FetchContent_Declare(
@@ -84,7 +82,19 @@ if(WIN32)
     endif()
 endif()
 
-FetchContent_MakeAvailable(json googletest)
+# nlohmann/json + GTest: prefer system packages (Fedora ships nlohmann-json-devel
+# and gtest-devel, which keeps RPM builds offline); fall back to FetchContent for
+# a plain source checkout. The imported target names are identical either way.
+find_package(nlohmann_json 3.11 QUIET)
+if(NOT nlohmann_json_FOUND)
+    FetchContent_MakeAvailable(json)
+endif()
+
+find_package(GTest QUIET)
+if(NOT GTest_FOUND)
+    FetchContent_MakeAvailable(googletest)
+endif()
+
 if(WIN32)
     if(NOT ADLX_LOCAL_AVAILABLE)
         FetchContent_MakeAvailable(adlx)
@@ -92,6 +102,12 @@ if(WIN32)
     if(NOT PAWNIO_LOCAL_AVAILABLE)
         FetchContent_MakeAvailable(pawnio_modules)
     endif()
+endif()
+
+# libsystemd (sd-bus) for the D-Bus service and CLI on UNIX.
+if(UNIX)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(SYSTEMD IMPORTED_TARGET libsystemd)
 endif()
 
 # Main executable
@@ -179,9 +195,32 @@ if(WIN32)
 elseif(UNIX)
     target_sources(${BACKEND_TARGET} PRIVATE
         src/platform/platform_linux.cpp
+        src/platform/linux/ec.cpp
+        src/platform/linux/procfs.cpp
+        src/platform/linux/ryzenadj.cpp
+        src/dbus/dbus_service.cpp
+    )
+    target_compile_definitions(${BACKEND_TARGET} PRIVATE
+        XMAX_VERSION="${PROJECT_VERSION}"
     )
     target_link_libraries(${BACKEND_TARGET} PRIVATE
         nlohmann_json::nlohmann_json
+        PkgConfig::SYSTEMD
+        ${CMAKE_DL_LIBS}
+    )
+endif()
+
+# xmaxctl — command-line client (UNIX only; talks D-Bus with a socket fallback).
+if(UNIX)
+    add_executable(xmaxctl
+        src/xmaxctl.cpp
+    )
+    target_compile_definitions(xmaxctl PRIVATE
+        XMAX_VERSION="${PROJECT_VERSION}"
+    )
+    target_link_libraries(xmaxctl PRIVATE
+        nlohmann_json::nlohmann_json
+        PkgConfig::SYSTEMD
     )
 endif()
 
@@ -217,13 +256,39 @@ if(WIN32)
     )
 endif()
 
-target_link_libraries(${BACKEND_TARGET}_tests PRIVATE
-    GTest::gtest_main
-    nlohmann_json::nlohmann_json
-    ole32
-    oleaut32
-    wbemuuid
-)
+if(WIN32)
+    target_link_libraries(${BACKEND_TARGET}_tests PRIVATE
+        GTest::gtest_main
+        nlohmann_json::nlohmann_json
+        ole32
+        oleaut32
+        wbemuuid
+    )
+else()
+    target_link_libraries(${BACKEND_TARGET}_tests PRIVATE
+        GTest::gtest_main
+        nlohmann_json::nlohmann_json
+    )
+endif()
+
+# Linux-only procfs parser + fixture-driven tests (no real hardware needed).
+if(UNIX)
+    target_sources(${BACKEND_TARGET}_tests PRIVATE
+        src/platform/linux/procfs.cpp
+        tests/test_linux_procfs.cpp
+    )
+    target_compile_definitions(${BACKEND_TARGET}_tests PRIVATE
+        XMAX_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"
+    )
+endif()
 
 include(GoogleTest)
 gtest_discover_tests(${BACKEND_TARGET}_tests)
+
+# Packaging: `cmake --install` stages the daemon and CLI. The RPM spec relies on
+# CMAKE_INSTALL_SBINDIR / CMAKE_INSTALL_BINDIR (set by GNUInstallDirs from the
+# install prefix). Tests are intentionally not installed.
+if(UNIX)
+    install(TARGETS ${BACKEND_TARGET} RUNTIME DESTINATION ${CMAKE_INSTALL_SBINDIR})
+    install(TARGETS xmaxctl RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()

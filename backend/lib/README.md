@@ -93,3 +93,26 @@ The PawnIO binary blobs use a **local-first** approach with **FetchContent fallb
 - LGPL compliance is explicit and auditable
 
 The ADLX SDK uses FetchContent (source-only) because it's compiled source code with stable release tags on GitHub.
+
+## RyzenAdj (Linux SMU / TDP control)
+
+AMD SMU (TDP: STAPM/Fast/Slow) is controlled on Linux via **RyzenAdj**, vendored as
+source in `backend/lib/ryzenadj/`:
+
+- **Vendored source** (not a binary): upstream
+  [FlyGoat/RyzenAdj](https://github.com/FlyGoat/RyzenAdj) `v0.19.0` (`ea71739`),
+  Linux-only subset — the top-level `win32/` driver binaries and `.github/` are removed.
+- **Not a build dependency**: xmaxd does not link ryzenadj. It `dlopen`s
+  `libryzenadj.so` at runtime (`backend/src/platform/linux/ryzenadj.cpp`) and
+  degrades to `SensorUnavailable` when the lib is absent.
+- **Built/installed at setup time**: `scripts/linux/build-ryzenadj.sh` compiles the
+  vendored source into `libryzenadj.so` and installs it (`/usr/local/lib` by default,
+  honouring `PREFIX` / `XMAX_RYZENADJ_LIB`).
+
+**Benefits:**
+- ✅ Offline, reproducible build from source (no clone, no network)
+- ✅ Linux-only footprint (Windows driver blobs excluded)
+- ✅ Version-pinned with the codebase
+- ✅ LGPL-3.0 compliant via dynamic `dlopen` linking (no link-time copyleft)
+
+**License file:** `ryzenadj/LICENSE` (LGPL-3.0, included as required).

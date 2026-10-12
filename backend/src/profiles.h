@@ -52,6 +52,8 @@ struct ProfileStorage {
     std::map<std::string, FanCurve> fan_curves;
     // Built-in curve IDs that cannot be deleted or overwritten by user input.
     std::set<std::string> builtin_curves;
+    // Built-in profile IDs that cannot be deleted or overwritten by user input.
+    std::set<std::string> builtin_profiles;
 };
 
 // Load profiles from file
@@ -87,6 +89,12 @@ int interpolate_fan_speed(const FanCurve& curve, int temp_c);
 
 // Get all builtin fan curves (hardcoded, immutable defaults).
 std::vector<FanCurve> get_builtin_fan_curves();
+
+// Get all builtin profiles — one safe fallback per power state (hardcoded, immutable).
+std::vector<Profile> get_builtin_profiles();
+
+// Check if a profile slug is builtin (case-insensitive comparison against builtin IDs).
+bool is_builtin_profile(const std::string& slug, const ProfileStorage& storage);
 
 // Check if a curve slug is builtin (case-insensitive comparison against builtin IDs).
 bool is_builtin_curve(const std::string& slug, const ProfileStorage& storage);

@@ -200,16 +200,30 @@ void MetricsPoller::poll_cpu() {
     // CPU clock speed (platform-generic: WMI on Windows, cpufreq on Linux)
     current_metrics_.cpu.clock_mhz = platform_.cpu_clock_mhz();
 
-    // CPU temperature via EC register 0x0470
+    // CPU temperature.
+#ifdef _WIN32
+    // Windows: EC register 0x0470 via the vendor WMI/UMAInterface.
     auto temp_result = platform_.ec_read(0x0470);
     if (temp_result) {
         current_metrics_.cpu.temp_c = static_cast<int>(temp_result.value());
     }
+#else
+    // Linux: the vendor EC register 0x0470 is beyond the 256-byte ACPI EC
+    // space that ec_sys exposes (see platform/linux/ec.cpp), so read CPU temp
+    // from the k10temp hwmon chip instead. Gracefully nullopt when absent.
+    current_metrics_.cpu.temp_c = procfs::cpu_temp_c();
+#endif
 
-    // CPU package power via SMU PM table
-    // TODO: Requires specific PM table command ID (not documented in tdp_test.cpp)
-    // The blob's ioctl_send_smu_command reads from PM table but we need the command ID
-    // for package power specifically (different from TDP limits)
+    // CPU package power via SMU PM table (package_watts stays nullopt until wired).
+    // Windows: no driver-free source — DPTC/LHM return 0 on Strix Halo, and the
+    //   PawnIO blob's ioctl_send_smu_command reads the PM table but the
+    //   package-power command ID is unknown (distinct from the TDP *limit*
+    //   opcodes 0x14/0x15/0x16). See TODOS.md for the full investigation.
+    // Linux: achievable by extending the ryzenadj dlopen binding
+    //   (backend/src/platform/linux/ryzenadj.cpp) to resolve libryzenadj's
+    //   get_cpu_power — the library exposes actual package power draw, but we
+    //   currently load only init_ryzenadj + the STAPM/Fast/Slow limit symbols.
+    // TODO: bind get_cpu_power on Linux and populate package_watts (mW -> W).
 
     // SmartShift and PowerDistribution via ADLX (Linux reports an empty result)
     auto sys_result = platform_.system_metrics();

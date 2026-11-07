@@ -68,6 +68,15 @@ struct LinuxTransportServer {
 
 // Path for the client control socket. Prefer $XDG_RUNTIME_DIR (per-user private
 // tmpfs); fall back to /tmp with the uid disambiguator, matching lock_path().
+//
+// ROOT-DEPLOYMENT NOTE: when xmaxd runs as root (the system unit), $XDG_RUNTIME_DIR
+// is unset/root-owned (/run/user/0), so the socket lives under /tmp/xmax-0.sock
+// while a user's xmaxctl would look in /run/user/<uid>/xmax.sock. The socket path
+// is therefore a *dev* seam — production clients reach the daemon over D-Bus
+// (org.xmax.Service on the system bus), and the AF_UNIX transport is exercised by
+// the test harness and headless dev. A real root->user socket would need to be
+// placed in a well-known, root-owned, world-connectable location (and verify_peer
+// loosened — see the note on verify_peer below); neither is done today.
 fs::path socket_path() {
     if (const char* rt = std::getenv("XDG_RUNTIME_DIR"); rt && *rt) {
         return fs::path(rt) / "xmax.sock";
@@ -272,6 +281,16 @@ public:
         // Trust only this user's processes. The socket is mode 0600 in
         // $XDG_RUNTIME_DIR, so a successful connect already implies same-user;
         // confirming the uid gives a positive identification.
+        //
+        // ROOT-DEPLOYMENT NOTE: getuid()==0 when the daemon runs as root, so this
+        // same-uid check denies *every* non-root client (the /tmp/xmax-0.sock
+        // fallback is also mode 0600 root-owned -> unconnectable by users). That
+        // is fine because production auth happens via D-Bus + polkit, not the
+        // socket. To make the AF_UNIX transport usable by a normal user against a
+        // root daemon, relax this to "peer uid is 0 or >= 1000" and place the
+        // socket in a world-connectable path (see the socket_path note above) —
+        // gated by a polkit-equivalent check, per Step-1 of the Linux plan. Not
+        // implemented: no production use case for the socket path today.
         info.verified = (!info.executable_path.empty()
                          && read_proc_uid(peer.process_id) == static_cast<uid_t>(getuid()));
 

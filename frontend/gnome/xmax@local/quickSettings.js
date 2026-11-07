@@ -177,7 +177,13 @@ class XmaxQuickSettingsIndicator extends QuickSettings.SystemIndicator {
         // When the toggle is in single-profile mode (toggleMode: true),
         // prevent visual toggling and refresh in case the user added
         // another profile for this power mode since last check.
-        toggle.connectObject('toggled', () => {
+        //
+        // GNOME 50 has no 'toggled' signal on QuickMenuToggle (it was never
+        // guaranteed API); notify::checked fires on every check-state change
+        // and exists wherever the `checked` property does. Setting
+        // checked = false from inside the handler is safe: the second
+        // notify::checked no-ops because the value is unchanged.
+        toggle.connectObject('notify::checked', () => {
             if (toggle.toggleMode) {
                 toggle.checked = false;
                 this._refreshProfileMenu(toggle);

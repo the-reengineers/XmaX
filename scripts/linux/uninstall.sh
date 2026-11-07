@@ -38,18 +38,47 @@ ok "removed /usr/local/bin/{xmaxd,ryzenadj} + /usr/local/lib/libryzenadj.so"
 
 # --- 3. Integration files (skip if the RPM owns them) ------------------------
 if [ "$rpm_owned" -eq 0 ]; then
-    rm -f /usr/share/dbus-1/system.d/org.xmax.Service.conf
+    dbus_policy_neutralized=0
+    for f in /usr/share/dbus-1/system.d/org.xmax.Service.conf \
+             /etc/dbus-1/system.d/org.xmax.Service.conf; do
+        if [ -e "$f" ]; then
+            # Neutralize with an empty stub BEFORE deleting: dbus-broker-
+            # launch watches every drop-in it parsed, and deleting a
+            # watched file makes every later reload abort with "Invalid
+            # configuration, ignored" (the broker keeps its old policy).
+            # With the stub reloaded, no xmax rules remain; deleting the
+            # file afterwards may break the NEXT reload (harmless —
+            # nothing left to apply — and the next reboot re-parses).
+            # NEVER restart dbus-broker to apply policy — it can
+            # hard-crash a running GNOME session.
+            printf '%s\n' '<busconfig/>' > "$f"
+            dbus_policy_neutralized=1
+        fi
+    done
     rm -f /usr/share/polkit-1/actions/org.xmax.policy
     rm -f /etc/systemd/system/xmaxd.service
-    ok "removed D-Bus policy, polkit actions, and the systemd unit"
+    # `just dev-sys` may drop a nopolkit override alongside the unit.
+    rm -f /etc/systemd/system/xmaxd.service.d/nopolkit.conf
+    rmdir /etc/systemd/system/xmaxd.service.d 2>/dev/null || true
+    ok "removed D-Bus policy, polkit actions, systemd unit, and dev drop-in"
 else
+    dbus_policy_neutralized=0
     skip "D-Bus policy / polkit actions / systemd unit (owned by the RPM)"
 fi
 
 # --- 4. Reload live state so the removals take effect ------------------------
 if command -v systemctl >/dev/null 2>&1; then
     systemctl daemon-reload 2>/dev/null || true
-    systemctl try-reload dbus-broker.service 2>/dev/null || systemctl reload dbus.service 2>/dev/null || true
+    # Apply the neutralized (empty) policy with a reload; then the stub
+    # files can go. If the removal itself poisons the next reload, the
+    # active policy is already empty — the reboot re-parses from disk.
+    if [ "$dbus_policy_neutralized" -eq 1 ]; then
+        systemctl try-reload dbus-broker.service 2>/dev/null || true
+        rm -f /usr/share/dbus-1/system.d/org.xmax.Service.conf \
+              /etc/dbus-1/system.d/org.xmax.Service.conf
+    else
+        systemctl try-reload dbus-broker.service 2>/dev/null || systemctl reload dbus.service 2>/dev/null || true
+    fi
 fi
 ldconfig 2>/dev/null || true   # prune libryzenadj from the shared-lib cache
 

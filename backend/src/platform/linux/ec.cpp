@@ -114,6 +114,9 @@ std::optional<uint8_t> read(uint16_t reg) {
     }
     switch (g_state.backend) {
         case Backend::EcSys: {
+            // ec_sys exposes the 256-byte ACPI EC space (0x00-0xFF). A register
+            // above 0xFF (all vendor registers this codebase uses) is past EOF
+            // -> pread returns 0 bytes -> nullopt. See ec.h KNOWN LIMITATION.
             uint8_t byte = 0;
             ssize_t n = ::pread(g_state.fd, &byte, 1, static_cast<off_t>(reg));
             return n == 1 ? std::optional<uint8_t>(byte) : std::nullopt;

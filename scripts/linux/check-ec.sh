@@ -54,12 +54,17 @@ case "$(uname -m)" in
     *) miss "non-x86 host: Super-I/O path compiled out (ec_sys only)";;
 esac
 
-# Only reachable via ec_sys: the 16-bit vendor registers (0x0230..0x04FE) are
-# beyond the ACPI EC's 256-byte Super-I/O window, so the fallback truncates to
-# the low byte. Note this for devs validating charge-limit on fallback-only hosts.
+# Neither backend can reach the vendor registers: the ACPI EC is an
+# 8-bit-indexed 256-byte space (0x00-0xFF), so vendor registers 0x0230..0x04FE
+# are out of range for BOTH ec_sys (pread past EOF -> 0 bytes -> nullopt) and
+# the Super-I/O fallback (8-bit index). This is why charge-limit / fan / RPM
+# are unsupported on Linux without a vendor-specific path.
 echo
-echo "  [note] 16-bit vendor registers (charge limit 0x04A3 etc.) need the ec_sys path;"
-echo "         the Super-I/O fallback only sees the low byte (ACPI EC 256-byte space)."
+echo "  [note] Vendor registers (charge limit 0x04A3, fan 0x044A/4B, RPM"
+echo "         0x0476/77, power state 0x04FE, button 0x0230/31) are all beyond"
+echo "         the ACPI EC's 256-byte space; neither ec_sys nor the Super-I/O"
+echo "         fallback can reach them. These controls need a vendor path"
+echo "         (WMI/ACPI method or the in-tree oxp-platform driver)."
 
 echo
 if [ "$warn" = 1 ]; then

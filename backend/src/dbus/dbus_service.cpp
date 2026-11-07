@@ -146,22 +146,32 @@ bool DbusService::start() {
         auth_bus_ = nullptr;
     }
 
+    // Every method is marked SD_BUS_VTABLE_UNPRIVILEGED: on a non-trusted
+    // connection (sd_bus_open_system), sd-bus core requires the message
+    // SENDER to hold CAP_SYS_ADMIN before dispatching a vtable member —
+    // deny-by-default with "Access to <iface>.<method>() not permitted."
+    // That check runs before our handlers, so without this flag every
+    // non-root client (the GNOME extension, xmaxctl) is rejected while
+    // root callers pass (root holds all capabilities). It also explains
+    // why dev mode on the user bus worked: a same-uid sender passes
+    // sd_bus_query_sender_privilege(). Real authorization is enforced by
+    // our own polkit layer in authorize(), not by this bus-level check.
     static const sd_bus_vtable vtable[] = {
         SD_BUS_VTABLE_START(0),
-        SD_BUS_METHOD("Ping", "", "", on_ping, 0),
-        SD_BUS_METHOD("GetMetrics", "", "s", on_get_metrics, 0),
-        SD_BUS_METHOD("SetTdp", "a{sv}", "", on_set_tdp, 0),
-        SD_BUS_METHOD("SetFan", "a{sv}", "", on_set_fan, 0),
-        SD_BUS_METHOD("SetChargeLimit", "u", "", on_set_charge_limit, 0),
-        SD_BUS_METHOD("GetChargeLimit", "", "u", on_get_charge_limit, 0),
-        SD_BUS_METHOD("SetAutoStart", "b", "", on_set_auto_start, 0),
-        SD_BUS_METHOD("GetProfiles", "", "s", on_get_profiles, 0),
-        SD_BUS_METHOD("SetProfile", "s", "", on_set_profile, 0),
-        SD_BUS_METHOD("SaveProfile", "s", "", on_save_profile, 0),
-        SD_BUS_METHOD("DeleteProfile", "s", "", on_delete_profile, 0),
-        SD_BUS_METHOD("GetFanCurves", "", "s", on_get_fan_curves, 0),
-        SD_BUS_METHOD("SaveFanCurve", "s", "", on_save_fan_curve, 0),
-        SD_BUS_METHOD("DeleteFanCurve", "s", "", on_delete_fan_curve, 0),
+        SD_BUS_METHOD("Ping", "", "", on_ping, SD_BUS_VTABLE_UNPRIVILEGED),
+        SD_BUS_METHOD("GetMetrics", "", "s", on_get_metrics, SD_BUS_VTABLE_UNPRIVILEGED),
+        SD_BUS_METHOD("SetTdp", "a{sv}", "", on_set_tdp, SD_BUS_VTABLE_UNPRIVILEGED),
+        SD_BUS_METHOD("SetFan", "a{sv}", "", on_set_fan, SD_BUS_VTABLE_UNPRIVILEGED),
+        SD_BUS_METHOD("SetChargeLimit", "u", "", on_set_charge_limit, SD_BUS_VTABLE_UNPRIVILEGED),
+        SD_BUS_METHOD("GetChargeLimit", "", "u", on_get_charge_limit, SD_BUS_VTABLE_UNPRIVILEGED),
+        SD_BUS_METHOD("SetAutoStart", "b", "", on_set_auto_start, SD_BUS_VTABLE_UNPRIVILEGED),
+        SD_BUS_METHOD("GetProfiles", "", "s", on_get_profiles, SD_BUS_VTABLE_UNPRIVILEGED),
+        SD_BUS_METHOD("SetProfile", "s", "", on_set_profile, SD_BUS_VTABLE_UNPRIVILEGED),
+        SD_BUS_METHOD("SaveProfile", "s", "s", on_save_profile, SD_BUS_VTABLE_UNPRIVILEGED),
+        SD_BUS_METHOD("DeleteProfile", "s", "", on_delete_profile, SD_BUS_VTABLE_UNPRIVILEGED),
+        SD_BUS_METHOD("GetFanCurves", "", "s", on_get_fan_curves, SD_BUS_VTABLE_UNPRIVILEGED),
+        SD_BUS_METHOD("SaveFanCurve", "s", "s", on_save_fan_curve, SD_BUS_VTABLE_UNPRIVILEGED),
+        SD_BUS_METHOD("DeleteFanCurve", "s", "", on_delete_fan_curve, SD_BUS_VTABLE_UNPRIVILEGED),
         SD_BUS_PROPERTY("Version", "s", on_get_version, 0, SD_BUS_VTABLE_PROPERTY_CONST),
         SD_BUS_PROPERTY("AutoStartEnabled", "b", on_get_auto_start, 0, SD_BUS_VTABLE_PROPERTY_EMITS_CHANGE),
         SD_BUS_SIGNAL("MetricsChanged", "a{sv}", 0),
@@ -260,27 +270,28 @@ bool DbusService::authorize(sd_bus_message* m, const char* action_id) {
         return false;
     }
 
-    // subject: (sa{sv}) = ("system-bus-name", {"name": <sender>}).
+    // subject: (sa{sv}) = ("system-bus-name", {"name": <sender>}). Each call
+    // chains only while the previous succeeded; the trailing if(r<0) cleans up.
     r = sd_bus_message_open_container(call, 'r', "sa{sv}");
-    r = r ?: sd_bus_message_append(call, "s", "system-bus-name");
-    r = r ?: sd_bus_message_open_container(call, 'a', "{sv}");
-    r = r ?: sd_bus_message_open_container(call, 'e', "sv");
-    r = r ?: sd_bus_message_append(call, "s", "name");
-    r = r ?: sd_bus_message_open_container(call, 'v', "s");
-    r = r ?: sd_bus_message_append(call, "s", sender);
-    r = r ?: sd_bus_message_close_container(call);  // variant
-    r = r ?: sd_bus_message_close_container(call);  // entry
-    r = r ?: sd_bus_message_close_container(call);  // a{sv}
-    r = r ?: sd_bus_message_close_container(call);  // (sa{sv})
+    if (r >= 0) r = sd_bus_message_append(call, "s", "system-bus-name");
+    if (r >= 0) r = sd_bus_message_open_container(call, 'a', "{sv}");
+    if (r >= 0) r = sd_bus_message_open_container(call, 'e', "sv");
+    if (r >= 0) r = sd_bus_message_append(call, "s", "name");
+    if (r >= 0) r = sd_bus_message_open_container(call, 'v', "s");
+    if (r >= 0) r = sd_bus_message_append(call, "s", sender);
+    if (r >= 0) r = sd_bus_message_close_container(call);  // variant
+    if (r >= 0) r = sd_bus_message_close_container(call);  // entry
+    if (r >= 0) r = sd_bus_message_close_container(call);  // a{sv}
+    if (r >= 0) r = sd_bus_message_close_container(call);  // (sa{sv})
 
-    r = r ?: sd_bus_message_append(call, "s", action_id);
+    if (r >= 0) r = sd_bus_message_append(call, "s", action_id);
 
     // details: empty a{ss}.
-    r = r ?: sd_bus_message_open_container(call, 'a', "{ss}");
-    r = r ?: sd_bus_message_close_container(call);
+    if (r >= 0) r = sd_bus_message_open_container(call, 'a', "{ss}");
+    if (r >= 0) r = sd_bus_message_close_container(call);
 
-    r = r ?: sd_bus_message_append(call, "u", kPolkitAllowUserInteraction);
-    r = r ?: sd_bus_message_append(call, "s", "");
+    if (r >= 0) r = sd_bus_message_append(call, "u", kPolkitAllowUserInteraction);
+    if (r >= 0) r = sd_bus_message_append(call, "s", "");
     if (r < 0) {
         sd_bus_message_unref(call);
         return false;
@@ -308,6 +319,18 @@ bool DbusService::authorize(sd_bus_message* m, const char* action_id) {
 }
 
 void DbusService::emit_metrics_changed() {
+    // We emit unconditionally every kEmitIntervalMs regardless of whether anyone
+    // is subscribed. sd-bus exposes no portable API to count signal subscribers
+    // (match rules live in the dbus broker, not the client), so gating on "is
+    // there a listener?" isn't available without name-owner tracking hacks.
+    //
+    // The per-tick cost is one dispatch + one message marshal every 2s, which is
+    // negligible. A "skip when the JSON is unchanged" optimization was rejected:
+    // CPU temp / fan RPM / battery drift on nearly every tick, so the payload
+    // almost never repeats and the string compare would just add overhead. If a
+    // future metric set is mostly-static and profiling shows the heartbeat is
+    // hot, revisit here — until then the dbusd broker drops unmatched signals
+    // cheaply, so a no-subscriber emit is effectively free on the wire.
     Command cmd;
     cmd.method = "get_metrics";
     cmd.id = "dbus";
@@ -588,7 +611,10 @@ int DbusService::on_save_profile(sd_bus_message* m, void* userdata, sd_bus_error
     if (!resp.ok) {
         return reply_transport_error(m, resp);
     }
-    return sd_bus_reply_method_return(m, "");
+    // Return the saved profile JSON (carries the assigned id) so callers like
+    // xmaxctl can report the actual id rather than the input one.
+    std::string data = resp.data.value_or("{}");
+    return sd_bus_reply_method_return(m, "s", data.c_str());
 }
 
 int DbusService::on_delete_profile(sd_bus_message* m, void* userdata, sd_bus_error*) {
@@ -656,7 +682,8 @@ int DbusService::on_save_fan_curve(sd_bus_message* m, void* userdata, sd_bus_err
     if (!resp.ok) {
         return reply_transport_error(m, resp);
     }
-    return sd_bus_reply_method_return(m, "");
+    std::string data = resp.data.value_or("{}");
+    return sd_bus_reply_method_return(m, "s", data.c_str());
 }
 
 int DbusService::on_delete_fan_curve(sd_bus_message* m, void* userdata, sd_bus_error*) {

@@ -540,7 +540,11 @@ TEST_F(ProfileTest, SaveAndLoadProfile) {
     EXPECT_TRUE(save_profiles(profiles_path, storage));
 
     ProfileStorage loaded = load_profiles(profiles_path);
-    EXPECT_EQ(loaded.profiles.size(), 1);
+    // load_profiles seeds power-state builtin defaults (battery/usb_c_slow/
+    // usb_c_fast/dc_in) on top of the saved user profile, so count user
+    // profiles the same way SaveAndLoadFanCurve counts user curves.
+    auto user_profiles = loaded.profiles.size() - loaded.builtin_profiles.size();
+    EXPECT_EQ(user_profiles, 1);
     EXPECT_EQ(loaded.profiles["performance"].name, "Performance");
     EXPECT_EQ(loaded.profiles["performance"].stapm_w, 55);
 }

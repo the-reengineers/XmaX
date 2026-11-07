@@ -17,18 +17,20 @@ export class XmaxClient {
     /**
      * @param {Object} [opts]
      * @param {Function|null} [opts.onMetricsChanged] invoked with a parsed metrics object
-     * @param {Gio.DBusConnection} [opts.connection] defaults to the session bus
+     * @param {Gio.DBusConnection} [opts.connection] defaults to the system bus
      */
     constructor({ onMetricsChanged = null, connection = null } = {}) {
-        // The daemon runs on the *session* bus by default (user-level systemd
-        // unit). XMAX_DBUS_BUS=system overrides to the system bus for setups
-        // where the daemon is a root-owned system service.
+        // The daemon runs as a root systemd service on the *system* bus
+        // (production wiring, `just dev-sys`). XMAX_DBUS_BUS=user overrides
+        // to the session bus for the nested-shell dev mode
+        // (scripts/linux/run-extension-nested.sh), matching the same env
+        // var the daemon itself understands.
         if (connection) {
             this._conn = connection;
-        } else if (GLib.getenv('XMAX_DBUS_BUS') === 'system') {
-            this._conn = Gio.DBus.system;
-        } else {
+        } else if (GLib.getenv('XMAX_DBUS_BUS') === 'user') {
             this._conn = Gio.DBus.session;
+        } else {
+            this._conn = Gio.DBus.system;
         }
         this._onMetricsChanged = onMetricsChanged;
         this._sub = 0;

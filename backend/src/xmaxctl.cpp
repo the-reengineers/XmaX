@@ -77,28 +77,42 @@ void print_dbus_error(const char* what, const sd_bus_error* err) {
 int append_asv_uint(sd_bus_message* m, const std::vector<std::pair<const char*, uint32_t>>& kvs) {
     int r = sd_bus_message_open_container(m, 'a', "{sv}");
     for (const auto& [k, v] : kvs) {
-        r = r ?: sd_bus_message_open_container(m, 'e', "sv");
-        r = r ?: sd_bus_message_append(m, "s", k);
-        r = r ?: sd_bus_message_open_container(m, 'v', "u");
-        r = r ?: sd_bus_message_append(m, "u", v);
-        r = r ?: sd_bus_message_close_container(m);
-        r = r ?: sd_bus_message_close_container(m);
+        if (r < 0) break;
+        r = sd_bus_message_open_container(m, 'e', "sv");
+        if (r < 0) break;
+        r = sd_bus_message_append(m, "s", k);
+        if (r < 0) break;
+        r = sd_bus_message_open_container(m, 'v', "u");
+        if (r < 0) break;
+        r = sd_bus_message_append(m, "u", v);
+        if (r < 0) break;
+        r = sd_bus_message_close_container(m);  // variant
+        if (r < 0) break;
+        r = sd_bus_message_close_container(m);  // entry
     }
-    return r ?: sd_bus_message_close_container(m);
+    if (r < 0) return r;
+    return sd_bus_message_close_container(m);
 }
 
 // Append a flat a{sv} of string->string.
 int append_asv_string(sd_bus_message* m, const std::vector<std::pair<const char*, const char*>>& kvs) {
     int r = sd_bus_message_open_container(m, 'a', "{sv}");
     for (const auto& [k, v] : kvs) {
-        r = r ?: sd_bus_message_open_container(m, 'e', "sv");
-        r = r ?: sd_bus_message_append(m, "s", k);
-        r = r ?: sd_bus_message_open_container(m, 'v', "s");
-        r = r ?: sd_bus_message_append(m, "s", v);
-        r = r ?: sd_bus_message_close_container(m);
-        r = r ?: sd_bus_message_close_container(m);
+        if (r < 0) break;
+        r = sd_bus_message_open_container(m, 'e', "sv");
+        if (r < 0) break;
+        r = sd_bus_message_append(m, "s", k);
+        if (r < 0) break;
+        r = sd_bus_message_open_container(m, 'v', "s");
+        if (r < 0) break;
+        r = sd_bus_message_append(m, "s", v);
+        if (r < 0) break;
+        r = sd_bus_message_close_container(m);  // variant
+        if (r < 0) break;
+        r = sd_bus_message_close_container(m);  // entry
     }
-    return r ?: sd_bus_message_close_container(m);
+    if (r < 0) return r;
+    return sd_bus_message_close_container(m);
 }
 
 // ---- Socket fallback (AF_UNIX JSON-line protocol) --------------------------
@@ -223,22 +237,27 @@ int cmd_tdp(uint32_t stapm, uint32_t fast_w, uint32_t slow_w) {
     sd_bus* bus = open_system_bus();
     if (bus) {
         sd_bus_message* msg = nullptr;
-        sd_bus_message_new_method_call(bus, &msg, kServiceName, kServicePath, kServiceName, "SetTdp");
-        append_asv_uint(msg, {{"stapm", stapm}, {"fast", fast_w}, {"slow", slow_w}});
-        sd_bus_error err = SD_BUS_ERROR_NULL;
-        sd_bus_message* reply = nullptr;
-        int r = sd_bus_call(bus, msg, 0, &err, &reply);
-        if (r >= 0) {
-            std::cout << "tdp: " << stapm << "/" << fast_w << "/" << slow_w << " W\n";
-            sd_bus_message_unref(reply);
+        int mc = sd_bus_message_new_method_call(bus, &msg, kServiceName, kServicePath, kServiceName, "SetTdp");
+        if (mc < 0) {
+            std::cerr << "tdp: failed to build D-Bus message\n";
+            sd_bus_unref(bus);
+        } else {
+            append_asv_uint(msg, {{"stapm", stapm}, {"fast", fast_w}, {"slow", slow_w}});
+            sd_bus_error err = SD_BUS_ERROR_NULL;
+            sd_bus_message* reply = nullptr;
+            int r = sd_bus_call(bus, msg, 0, &err, &reply);
+            if (r >= 0) {
+                std::cout << "tdp: " << stapm << "/" << fast_w << "/" << slow_w << " W\n";
+                sd_bus_message_unref(reply);
+                sd_bus_message_unref(msg);
+                sd_bus_unref(bus);
+                return 0;
+            }
+            print_dbus_error("tdp", &err);
+            sd_bus_error_free(&err);
             sd_bus_message_unref(msg);
             sd_bus_unref(bus);
-            return 0;
         }
-        print_dbus_error("tdp", &err);
-        sd_bus_error_free(&err);
-        sd_bus_message_unref(msg);
-        sd_bus_unref(bus);
     }
 
     auto resp = socket_request("set_tdp", json{{"stapm", stapm}, {"fast", fast_w}, {"slow", slow_w}});
@@ -267,22 +286,27 @@ int cmd_fan(const std::string& mode, const std::optional<std::string>& curve_id)
     sd_bus* bus = open_system_bus();
     if (bus) {
         sd_bus_message* msg = nullptr;
-        sd_bus_message_new_method_call(bus, &msg, kServiceName, kServicePath, kServiceName, "SetFan");
-        append_asv_string(msg, args);
-        sd_bus_error err = SD_BUS_ERROR_NULL;
-        sd_bus_message* reply = nullptr;
-        int r = sd_bus_call(bus, msg, 0, &err, &reply);
-        if (r >= 0) {
-            std::cout << "fan: " << mode << "\n";
-            sd_bus_message_unref(reply);
+        int mc = sd_bus_message_new_method_call(bus, &msg, kServiceName, kServicePath, kServiceName, "SetFan");
+        if (mc < 0) {
+            std::cerr << "fan: failed to build D-Bus message\n";
+            sd_bus_unref(bus);
+        } else {
+            append_asv_string(msg, args);
+            sd_bus_error err = SD_BUS_ERROR_NULL;
+            sd_bus_message* reply = nullptr;
+            int r = sd_bus_call(bus, msg, 0, &err, &reply);
+            if (r >= 0) {
+                std::cout << "fan: " << mode << "\n";
+                sd_bus_message_unref(reply);
+                sd_bus_message_unref(msg);
+                sd_bus_unref(bus);
+                return 0;
+            }
+            print_dbus_error("fan", &err);
+            sd_bus_error_free(&err);
             sd_bus_message_unref(msg);
             sd_bus_unref(bus);
-            return 0;
         }
-        print_dbus_error("fan", &err);
-        sd_bus_error_free(&err);
-        sd_bus_message_unref(msg);
-        sd_bus_unref(bus);
     }
 
     auto resp = socket_request("set_fan", params);
@@ -569,21 +593,23 @@ int cmd_profiles_save(const std::vector<std::string>& args, size_t start) {
     std::string type = find_flag(args, start, "--type").value_or("fixed");
     profile["type"] = type;
 
-    if (type == "fixed") {
-        auto stapm = find_flag(args, start, "--stapm");
-        auto fast = find_flag(args, start, "--fast");
-        auto slow = find_flag(args, start, "--slow");
-        if (stapm) profile["stapm"] = std::stoi(*stapm);
-        if (fast) profile["fast"] = std::stoi(*fast);
-        if (slow) profile["slow"] = std::stoi(*slow);
-        // Default to "default" fan curve if not specified
-        auto fc = find_flag(args, start, "--fan-curve");
-        profile["fan_curve"] = fc.value_or("default");
-    } else if (type == "adaptive") {
-        if (auto t = find_flag(args, start, "--tuning")) profile["tuning"] = *t;
-        if (auto tt = find_flag(args, start, "--target-temp")) profile["target_temp_c"] = std::stoi(*tt);
-        if (auto tm = find_flag(args, start, "--tdp-max")) profile["tdp_max_w"] = std::stoi(*tm);
-        if (auto fm = find_flag(args, start, "--fan-max")) profile["fan_max_pct"] = std::stoi(*fm);
+    try {
+        if (type == "fixed") {
+            if (auto stapm = find_flag(args, start, "--stapm")) profile["stapm"] = std::stoi(*stapm);
+            if (auto fast = find_flag(args, start, "--fast")) profile["fast"] = std::stoi(*fast);
+            if (auto slow = find_flag(args, start, "--slow")) profile["slow"] = std::stoi(*slow);
+            // Default to "default" fan curve if not specified
+            auto fc = find_flag(args, start, "--fan-curve");
+            profile["fan_curve"] = fc.value_or("default");
+        } else if (type == "adaptive") {
+            if (auto t = find_flag(args, start, "--tuning")) profile["tuning"] = *t;
+            if (auto tt = find_flag(args, start, "--target-temp")) profile["target_temp_c"] = std::stoi(*tt);
+            if (auto tm = find_flag(args, start, "--tdp-max")) profile["tdp_max_w"] = std::stoi(*tm);
+            if (auto fm = find_flag(args, start, "--fan-max")) profile["fan_max_pct"] = std::stoi(*fm);
+        }
+    } catch (const std::exception&) {
+        std::cerr << "profiles save: stapm/fast/slow/target-temp/tdp-max/fan-max must be integers\n";
+        return 1;
     }
 
     if (auto ps = find_flag(args, start, "--power-state")) profile["power_state"] = *ps;

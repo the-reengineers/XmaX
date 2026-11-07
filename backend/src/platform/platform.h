@@ -207,7 +207,8 @@ public:
 
     // Get platform-specific data directory
     // Windows: %LOCALAPPDATA%\xmax\
-    // Linux: $XDG_DATA_HOME/xmax/
+    // Linux: $XDG_CONFIG_HOME/xmax/ (config + profiles are user configuration,
+    //        not data; falls back to ~/.config/xmax)
     virtual auto data_dir() -> std::filesystem::path = 0;
 
     // Get path to the current executable (xmaxsvc/xmaxd)

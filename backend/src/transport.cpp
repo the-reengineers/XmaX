@@ -870,7 +870,10 @@ auto TransportService::handle_save_profile(const Command& cmd) -> Response {
             profile.fast_w = payload.value("fast", 30);
             profile.slow_w = payload.value("slow", 25);
             if (payload.contains("fan_curve") && !payload["fan_curve"].is_null()) {
-                profile.fan_curve = payload["fan_curve"].get<std::string>();
+                // Empty string = "no curve" (Auto / hardware fan curve).
+                auto curve_id = payload["fan_curve"].get<std::string>();
+                profile.fan_curve = curve_id.empty() ? std::nullopt
+                                                     : std::optional{curve_id};
             }
         } else {
             profile.tuning = payload.value("tuning", "default");

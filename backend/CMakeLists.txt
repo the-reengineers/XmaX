@@ -196,6 +196,7 @@ elseif(UNIX)
     target_sources(${BACKEND_TARGET} PRIVATE
         src/platform/platform_linux.cpp
         src/platform/linux/ec.cpp
+        src/platform/linux/oxpec.cpp
         src/platform/linux/procfs.cpp
         src/platform/linux/ryzenadj.cpp
         src/dbus/dbus_service.cpp

@@ -1,6 +1,7 @@
 #include "platform.h"
 #include "../logger.h"
 #include "linux/ec.h"
+#include "linux/oxpec.h"
 #include "linux/procfs.h"
 #include "linux/ryzenadj.h"
 
@@ -170,10 +171,15 @@ public:
     ~LinuxPlatform() override = default;
 
     bool init_hardware() override {
-        // Probe optional hardware backends. Both are non-fatal: when absent,
+        // Probe optional hardware backends. All are non-fatal: when absent,
         // per-call methods degrade to SensorUnavailable.
         xmax_ec::init();
+        xmax_oxp::init();
         bool ryzenadj_ok = ryzenadj::init();
+        if (xmax_oxp::available()) {
+            log_info("[hw] oxpec driver detected -- fan/charge vendor "
+                     "registers available via sysfs");
+        }
         if (!xmax_ec::available()) {
             log_warn("[hw] EC backend unavailable (ec_sys/Super-I/O) -- controls need root");
         }
@@ -394,6 +400,12 @@ public:
     // ===== Hardware: EC / SMU / charge limit =====
 
     auto ec_read(uint16_t reg) -> Result<uint8_t> override {
+        // Vendor registers first: the oxpec driver exposes the fan/charge
+        // registers (0x044A/4B/76/77, 0x04A3) that the 256-byte ec_sys window
+        // cannot reach. Everything else falls through to ec_sys/Super-I/O.
+        if (auto vendor = xmax_oxp::read(reg)) {
+            return *vendor;
+        }
         auto value = xmax_ec::read(reg);
         if (!value) {
             return std::unexpected(ErrorCode::SensorUnavailable);
@@ -402,6 +414,9 @@ public:
     }
 
     auto ec_write(uint16_t reg, uint8_t val) -> Result<void> override {
+        if (xmax_oxp::write(reg, val)) {
+            return {};
+        }
         if (!xmax_ec::write(reg, val)) {
             return std::unexpected(ErrorCode::SensorUnavailable);
         }

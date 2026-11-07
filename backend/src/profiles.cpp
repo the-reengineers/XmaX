@@ -119,7 +119,11 @@ ProfileStorage load_profiles(const std::filesystem::path& profiles_path) {
                         if (tdp.contains("slow")) profile.slow_w = tdp["slow"].get<int>();
                     }
                     if (profile_json.contains("fan_curve") && profile_json["fan_curve"].is_string()) {
-                        profile.fan_curve = profile_json["fan_curve"].get<std::string>();
+                        // Empty string means "no curve" (Auto / hardware curve),
+                        // e.g. from frontends whose dropdowns use "" as the
+                        // Auto sentinel.
+                        auto curve_id = profile_json["fan_curve"].get<std::string>();
+                        if (!curve_id.empty()) profile.fan_curve = curve_id;
                     }
                 } else {
                     // Adaptive profile fields
@@ -184,6 +188,48 @@ ProfileStorage load_profiles(const std::filesystem::path& profiles_path) {
         // Insert or update the builtin.  Use insert() so a user profile
         // that happens to have the same ID is NOT overwritten.
         storage.profiles.insert({builtin.id, builtin});
+    }
+
+    // Migrate installs created before the software "default" fan curve was
+    // deprecated in favor of the EC firmware's hardware curve. Pre-deprecation
+    // the curve was a code-registered builtin — never persisted to file (see
+    // save_profiles) — so profiles on disk carry references to "default" that
+    // now dangle. Two cases:
+    //   a) the file holds the exact legacy builtin curve (only possible if
+    //      hand-copied): drop it and clear references;
+    //   b) no "default" curve exists at all: every "default" reference is a
+    //      dangling legacy reference -> clear it.
+    // A user curve that merely *reuses* the id "default" with its own points
+    // is theirs — kept, and references to it stay intact.
+    {
+        const std::vector<FanCurvePoint> legacy_points = {
+            {45, 35}, {55, 45}, {65, 60}, {75, 75}, {85, 85}, {90, 100},
+        };
+        auto same_points = [](const std::vector<FanCurvePoint>& a,
+                              const std::vector<FanCurvePoint>& b) {
+            if (a.size() != b.size()) return false;
+            for (size_t i = 0; i < a.size(); ++i) {
+                if (a[i].temp_c != b[i].temp_c || a[i].speed_pct != b[i].speed_pct) {
+                    return false;
+                }
+            }
+            return true;
+        };
+        auto legacy = storage.fan_curves.find("default");
+        const bool legacy_builtin_present =
+            legacy != storage.fan_curves.end()
+            && same_points(legacy->second.points, legacy_points);
+        if (legacy_builtin_present) {
+            storage.fan_curves.erase(legacy);
+        }
+        if (legacy_builtin_present
+            || legacy == storage.fan_curves.end()) {
+            for (auto& [slug, profile] : storage.profiles) {
+                if (profile.fan_curve == "default") {
+                    profile.fan_curve = std::nullopt;
+                }
+            }
+        }
     }
 
     return storage;
@@ -513,18 +559,14 @@ std::optional<std::string> delete_profile(ProfileStorage& storage, const std::st
 }
 
 std::vector<FanCurve> get_builtin_fan_curves() {
-    FanCurve default_curve;
-    default_curve.id = "default";
-    default_curve.name = "Default";
-    default_curve.points = {
-        {45, 35},
-        {55, 45},
-        {65, 60},
-        {75, 75},
-        {85, 85},
-        {90, 100}
-    };
-    return {default_curve};
+    // Deprecated: there is no builtin software fan curve. The default fan
+    // behavior is the *hardware* curve — the EC firmware's own ramp, active
+    // whenever the fan-mode register says "auto" (FanState::Mode::Auto).
+    // Profiles therefore default to Auto (no fan_curve reference), and fan
+    // curves are purely opt-in user creations for when someone wants
+    // something other than the firmware curve. load_profiles() migrates
+    // installs that still reference the legacy "default" curve.
+    return {};
 }
 
 bool is_builtin_curve(const std::string& slug, const ProfileStorage& storage) {
@@ -532,9 +574,11 @@ bool is_builtin_curve(const std::string& slug, const ProfileStorage& storage) {
 }
 
 std::vector<Profile> get_builtin_profiles() {
-    // One safe fixed-profile fallback per power state. Each references the
-    // builtin "default" fan curve. Users can override these by creating their
-    // own profile for a power state and marking it as default.
+    // One safe fixed-profile fallback per power state. None reference a fan
+    // curve: applying them leaves the fan in Auto mode, i.e. the EC
+    // firmware's hardware curve (see get_builtin_fan_curves). Users can
+    // override these by creating their own profile for a power state and
+    // marking it as default.
     std::vector<Profile> builtins;
 
     {
@@ -547,7 +591,6 @@ std::vector<Profile> get_builtin_profiles() {
         p.stapm_w = 15;
         p.fast_w = 20;
         p.slow_w = 10;
-        p.fan_curve = "default";
         p.tuning = "default";
         p.target_temp_c = 85;
         p.tdp_max_w = 55;
@@ -564,7 +607,6 @@ std::vector<Profile> get_builtin_profiles() {
         p.stapm_w = 12;
         p.fast_w = 15;
         p.slow_w = 8;
-        p.fan_curve = "default";
         p.tuning = "default";
         p.target_temp_c = 85;
         p.tdp_max_w = 55;
@@ -581,7 +623,6 @@ std::vector<Profile> get_builtin_profiles() {
         p.stapm_w = 30;
         p.fast_w = 40;
         p.slow_w = 25;
-        p.fan_curve = "default";
         p.tuning = "default";
         p.target_temp_c = 85;
         p.tdp_max_w = 55;
@@ -598,7 +639,6 @@ std::vector<Profile> get_builtin_profiles() {
         p.stapm_w = 55;
         p.fast_w = 65;
         p.slow_w = 45;
-        p.fan_curve = "default";
         p.tuning = "default";
         p.target_temp_c = 85;
         p.tdp_max_w = 55;

@@ -273,7 +273,7 @@ export default class XmaxPreferences extends ExtensionPreferences {
             stapm: 25,
             fast: 30,
             slow: 25,
-            fan_curve: 'default',
+            fan_curve: '',
             tuning: 'default',
             target_temp_c: 80,
             tdp_max_w: 45,
@@ -360,10 +360,12 @@ export default class XmaxPreferences extends ExtensionPreferences {
         } catch (e) {
             console.error('Failed to fetch fan curves:', e);
         }
-        // The daemon always returns the builtin "default" curve first; no need
-        // to hardcode a duplicate. Show the display name, not the id slug.
+        // First entry is the default: Auto — the EC firmware's own hardware
+        // fan curve. Its id is the empty string ("no curve"), which the
+        // backend maps to fan Auto mode. User-created curves follow.
         const fanCurveModel = new Gtk.StringList();
-        const fanCurveIds = [];
+        const fanCurveIds = [''];
+        fanCurveModel.append(_('Auto (hardware)'));
         for (const curve of fanCurves) {
             fanCurveIds.push(curve.id);
             fanCurveModel.append(curve.name || curve.id);
@@ -371,7 +373,7 @@ export default class XmaxPreferences extends ExtensionPreferences {
         const fanCurveRow = new Adw.ComboRow({
             title: _('Fan Curve'),
             model: fanCurveModel,
-            selected: fanCurveIds.indexOf(profile.fan_curve || 'default'),
+            selected: fanCurveIds.indexOf(profile.fan_curve || ''),
         });
         if (fanCurveRow.selected < 0) fanCurveRow.selected = 0;
         fixedGroup.add(fanCurveRow);
@@ -507,7 +509,7 @@ export default class XmaxPreferences extends ExtensionPreferences {
                 newProfile.stapm = stapmRow.value;
                 newProfile.fast = fastRow.value;
                 newProfile.slow = slowRow.value;
-                newProfile.fan_curve = fanCurveIds[fanCurveRow.selected] || 'default';
+                newProfile.fan_curve = fanCurveIds[fanCurveRow.selected] || '';
             } else {
                 newProfile.tuning = tunings[tuningRow.selected] || 'default';
                 newProfile.target_temp_c = targetTempRow.value;

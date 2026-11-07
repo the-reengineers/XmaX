@@ -282,6 +282,12 @@ int main(int argc, char* argv[]) {
                         if (curve_it != profiles.fan_curves.end()) {
                             (void)fan->set_mode(FanState::Mode::Curve);
                             fan->set_curve(curve_it->second);
+                        } else {
+                            // Referenced curve no longer exists — fall back to
+                            // Auto (the EC firmware's hardware curve) instead
+                            // of leaving the fan in whatever mode it was in.
+                            (void)fan->set_mode(FanState::Mode::Auto);
+                            fan->set_curve(std::nullopt);
                         }
                     } else {
                         (void)fan->set_mode(FanState::Mode::Auto);
@@ -383,6 +389,12 @@ int main(int argc, char* argv[]) {
                             if (curve_it != profiles.fan_curves.end()) {
                                 (void)fan->set_mode(FanState::Mode::Curve);
                                 fan->set_curve(curve_it->second);
+                            } else {
+                                // Referenced curve no longer exists — fall back
+                                // to Auto (hardware curve) instead of leaving
+                                // the fan in whatever mode it was in.
+                                (void)fan->set_mode(FanState::Mode::Auto);
+                                fan->set_curve(std::nullopt);
                             }
                         } else {
                             (void)fan->set_mode(FanState::Mode::Auto);

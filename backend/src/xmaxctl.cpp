@@ -598,9 +598,11 @@ int cmd_profiles_save(const std::vector<std::string>& args, size_t start) {
             if (auto stapm = find_flag(args, start, "--stapm")) profile["stapm"] = std::stoi(*stapm);
             if (auto fast = find_flag(args, start, "--fast")) profile["fast"] = std::stoi(*fast);
             if (auto slow = find_flag(args, start, "--slow")) profile["slow"] = std::stoi(*slow);
-            // Default to "default" fan curve if not specified
-            auto fc = find_flag(args, start, "--fan-curve");
-            profile["fan_curve"] = fc.value_or("default");
+            // No fan-curve default: omitting the flag leaves the fan in Auto
+            // mode (the EC firmware's hardware curve).
+            if (auto fc = find_flag(args, start, "--fan-curve")) {
+                profile["fan_curve"] = *fc;
+            }
         } else if (type == "adaptive") {
             if (auto t = find_flag(args, start, "--tuning")) profile["tuning"] = *t;
             if (auto tt = find_flag(args, start, "--target-temp")) profile["target_temp_c"] = std::stoi(*tt);

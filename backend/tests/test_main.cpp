@@ -517,6 +517,112 @@ TEST_F(ProfileTest, DeleteFanCurveConstraint) {
     EXPECT_EQ(storage.fan_curves.size(), 1);  // Not deleted
 }
 
+TEST_F(ProfileTest, MigratesLegacyDefaultFanCurve) {
+    // A pre-deprecation profiles.json: the legacy builtin "default" curve
+    // (exact builtin point set) plus profiles referencing it — both a
+    // builtin profile and a user profile.
+    const std::string legacy_json = R"({
+        "fan_curves": {
+            "default": {
+                "name": "Default",
+                "points": [
+                    {"temp_c": 45, "speed_pct": 35},
+                    {"temp_c": 55, "speed_pct": 45},
+                    {"temp_c": 65, "speed_pct": 60},
+                    {"temp_c": 75, "speed_pct": 75},
+                    {"temp_c": 85, "speed_pct": 85},
+                    {"temp_c": 90, "speed_pct": 100}
+                ]
+            }
+        },
+        "profiles": {
+            "builtin_dc_in": {
+                "name": "DC-In", "type": "fixed", "is_default": true,
+                "power_state": "dc_in",
+                "tdp": {"stapm": 55, "fast": 65, "slow": 45},
+                "fan_curve": "default"
+            },
+            "test": {
+                "name": "test", "type": "fixed",
+                "power_state": "dc_in",
+                "tdp": {"stapm": 57, "fast": 31, "slow": 23},
+                "fan_curve": "default"
+            }
+        }
+    })";
+    {
+        std::ofstream out(profiles_path);
+        out << legacy_json;
+    }
+
+    ProfileStorage loaded = load_profiles(profiles_path);
+
+    // The legacy builtin curve is dropped...
+    EXPECT_EQ(loaded.fan_curves.count("default"), 0);
+    // ...and every reference to it is cleared -> fan Auto (hardware curve).
+    EXPECT_FALSE(loaded.profiles["builtin_dc_in"].fan_curve.has_value());
+    EXPECT_FALSE(loaded.profiles["test"].fan_curve.has_value());
+}
+
+TEST_F(ProfileTest, KeepsUserCurvesThatReuseTheDefaultId) {
+    // A user curve with id "default" but its OWN points is not the legacy
+    // builtin — it must survive, along with references to it.
+    const std::string user_json = R"({
+        "fan_curves": {
+            "default": {
+                "name": "My own curve",
+                "points": [
+                    {"temp_c": 40, "speed_pct": 20},
+                    {"temp_c": 80, "speed_pct": 80}
+                ]
+            }
+        },
+        "profiles": {
+            "test": {
+                "name": "test", "type": "fixed",
+                "tdp": {"stapm": 57, "fast": 31, "slow": 23},
+                "fan_curve": "default"
+            }
+        }
+    })";
+    {
+        std::ofstream out(profiles_path);
+        out << user_json;
+    }
+
+    ProfileStorage loaded = load_profiles(profiles_path);
+
+    EXPECT_EQ(loaded.fan_curves.count("default"), 1);
+    EXPECT_TRUE(loaded.profiles["test"].fan_curve.has_value());
+    EXPECT_EQ(*loaded.profiles["test"].fan_curve, "default");
+}
+
+TEST_F(ProfileTest, MigratesDanglingDefaultCurveReferences) {
+    // The common real case: the legacy curve was a code-registered builtin
+    // and never persisted, so the file has profiles referencing "default"
+    // with no fan_curves section at all. The dangling references must be
+    // cleared so profile application switches the fan to Auto.
+    const std::string dangling_json = R"({
+        "profiles": {
+            "test": {
+                "name": "test", "type": "fixed",
+                "power_state": "dc_in",
+                "tdp": {"stapm": 57, "fast": 31, "slow": 23},
+                "fan_curve": "default"
+            }
+        }
+    })";
+    {
+        std::ofstream out(profiles_path);
+        out << dangling_json;
+    }
+
+    ProfileStorage loaded = load_profiles(profiles_path);
+
+    EXPECT_EQ(loaded.fan_curves.count("default"), 0);
+    EXPECT_FALSE(loaded.profiles["test"].fan_curve.has_value());
+}
+
 TEST_F(ProfileTest, SaveAndLoadProfile) {
     ProfileStorage storage;
 

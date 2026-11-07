@@ -73,3 +73,4 @@ frontend/gnome/xmax@local/schemas/gschemas.compiled
 # The gschema XML is source, not a build artifact — exempt it from the
 # blanket *.xml rule above.
 !frontend/gnome/xmax@local/schemas/*.xml
+.fuse_hidden*

@@ -127,14 +127,18 @@ class XmaxQuickSettingsIndicator extends QuickSettings.SystemIndicator {
             this._chargeSection.addMenuItem(item);
         }
 
-        this._applyChargeUi(toggle, selectedPct);
+        // UI only — the hardware write happens on explicit item activation
+        // (_applyChargeUi). Writing here would push a charge limit at
+        // menu-build time, which the daemon rejects with persist_disabled
+        // unless hardware writes are enabled (and the user never asked).
+        this._updateChargeUi(toggle, selectedPct);
     }
 
     /**
-     * Write the selection to hardware and update the toggle UI.
-     * Always updates the subtitle and check ornament from GSettings,
-     * even when the daemon D-Bus call fails.  Safe to call from
-     * within a menu-item activate handler — no items are destroyed.
+     * Write the selection to hardware (user activation only) and update the
+     * toggle UI. Always updates the subtitle and check ornament, even when
+     * the daemon D-Bus call fails. Safe to call from within a menu-item
+     * activate handler — no items are destroyed.
      */
     _applyChargeUi(toggle, pct) {
         try {
@@ -142,6 +146,14 @@ class XmaxQuickSettingsIndicator extends QuickSettings.SystemIndicator {
         } catch (e) {
             logError(e, 'XmaX setChargeLimit');
         }
+        this._updateChargeUi(toggle, pct);
+    }
+
+    /**
+     * Update the toggle subtitle, GSettings selection, and check ornament
+     * for `pct`. No hardware writes, no error paths.
+     */
+    _updateChargeUi(toggle, pct) {
         this._settings.set_int('charge-limit-selected', pct);
         toggle.subtitle = `${pct}%`;
 
@@ -249,6 +261,13 @@ class XmaxQuickSettingsIndicator extends QuickSettings.SystemIndicator {
                         this._applyProfileUi(toggle, profile);
                     } catch (e) {
                         logError(e, 'XmaX setProfile');
+                        // The persist gate is the one rejection the user can
+                        // fix themselves — point at the prefs toggle instead
+                        // of failing silently.
+                        if (String(e).includes('persist_disabled')) {
+                            toggle.subtitle = _(
+                                'Hardware writes off — enable "Apply settings to hardware" in XmaX settings');
+                        }
                     }
                 });
                 if (profile.id === this._activeProfileId)

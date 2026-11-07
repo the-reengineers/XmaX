@@ -51,8 +51,27 @@ cmake --build "$BUILD_DIR" --target ryzenadj
 install -m 0755 "$BUILD_DIR/ryzenadj" "$PREFIX/bin/ryzenadj"
 
 if [ "$(id -u)" -eq 0 ]; then
+    # Make the loader see the library. On Debian/Ubuntu ldconfig indexes
+    # /usr/local/lib by default; on Fedora it does NOT (only the dirs in
+    # /etc/ld.so.conf, which exclude /usr/local) — so check whether ldconfig
+    # actually picks it up and, if not, add a drop-in conf and re-run. This
+    # matters for the ryzenadj CLI (which links the lib) and for any dlopen
+    # by SONAME; xmaxd itself additionally probes absolute install paths
+    # (see backend/src/platform/linux/ryzenadj.cpp).
     ldconfig
-    echo "installed: $LIBDIR/libryzenadj.so (dlopen will find it via ldconfig)"
+    if ! ldconfig -p | grep -q "libryzenadj.so"; then
+        CONF="/etc/ld.so.conf.d/usr-local-lib.conf"
+        if [ "$LIBDIR" = "/usr/local/lib" ] && [ ! -e "$CONF" ]; then
+            echo "$LIBDIR" > "$CONF"
+            ldconfig
+            echo "added $CONF (Fedora: /usr/local/lib is not in the loader path by default)"
+        fi
+    fi
+    if ldconfig -p | grep -q "libryzenadj.so"; then
+        echo "installed: $LIBDIR/libryzenadj.so (visible to the loader)"
+    else
+        echo "installed: $LIBDIR/libryzenadj.so (NOT in ldconfig cache — xmaxd will find it via its absolute-path probe; run check-ec.sh to confirm)"
+    fi
 else
     echo "installed: $LIBDIR/libryzenadj.so (user prefix; no ldconfig)"
     echo "hint: export XMAX_RYZENADJ_LIB=$LIBDIR/libryzenadj.so"

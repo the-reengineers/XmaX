@@ -55,6 +55,20 @@
     <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/xmaxd</annotate>
   </action>
 
+  <!-- Gates the session_persist flag: enabling it applies all configured
+       settings (TDP, fan, charge limit, active profile) to hardware, so it
+       needs the same authorization as the writes it unlocks. -->
+  <action id="org.xmax.set-session-persist">
+    <description>Apply XmaX settings to hardware</description>
+    <message>Authentication is required to let XmaX apply settings to the hardware</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/xmaxd</annotate>
+  </action>
+
   <action id="org.xmax.set-profile">
     <description>Apply, save, or delete a power profile</description>
     <message>Authentication is required to change power profiles</message>

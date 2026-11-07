@@ -165,6 +165,7 @@ bool DbusService::start() {
         SD_BUS_METHOD("SetChargeLimit", "u", "", on_set_charge_limit, SD_BUS_VTABLE_UNPRIVILEGED),
         SD_BUS_METHOD("GetChargeLimit", "", "u", on_get_charge_limit, SD_BUS_VTABLE_UNPRIVILEGED),
         SD_BUS_METHOD("SetAutoStart", "b", "", on_set_auto_start, SD_BUS_VTABLE_UNPRIVILEGED),
+        SD_BUS_METHOD("SetSessionPersist", "b", "", on_set_session_persist, SD_BUS_VTABLE_UNPRIVILEGED),
         SD_BUS_METHOD("GetProfiles", "", "s", on_get_profiles, SD_BUS_VTABLE_UNPRIVILEGED),
         SD_BUS_METHOD("SetProfile", "s", "", on_set_profile, SD_BUS_VTABLE_UNPRIVILEGED),
         SD_BUS_METHOD("SaveProfile", "s", "s", on_save_profile, SD_BUS_VTABLE_UNPRIVILEGED),
@@ -174,6 +175,7 @@ bool DbusService::start() {
         SD_BUS_METHOD("DeleteFanCurve", "s", "", on_delete_fan_curve, SD_BUS_VTABLE_UNPRIVILEGED),
         SD_BUS_PROPERTY("Version", "s", on_get_version, 0, SD_BUS_VTABLE_PROPERTY_CONST),
         SD_BUS_PROPERTY("AutoStartEnabled", "b", on_get_auto_start, 0, SD_BUS_VTABLE_PROPERTY_EMITS_CHANGE),
+        SD_BUS_PROPERTY("SessionPersist", "b", on_get_session_persist, 0, SD_BUS_VTABLE_PROPERTY_EMITS_CHANGE),
         SD_BUS_SIGNAL("MetricsChanged", "a{sv}", 0),
         SD_BUS_VTABLE_END
     };
@@ -520,6 +522,39 @@ int DbusService::on_set_auto_start(sd_bus_message* m, void* userdata, sd_bus_err
     return sd_bus_reply_method_return(m, "");
 }
 
+int DbusService::on_set_session_persist(sd_bus_message* m, void* userdata, sd_bus_error*) {
+    auto* self = static_cast<DbusService*>(userdata);
+
+    // session_persist is the gate for every hardware write (SetTdp/SetFan/
+    // SetChargeLimit/SetProfile all reject with persist_disabled while it is
+    // off), and turning it on immediately applies all configured settings —
+    // so it needs the same polkit gating as the writes it unlocks.
+    if (!self->authorize(m, "org.xmax.set-session-persist")) {
+        return reply_not_authorized(m);
+    }
+
+    int enabled = 0;
+    if (sd_bus_message_read(m, "b", &enabled) < 0) {
+        return sd_bus_reply_method_errorf(m, "org.freedesktop.DBus.Error.InvalidArgs",
+                                          "Expected b enabled");
+    }
+
+    Command cmd;
+    cmd.method = "set_session_persist";
+    cmd.id = "dbus";
+    cmd.payload = enabled ? R"({"value":true})" : R"({"value":false})";
+
+    Response resp = self->transport_.dispatch(cmd);
+    if (!resp.ok) {
+        return reply_transport_error(m, resp);
+    }
+
+    // Notify property watchers (the extension prefs dialog reads this).
+    sd_bus_emit_properties_changed(self->bus_, "/org/xmax/Service",
+                                   "org.xmax.Service", "SessionPersist", nullptr);
+    return sd_bus_reply_method_return(m, "");
+}
+
 int DbusService::on_get_version(sd_bus* /*bus*/, const char* /*path*/, const char* /*interface*/,
                                 const char* /*property*/, sd_bus_message* reply,
                                 void* /*userdata*/, sd_bus_error* /*ret_error*/) {
@@ -536,6 +571,19 @@ int DbusService::on_get_auto_start(sd_bus* /*bus*/, const char* /*path*/, const 
     auto* self = static_cast<DbusService*>(userdata);
     auto result = self->platform_.is_auto_start_enabled();
     int enabled = result ? static_cast<int>(result.value()) : 0;
+
+    int r = sd_bus_message_append(reply, "b", enabled);
+    if (r < 0) {
+        return r;
+    }
+    return 1;
+}
+
+int DbusService::on_get_session_persist(sd_bus* /*bus*/, const char* /*path*/, const char* /*interface*/,
+                                        const char* /*property*/, sd_bus_message* reply,
+                                        void* userdata, sd_bus_error* /*ret_error*/) {
+    auto* self = static_cast<DbusService*>(userdata);
+    int enabled = self->transport_.is_session_persist() ? 1 : 0;
 
     int r = sd_bus_message_append(reply, "b", enabled);
     if (r < 0) {

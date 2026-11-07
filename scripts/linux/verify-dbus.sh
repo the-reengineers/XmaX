@@ -75,7 +75,7 @@ echo
 echo "== org.xmax.Service introspection =="
 if busctl --system introspect org.xmax.Service /org/xmax/Service >/dev/null 2>&1; then
     ok "introspect: bus name + path present"
-    for m in Ping GetMetrics SetTdp SetFan SetChargeLimit GetChargeLimit SetAutoStart; do
+    for m in Ping GetMetrics SetTdp SetFan SetChargeLimit GetChargeLimit SetAutoStart SetSessionPersist; do
         if busctl --system introspect org.xmax.Service /org/xmax/Service 2>/dev/null | grep -q "\.$m"; then
             ok "method: $m"
         else

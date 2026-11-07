@@ -16,9 +16,9 @@ class Platform;
 // Only auto-start maps straight to platform.set_auto_start()/is_auto_start_enabled()
 // (there is no transport command for it).
 //
-// Privileged methods (SetTdp/SetFan/SetChargeLimit/SetAutoStart) are gated by a
-// polkit CheckAuthorization round-trip on org.freedesktop.PolicyKit1. Set
-// XMAX_NO_POLKIT=1 to skip that check (dev/test only).
+// Privileged methods (SetTdp/SetFan/SetChargeLimit/SetAutoStart/SetSessionPersist)
+// are gated by a polkit CheckAuthorization round-trip on org.freedesktop.PolicyKit1.
+// Set XMAX_NO_POLKIT=1 to skip that check (dev/test only).
 //
 // Thread model: a single background thread drives sd_bus_process/sd_bus_wait and
 // emits the periodic MetricsChanged signal, so all sd_bus_* calls happen on one
@@ -49,6 +49,7 @@ private:
     static int on_set_charge_limit(sd_bus_message* m, void* userdata, sd_bus_error* ret_error);
     static int on_get_charge_limit(sd_bus_message* m, void* userdata, sd_bus_error* ret_error);
     static int on_set_auto_start(sd_bus_message* m, void* userdata, sd_bus_error* ret_error);
+    static int on_set_session_persist(sd_bus_message* m, void* userdata, sd_bus_error* ret_error);
 
     // Profile + fan-curve methods (JSON payloads, same shape as the socket protocol).
     static int on_get_profiles(sd_bus_message* m, void* userdata, sd_bus_error* ret_error);
@@ -65,6 +66,9 @@ private:
     static int on_get_auto_start(sd_bus* bus, const char* path, const char* interface,
                                  const char* property, sd_bus_message* reply,
                                  void* userdata, sd_bus_error* ret_error);
+    static int on_get_session_persist(sd_bus* bus, const char* path, const char* interface,
+                                      const char* property, sd_bus_message* reply,
+                                      void* userdata, sd_bus_error* ret_error);
 
     // polkit CheckAuthorization for privileged methods.
     bool authorize(sd_bus_message* m, const char* action_id);

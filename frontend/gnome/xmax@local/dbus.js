@@ -50,6 +50,25 @@ export class XmaxClient {
     }
 
     /**
+     * Whether the daemon may write to hardware. While off, every hardware
+     * write (setTdp/setFan/setChargeLimit/setProfile) is rejected with
+     * persist_disabled; turning it on applies all configured settings.
+     * @returns {boolean}
+     */
+    get sessionPersist() {
+        return this._readBoolean('SessionPersist');
+    }
+
+    /**
+     * Gate hardware writes. Mirrors the transport `set_session_persist`
+     * command (the "apply" toggle in the Windows frontend).
+     * @param {boolean} enabled
+     */
+    setSessionPersist(enabled) {
+        this._callSync('SetSessionPersist', new GLib.Variant('(b)', [enabled]));
+    }
+
+    /**
      * Probe the daemon and subscribe to MetricsChanged. Returns true if the
      * service answered Ping.
      */

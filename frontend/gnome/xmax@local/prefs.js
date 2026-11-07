@@ -21,6 +21,39 @@ export default class XmaxPreferences extends ExtensionPreferences {
         });
         window.add(page);
 
+        // ---- Hardware ---------------------------------------------------------
+        // session_persist gates every hardware write in the daemon; without it
+        // profile/charge-limit selections are silently rejected. This is the
+        // GNOME counterpart of the Windows frontend's "apply" toggle.
+        const hwGroup = new Adw.PreferencesGroup({
+            title: _('Hardware'),
+            description: _('While off, the daemon keeps the hardware at BIOS defaults and profile or charge-limit changes have no effect. Turning this on applies the configured settings for this session.'),
+        });
+        page.add(hwGroup);
+
+        this._client = new XmaxClient();
+        const daemonReachable = this._client.init();
+
+        const persistRow = new Adw.SwitchRow({
+            title: _('Apply settings to hardware'),
+        });
+        if (daemonReachable) {
+            persistRow.active = this._client.sessionPersist;
+            persistRow.connect('notify::active', row => {
+                try {
+                    this._client.setSessionPersist(row.active);
+                } catch (e) {
+                    // Revert on failure — the daemon state didn't change.
+                    row.active = !row.active;
+                    this._showError(_('Failed to apply the setting'), e.message || String(e));
+                }
+            });
+        } else {
+            persistRow.subtitle = _('The XmaX daemon is not running.');
+            persistRow.sensitive = false;
+        }
+        hwGroup.add(persistRow);
+
         const group = new Adw.PreferencesGroup({
             title: _('Visibility'),
             description: _('Quick Settings controls are shown by default; disable any you do not need.'),
@@ -89,7 +122,9 @@ export default class XmaxPreferences extends ExtensionPreferences {
     }
 
     _buildProfilesPage(window) {
-        this._client = new XmaxClient();
+        // Reuse the client created in fillPreferencesWindow (it also serves
+        // the Hardware apply toggle); create one only if somehow missing.
+        this._client ??= new XmaxClient();
         if (!this._client.init()) {
             // Daemon unreachable — show a placeholder page.
             const page = new Adw.PreferencesPage({

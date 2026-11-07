@@ -81,6 +81,13 @@ run-fe: copy
 reinstall-fe:
     scripts/linux/reinstall-extension.sh
 
+# Install the vendored ryzen_smu kernel module via DKMS (root, one-time; see
+# LINUX.md "Runtime prerequisites"). Builds + signs locally; on Secure Boot
+# machines it imports the MOK key and asks for a one-time enrollment password
+# (reboot required once — never again after that).
+install-smu:
+    sudo scripts/linux/install-smu-driver.sh
+
 # Dev mode: build both, copy to out/, start backend (which spawns the frontend). Ctrl+C stops both.
 dev: copy
     @echo "Starting {{_be_name}} ({{config}}) — frontend spawned automatically"

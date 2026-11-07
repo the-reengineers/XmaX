@@ -178,7 +178,17 @@ public:
             log_warn("[hw] EC backend unavailable (ec_sys/Super-I/O) -- controls need root");
         }
         if (!ryzenadj_ok) {
-            log_warn("[hw] libryzenadj unavailable -- TDP control disabled");
+            // Distinguish the common cause: no ryzen_smu module. libryzenadj
+            // then falls back to /dev/mem + PCI, which kernel lockdown
+            // (Secure Boot) rejects and which we do not want anyway.
+            if (!fs::exists("/sys/kernel/ryzen_smu_drv")) {
+                log_warn("[hw] libryzenadj unavailable -- TDP control disabled "
+                         "(ryzen_smu kernel module not loaded; install it with "
+                         "scripts/linux/install-smu-driver.sh)");
+            } else {
+                log_warn("[hw] libryzenadj unavailable -- TDP control disabled "
+                         "(module present but init failed; see dmesg)");
+            }
         }
         return true;
     }

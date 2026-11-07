@@ -56,7 +56,45 @@ D-Bus methods delegate to `TransportService::dispatch()` (already public/thread-
 
 **Parity gaps:** SmartShift/PowerDistribution (ADLX) has no clean Linux equivalent — likely omitted. UMA/VRAM resize is BIOS-level, not runtime-settable — unsupported. CPU package power is available via `ryzenadj` (matches the Windows driver-only gap).
 
-## Backend-first plan
+## Runtime prerequisites (TDP control: the ryzen_smu module)
+
+Hardware writes (TDP/STAPM/Fast/Slow) reach the SMU through the
+**`ryzen_smu` kernel module** (vendored at `backend/lib/ryzen_smu/`, pinned
+upstream commit in `VENDOR.md`). Install once as root:
+
+```
+sudo scripts/linux/install-smu-driver.sh
+sudo systemctl restart xmaxd
+```
+
+The script is Secure Boot-aware and takes the same path either way:
+
+| | Secure Boot ON | Secure Boot OFF |
+|---|---|---|
+| Install | DKMS builds the module **locally** and signs it with a machine-local MOK key (`/var/lib/dkms/mok.key`, never leaves the machine) | DKMS builds it; it loads unsigned |
+| One-time extra | `mokutil --import` (script does it) + reboot + enroll at the blue MOK Manager screen | none — `modprobe` right away |
+| Kernel updates | DKMS AUTOINSTALL rebuilds + re-signs with the *same* key; **no re-enrollment ever** | same, minus signing |
+
+Why the module and not ryzenadj's `/dev/mem` path: `/dev/mem` grants full
+physical-memory access and is blocked by kernel lockdown under Secure Boot
+(every SMU write fails with "PCI Bus is not writeable, check secure boot"
+even as root). The module arbitrates each SMU mailbox access in kernel
+space via a narrow, root-only-writable sysfs interface
+(`/sys/kernel/ryzen_smu_drv/`) — strictly safer even where `/dev/mem` would
+work, so we install it everywhere and treat `/dev/mem` as an escape hatch
+we do not wire up. Daemon-side, if the module is absent, startup logs an
+actionable warning instead of a chain of `sensor_unavailable` errors.
+
+Order of runtime setup on a fresh machine:
+
+1. `sudo scripts/linux/build-ryzenadj.sh` — install `libryzenadj.so`
+2. `sudo scripts/linux/install-smu-driver.sh` — the module (+ MOK if Secure Boot)
+3. `just dev-sys` (dev) or the packaged install (prod) — daemon + D-Bus + polkit
+4. Enable **Apply settings to hardware** in the extension prefs (session
+   persist is off by default — "hardware at BIOS defaults" until then), then
+   profiles apply from the Quick Settings selector.
+
+
 
 - **Phase 0 — build + skeleton:** create `platform_linux.cpp`, fix UNIX side of `CMakeLists.txt` (test target links `ole32/oleaut32/wbemuuid` unconditionally), verify `xmaxd` builds/runs.
 - **Phase 1 — transport:** AF_UNIX socket at `$XDG_RUNTIME_DIR/xmax.sock`, `SO_PEERCRED` peer verification, same JSON line protocol → `transport.cpp` unchanged.

@@ -37,7 +37,7 @@ public sealed class Profile
     [JsonPropertyName("tdp")]
     public TdpLimits Tdp { get; set; } = new();
 
-    /// <summary>Fan curve slug reference. Mandatory for fixed profiles.</summary>
+    /// <summary>Fan curve slug reference. Empty = Auto (the EC firmware's hardware fan curve).</summary>
     [JsonPropertyName("fan_curve")]
     public string FanCurve { get; set; } = "";
 

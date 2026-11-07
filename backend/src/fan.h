@@ -44,6 +44,13 @@ public:
     // Returns the hardware state (mode, duty cycle, RPM).
     auto read_state() -> FanState;
 
+    // Hand the fan back to the EC firmware (Auto mode) on daemon shutdown.
+    // Only writes when we had taken control (Curve mode): in Auto the
+    // firmware already owns the fan. Without this, a daemon exit (or crash
+    // caught by the graceful paths) in Curve mode would leave the fan pinned
+    // at the last curve duty forever.
+    void restore_auto();
+
     // Read fan RPM from EC registers.
     auto read_rpm() -> Result<uint16_t>;
 

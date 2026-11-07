@@ -1189,7 +1189,10 @@ auto TransportService::handle_get_config(const Command& cmd) -> Response {
     data["theme"] = config_.theme;
     data["persist"] = config_.persist;
     data["session_persist"] = config_.session_persist;
-    data["charge_limit_pct"] = config_.charge_limit_pct;
+    // value_or(100) for wire compatibility: the Windows FE deserializes this
+    // into a non-nullable int. An unset limit reads as 100 there, which only
+    // affects display — hardware writes are gated on has_value() elsewhere.
+    data["charge_limit_pct"] = config_.charge_limit_pct.value_or(100);
     data["auto_start"] = config_.auto_start;
 
     // Home layout
@@ -1549,9 +1552,12 @@ auto TransportService::handle_reboot(const Command& cmd) -> Response {
 }
 
 void TransportService::apply_all_settings() {
-    // Apply charge limit
-    if (config_.charge_limit_pct >= 75 && config_.charge_limit_pct <= 100) {
-        (void)power_.write_charge_limit(static_cast<uint8_t>(config_.charge_limit_pct));
+    // Apply charge limit — only when the user actually configured one. The
+    // struct default is "unset"; writing a default 100 here used to clobber
+    // the BIOS-configured limit on first apply.
+    if (config_.charge_limit_pct.has_value()
+        && *config_.charge_limit_pct >= 75 && *config_.charge_limit_pct <= 100) {
+        (void)power_.write_charge_limit(static_cast<uint8_t>(*config_.charge_limit_pct));
     }
 
     // Get current power state

@@ -22,6 +22,13 @@ public sealed partial class ProfileEditorPage : Page
     private bool _isDirty;
     private bool _isLoading;
 
+    /// <summary>
+    /// Sentinel combo entry meaning "no fan curve" — the backend leaves the
+    /// fan in Auto mode, i.e. the EC firmware's own hardware curve. Its Id is
+    /// the empty string, which both save paths treat as "no curve".
+    /// </summary>
+    private static readonly FanCurve AutoFanCurve = new() { Id = "", Name = "Auto (hardware)" };
+
     public bool IsDirty => _isDirty;
 
     public void MarkAsClean() => _isDirty = false;
@@ -59,6 +66,9 @@ public sealed partial class ProfileEditorPage : Page
 
         FanCurveCombo.Header = Loc.Form_FanCurve;
         FanCurveCombo.DisplayMemberPath = nameof(FanCurve.Name);
+        // Auto sentinel first, then the daemon's user curves (there is no
+        // builtin curve anymore — the hardware curve IS the default).
+        FanCurveCombo.Items.Add(AutoFanCurve);
         foreach (var fc in _fanCurves)
         {
             FanCurveCombo.Items.Add(fc);
@@ -113,7 +123,7 @@ public sealed partial class ProfileEditorPage : Page
             StapmSlider.Value = 45;
             FastSlider.Value = 50;
             SlowSlider.Value = 45;
-            FanCurveCombo.SelectedItem = _fanCurves.FirstOrDefault(f => f.Builtin) ?? _fanCurves.FirstOrDefault();
+            FanCurveCombo.SelectedItem = AutoFanCurve;
             return;
         }
 
@@ -159,9 +169,12 @@ public sealed partial class ProfileEditorPage : Page
             StapmSlider.Value = existingProfile.Tdp.Stapm;
             FastSlider.Value = existingProfile.Tdp.Fast;
             SlowSlider.Value = existingProfile.Tdp.Slow;
-            FanCurveCombo.SelectedItem = _fanCurves.FirstOrDefault(f => f.Id == existingProfile.FanCurve)
-                ?? _fanCurves.FirstOrDefault(f => f.Builtin)
-                ?? _fanCurves.FirstOrDefault();
+            // Empty or dangling curve reference (e.g. the deprecated builtin
+            // "default", which the backend now migrates away) -> Auto.
+            FanCurveCombo.SelectedItem =
+                string.IsNullOrEmpty(existingProfile.FanCurve)
+                    ? AutoFanCurve
+                    : _fanCurves.FirstOrDefault(f => f.Id == existingProfile.FanCurve) ?? AutoFanCurve;
         }
     }
 
@@ -236,7 +249,8 @@ public sealed partial class ProfileEditorPage : Page
                 ShowFanCurveError();
                 return;
             }
-            fanCurveId = selectedCurve.Id;
+            // The Auto sentinel (empty Id) means "no curve" -> fan Auto mode.
+            fanCurveId = string.IsNullOrEmpty(selectedCurve.Id) ? null : selectedCurve.Id;
         }
 
         // Get power state
@@ -274,7 +288,7 @@ public sealed partial class ProfileEditorPage : Page
                         (int)StapmSlider.Value,
                         (int)FastSlider.Value,
                         (int)SlowSlider.Value,
-                        fanCurveId!,
+                        fanCurveId,
                         powerState);
                 }
             }
@@ -313,7 +327,7 @@ public sealed partial class ProfileEditorPage : Page
                             Fast = (int)FastSlider.Value,
                             Slow = (int)SlowSlider.Value,
                         },
-                        FanCurve = fanCurveId!,
+                        FanCurve = fanCurveId ?? "",
                     };
                 }
                 await viewModel.UpdateProfileAsync(profile);

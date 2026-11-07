@@ -329,7 +329,8 @@ TEST_F(ConfigTest, LoadMissingFile) {
     EXPECT_EQ(config.language, "auto");
     EXPECT_EQ(config.theme, "system");
     EXPECT_FALSE(config.persist);
-    EXPECT_EQ(config.charge_limit_pct, 100);
+    // No user-set charge limit: startup/apply-all must not touch hardware.
+    EXPECT_FALSE(config.charge_limit_pct.has_value());
     EXPECT_TRUE(fs::exists(config_path));  // File should be created
 }
 
@@ -349,7 +350,7 @@ TEST_F(ConfigTest, LoadValidConfig) {
     EXPECT_EQ(config.language, "en");
     EXPECT_EQ(config.theme, "dark");
     EXPECT_TRUE(config.persist);
-    EXPECT_EQ(config.charge_limit_pct, 85);
+    EXPECT_EQ(config.charge_limit_pct.value_or(0), 85);
     EXPECT_TRUE(config.auto_start);
 }
 
@@ -360,7 +361,7 @@ TEST_F(ConfigTest, LoadCorruptedJson) {
 
     Config config = load_config(config_path);
     EXPECT_EQ(config.language, "auto");  // Should use defaults
-    EXPECT_EQ(config.charge_limit_pct, 100);
+    EXPECT_FALSE(config.charge_limit_pct.has_value());
 }
 
 TEST_F(ConfigTest, ValidateConfig) {
@@ -373,7 +374,20 @@ TEST_F(ConfigTest, ValidateConfig) {
     EXPECT_TRUE(modified);
     EXPECT_EQ(config.language, "auto");
     EXPECT_EQ(config.theme, "system");
-    EXPECT_EQ(config.charge_limit_pct, 100);
+    // Out-of-range drops to "unset", not a fake 100.
+    EXPECT_FALSE(config.charge_limit_pct.has_value());
+}
+
+TEST_F(ConfigTest, UnsetChargeLimitRoundTrips) {
+    // A config with no user-set charge limit stays unset through a save/load
+    // cycle (the key is omitted from the file).
+    Config original;
+    original.language = "en";
+
+    EXPECT_TRUE(save_config(config_path, original));
+
+    Config loaded = load_config(config_path);
+    EXPECT_FALSE(loaded.charge_limit_pct.has_value());
 }
 
 TEST_F(ConfigTest, ConfigRoundTrip) {

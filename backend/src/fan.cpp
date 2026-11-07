@@ -78,6 +78,27 @@ void FanController::tick(std::optional<int> cpu_temp, std::optional<int> gpu_tem
     (void)platform_.ec_write(EC_FAN_DUTY, duty);  // Ignore errors -- retry on next tick
 }
 
+void FanController::restore_auto() {
+    std::lock_guard lock(mutex_);
+
+    // In Auto mode the EC firmware already owns the fan — nothing to do.
+    // (Curve mode covers both a user curve and the adaptive controller,
+    // which also drives the fan through set_mode(Curve).)
+    if (mode_ != FanState::Mode::Curve) {
+        return;
+    }
+
+    if (platform_.ec_write(EC_FAN_MODE, EC_MODE_AUTO)) {
+        mode_ = FanState::Mode::Auto;
+        active_curve_ = std::nullopt;
+        log_info("[fan] shutdown: restored Auto mode (hardware fan curve)");
+    } else {
+        log_warn("[fan] shutdown: could not restore Auto fan mode -- "
+                 "fan left at last curve duty, re-apply a profile or "
+                 "toggle fan mode to fix");
+    }
+}
+
 auto FanController::read_state() -> FanState {
     FanState state;
 

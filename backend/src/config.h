@@ -27,7 +27,11 @@ struct Config {
     std::string theme = "system";
     bool persist = false;
     bool session_persist = false;  // In-memory only, not serialized to JSON. Initialized from persist on startup.
-    int charge_limit_pct = 100;
+    // Charge limit the USER explicitly configured (via set_charge_limit or
+    // set_config). nullopt = never set: startup/apply-all must leave the
+    // hardware value alone — a struct default of 100 here used to clobber
+    // the BIOS-configured limit the first time settings were applied.
+    std::optional<int> charge_limit_pct;
     bool auto_start = false;
     HomeLayout home_layout;
 };

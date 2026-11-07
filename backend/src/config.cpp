@@ -10,7 +10,6 @@ Config get_default_config() {
     config.language = "auto";
     config.theme = "system";
     config.persist = false;
-    config.charge_limit_pct = 100;
     config.auto_start = false;
     return config;
 }
@@ -123,7 +122,11 @@ bool save_config(const std::filesystem::path& config_path, const Config& config)
         j["language"] = config.language;
         j["theme"] = config.theme;
         j["persist"] = config.persist;
-        j["charge_limit_pct"] = config.charge_limit_pct;
+        // Omit when the user never set one — absence means "leave the
+        // hardware charge limit alone" (see Config::charge_limit_pct).
+        if (config.charge_limit_pct.has_value()) {
+            j["charge_limit_pct"] = *config.charge_limit_pct;
+        }
         j["auto_start"] = config.auto_start;
 
         // Home layout
@@ -181,9 +184,11 @@ bool validate_config(Config& config) {
         modified = true;
     }
 
-    // Validate charge limit
-    if (config.charge_limit_pct < 75 || config.charge_limit_pct > 100) {
-        config.charge_limit_pct = 100;
+    // Validate charge limit — an out-of-range value drops back to "unset"
+    // (don't touch hardware) rather than to a fake 100.
+    if (config.charge_limit_pct.has_value()
+        && (*config.charge_limit_pct < 75 || *config.charge_limit_pct > 100)) {
+        config.charge_limit_pct = std::nullopt;
         modified = true;
     }
 

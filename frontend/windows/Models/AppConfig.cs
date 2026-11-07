@@ -31,7 +31,11 @@ public sealed class AppConfig
     [JsonPropertyName("session_persist")]
     public bool SessionPersist { get; set; }
 
-    /// <summary>Battery charge limit percentage (75–100). Applied on startup when persist=true.</summary>
+    /// <summary>
+    /// Battery charge limit percentage (75–100). The backend reports 100 when
+    /// the user never configured one and only writes the hardware limit when
+    /// they did (persist/apply-all no longer clobbers the BIOS value).
+    /// </summary>
     [JsonPropertyName("charge_limit_pct")]
     public int ChargeLimitPercent { get; set; } = 100;
 

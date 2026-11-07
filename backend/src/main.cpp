@@ -243,9 +243,11 @@ int main(int argc, char* argv[]) {
             adaptive->set_power_state_ceiling(initial_tdp_ceiling);
             log_info("Initial power state TDP ceiling: " + std::to_string(initial_tdp_ceiling) + "W");
 
-            // Apply charge limit
-            if (config.charge_limit_pct >= 75 && config.charge_limit_pct <= 100) {
-                auto cl_result = power->write_charge_limit(static_cast<uint8_t>(config.charge_limit_pct));
+            // Apply charge limit (only if the user actually configured one —
+            // never clobber the BIOS/hardware value with a default)
+            if (config.charge_limit_pct.has_value()
+                && *config.charge_limit_pct >= 75 && *config.charge_limit_pct <= 100) {
+                auto cl_result = power->write_charge_limit(static_cast<uint8_t>(*config.charge_limit_pct));
                 if (!cl_result) {
                     log_error("Failed to apply charge limit");
                 }
@@ -464,6 +466,11 @@ int main(int argc, char* argv[]) {
         button->stop();
         adaptive->stop();
         poller->stop();
+
+        // Hand the fan back to the EC firmware if we were controlling it —
+        // after poller->stop() so no tick can race the mode flip back to
+        // Curve. Leaving this out pins the fan at its last curve duty.
+        fan->restore_auto();
 
         // Release single instance lock
         platform->release_instance_lock(*lock_result);

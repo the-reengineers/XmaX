@@ -46,9 +46,10 @@ public sealed class ProfilesViewModel : INotifyPropertyChanged
     // ===== Profile CRUD =====
 
     /// <summary>
-    /// Create a new fixed profile with the given name, TDP values, fan curve, and optional power state.
+    /// Create a new fixed profile with the given name, TDP values, optional fan curve
+    /// (null = Auto, the hardware fan curve), and optional power state.
     /// </summary>
-    public async Task CreateFixedProfileAsync(string name, int stapm, int fast, int slow, string fanCurveId, string? powerState = null)
+    public async Task CreateFixedProfileAsync(string name, int stapm, int fast, int slow, string? fanCurveId, string? powerState = null)
     {
         var slug = GenerateSlug(name);
         var profile = new Profile
@@ -58,7 +59,7 @@ public sealed class ProfilesViewModel : INotifyPropertyChanged
             Type = "fixed",
             PowerState = powerState,
             Tdp = new TdpLimits { Stapm = stapm, Fast = fast, Slow = slow },
-            FanCurve = fanCurveId,
+            FanCurve = fanCurveId ?? "",
         };
 
         await _profileService.SaveProfileAsync(profile).ConfigureAwait(false);

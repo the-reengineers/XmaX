@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 the-reengineers
 // shellCompat.js — thin adapter over GNOME Shell's internal imports. Every
 // shell UI module used by this extension is re-exported here so future GNOME
 // version / DE differences are localized to one file instead of being strewn

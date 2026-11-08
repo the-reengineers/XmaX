@@ -1,8 +1,12 @@
-# Binary Dependencies
+# Vendored Dependencies
 
-These binary files are from open-source hardware control projects. They are signed kernel driver blobs required for low-level hardware access on Windows.
+Binary blobs and vendored source from open-source hardware control projects,
+required for low-level hardware access. Linux additionally uses two DKMS
+kernel modules: one vendored (ryzen_smu) and one first-party (xmax_sio_ec).
 
-## Files
+## Windows Binary Blobs
+
+These files are from open-source hardware control projects. They are signed kernel driver blobs required for low-level hardware access on Windows.
 
 | File | Size | Source | Purpose |
 |------|------|--------|---------|
@@ -116,3 +120,43 @@ source in `backend/lib/ryzenadj/`:
 - ✅ LGPL-3.0 compliant via dynamic `dlopen` linking (no link-time copyleft)
 
 **License file:** `ryzenadj/LICENSE` (LGPL-3.0, included as required).
+
+## ryzen_smu (Linux SMU kernel module)
+
+SMU mailbox access (TDP control) on Linux goes through the **ryzen_smu**
+kernel module, vendored as source in `backend/lib/ryzen_smu/`:
+
+- **Vendored source**: upstream fork
+  [amkillam/ryzen_smu](https://github.com/amkillam/ryzen_smu) (maintained fork
+  of leogx9r/ryzen_smu), pinned at `d2983668300dd2a598e5a7dc40e71ce0678cc270`
+  ("Fix cpuid include on 7.2+ kernels"). See `ryzen_smu/VENDOR.md` for the
+  pin/update procedure.
+- **Not a build dependency**: nothing in the backend links GPL code. xmaxd
+  talks to the module over sysfs (`/sys/kernel/ryzen_smu_drv/`), so the GPL
+  stays confined to the module itself.
+- **Installed via DKMS at setup time**:
+  `scripts/linux/install-smu-driver.sh` copies the source to `/usr/src`,
+  registers it with DKMS, and builds + signs it locally on each machine
+  (`just install-smu`). Never built or shipped from this repo as binaries.
+- **Why required**: the alternative userspace path (raw `/dev/mem` + PCI) is
+  blocked under Secure Boot kernel lockdown and grants full physical-memory
+  access even where it works.
+
+**License file:** `ryzen_smu/LICENSE` (GPL-2.0, included as required).
+
+## xmax_sio_ec (first-party Super I/O module)
+
+**Not a third-party dependency** — ~90 lines written for XmaX, licensed
+GPL-2.0-or-later (GPLv2+ is the kernel-module convention and stays compatible
+with the repo's GPL-3.0). Vendored at `backend/lib/xmax_sio_ec/`:
+
+- **Purpose**: writes the battery charge-limit EC RAM register (0x04A3)
+  through the IT87 Super I/O indexed-register protocol, bypassing the ACPI EC
+  stack (which silently discards writes to this register on this hardware)
+  and kernel lockdown (which blocks userspace port I/O under Secure Boot).
+- **Sysfs interface**: `/sys/kernel/xmax_sio_ec/charge_limit` (write-only,
+  75–100).
+- **Installed via DKMS at setup time**: `scripts/linux/install-sio-driver.sh`
+  (`just install-sio`). Reuses the MOK key enrolled for ryzen_smu for module
+  signing.
+- See `xmax_sio_ec/VENDOR.md` for design details and the update procedure.

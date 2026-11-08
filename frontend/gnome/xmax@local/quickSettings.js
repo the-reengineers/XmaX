@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 the-reengineers
 // quickSettings.js — XmaX Quick Settings controls (charge-limit menu,
 // profile selector). Each control is a tile registered into the Quick Settings
 // panel; it can be hidden via its `qs-*` GSettings flag (default ON). Privileged

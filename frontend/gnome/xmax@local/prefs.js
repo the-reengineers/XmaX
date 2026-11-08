@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 the-reengineers
 // prefs.js — optional preferences window (`gnome-extensions prefs xmax@local`).
 // Exposes the org.xmax.shell visibility toggles, charge-limit option checkboxes,
 // and profile/fan-curve management. Runs in the Extensions-app process, not inside

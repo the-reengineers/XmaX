@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 the-reengineers
 // indicator.js — XmaX top-bar indicator (PanelMenu.Button + PopupMenu readouts).
 // The icon is always shown (unless show-top-bar-icon is false); the popup lists
 // live CPU / GPU / RAM / fan / power readouts refreshed from MetricsChanged.

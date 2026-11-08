@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 the-reengineers
 // xmaxctl — command-line client for the XmaX backend daemon (xmaxd).
 //
 // Talks to org.xmax.Service over the D-Bus system bus, falling back to the

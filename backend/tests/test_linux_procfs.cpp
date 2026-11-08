@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 the-reengineers
 // Fixture-driven tests for the Linux sysfs + /proc parsers. Hermetic: they
 // read committed files under tests/fixtures/ (path injected by CMake), so no
 // real hardware or /proc access is needed.

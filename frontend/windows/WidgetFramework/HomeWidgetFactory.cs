@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 the-reengineers
 using Microsoft.UI.Xaml.Controls;
 using XmaX.Widgets;
 

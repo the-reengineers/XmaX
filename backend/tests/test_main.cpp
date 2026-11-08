@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 the-reengineers
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 #include "../src/protocol.h"

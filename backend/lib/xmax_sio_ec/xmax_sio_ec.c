@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 the-reengineers
+//
 // xmax_sio_ec — kernel module providing a sysfs interface for direct EC RAM
 // writes through the IT87 Super I/O chip (ports 0x4E/0x4F).  The standard
 // ACPI EC path silently discards writes to battery charge-limit register

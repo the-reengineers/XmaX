@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 the-reengineers
 // extension.js — XmaX GNOME Shell extension entry point (GNOME 50 / ESM).
 // Wires the sysfs/D-Bus telemetry from org.xmax.Service into a top-bar
 // indicator (indicator.js) and opt-in Quick Settings controls (quickSettings.js).

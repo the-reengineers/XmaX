@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 the-reengineers
 // dbus.js — D-Bus client for org.xmax.Service (the XmaX daemon). Imports only
 // Gio/GLib so it runs unchanged in both the shell and a plain `gjs -m` harness
 // (synchronous `call_sync` keeps the test main-loop-free; signal delivery is via

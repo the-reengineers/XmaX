@@ -16,6 +16,7 @@ public static class Loc
     private static readonly Dictionary<string, string> _en = new()
     {
         ["button.add_point"] = @"Add Point",
+        ["button.balanced"] = @"Balanced",
         ["button.cancel"] = @"Cancel",
         ["button.create"] = @"Create",
         ["button.create_fan_curve"] = @"Create New Fan Curve",
@@ -26,6 +27,7 @@ public static class Loc
         ["button.edit"] = @"Edit",
         ["button.ok"] = @"OK",
         ["button.performance"] = @"Performance",
+        ["button.quiet"] = @"Quiet",
         ["button.revert"] = @"Revert",
         ["button.revert_defaults"] = @"Revert to System Defaults",
         ["button.save"] = @"Save",
@@ -58,6 +60,7 @@ public static class Loc
         ["form.fan_curve"] = @"Fan Curve",
         ["form.fan_curve_name"] = @"Fan curve name",
         ["form.fan_max"] = @"Fan Max (%)",
+        ["form.fan_min"] = @"Fan Min (%)",
         ["form.fast"] = @"Fast (W)",
         ["form.name"] = @"Name",
         ["form.none"] = @"(none)",
@@ -167,6 +170,7 @@ public static class Loc
     private static readonly Dictionary<string, string> _zh = new()
     {
         ["button.add_point"] = @"添加点",
+        ["button.balanced"] = @"均衡",
         ["button.cancel"] = @"取消",
         ["button.create"] = @"创建",
         ["button.create_fan_curve"] = @"新建风扇曲线",
@@ -177,6 +181,7 @@ public static class Loc
         ["button.edit"] = @"编辑",
         ["button.ok"] = @"确定",
         ["button.performance"] = @"性能",
+        ["button.quiet"] = @"安静",
         ["button.revert"] = @"还原",
         ["button.revert_defaults"] = @"还原为系统默认值",
         ["button.save"] = @"保存",
@@ -209,6 +214,7 @@ public static class Loc
         ["form.fan_curve"] = @"风扇曲线",
         ["form.fan_curve_name"] = @"风扇曲线名称",
         ["form.fan_max"] = @"最大风扇 (%)",
+        ["form.fan_min"] = @"最小风扇 (%)",
         ["form.fast"] = @"快速 (W)",
         ["form.name"] = @"名称",
         ["form.none"] = @"(无)",
@@ -352,6 +358,9 @@ public static class Loc
     /// <summary>button.add_point</summary>
     public static string Button_AddPoint => Get("button.add_point");
 
+    /// <summary>button.balanced</summary>
+    public static string Button_Balanced => Get("button.balanced");
+
     /// <summary>button.cancel</summary>
     public static string Button_Cancel => Get("button.cancel");
 
@@ -381,6 +390,9 @@ public static class Loc
 
     /// <summary>button.performance</summary>
     public static string Button_Performance => Get("button.performance");
+
+    /// <summary>button.quiet</summary>
+    public static string Button_Quiet => Get("button.quiet");
 
     /// <summary>button.revert</summary>
     public static string Button_Revert => Get("button.revert");
@@ -477,6 +489,9 @@ public static class Loc
 
     /// <summary>form.fan_max</summary>
     public static string Form_FanMax => Get("form.fan_max");
+
+    /// <summary>form.fan_min</summary>
+    public static string Form_FanMin => Get("form.fan_min");
 
     /// <summary>form.fast</summary>
     public static string Form_Fast => Get("form.fast");

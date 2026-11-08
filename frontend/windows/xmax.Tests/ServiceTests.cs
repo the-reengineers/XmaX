@@ -176,10 +176,11 @@ public class ServiceTests
             "name": "Eco",
             "type": "adaptive",
             "power_state": "battery",
-            "tuning": "silent",
+            "tuning": "quiet",
             "target_temp_c": 70,
             "tdp_max_w": 35,
-            "fan_max_pct": 75
+            "fan_max_pct": 75,
+            "fan_min_pct": 20
         }
         """;
 
@@ -188,10 +189,11 @@ public class ServiceTests
         Assert.NotNull(profile);
         Assert.True(profile.IsAdaptive);
         Assert.Equal("battery", profile.PowerState);
-        Assert.Equal("silent", profile.Tuning);
+        Assert.Equal("quiet", profile.Tuning);
         Assert.Equal(70, profile.TargetTempC);
         Assert.Equal(35, profile.TdpMaxW);
         Assert.Equal(75, profile.FanMaxPercent);
+        Assert.Equal(20, profile.FanMinPercent);
     }
 
 }

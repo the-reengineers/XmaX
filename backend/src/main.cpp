@@ -266,11 +266,11 @@ int main(int argc, char* argv[]) {
             if (assigned != nullptr) {
                 if (assigned->type == ProfileType::Adaptive) {
                     // Activate adaptive controller
-                    TuningPreset preset = TuningPreset::Default;
-                    if (assigned->tuning == "silent") preset = TuningPreset::Silent;
-                    else if (assigned->tuning == "performance") preset = TuningPreset::Performance;
+                    TuningPreset preset = tuning_preset_from_string(assigned->tuning)
+                                              .value_or(TuningPreset::Balanced);
 
-                    adaptive->activate(preset, assigned->target_temp_c, assigned->tdp_max_w, assigned->fan_max_pct);
+                    adaptive->activate(preset, assigned->target_temp_c, assigned->tdp_max_w,
+                                       assigned->fan_max_pct, assigned->fan_min_pct);
                     log_info("Applied adaptive profile: " + assigned->name);
                 } else {
                     // Apply fixed profile
@@ -377,11 +377,11 @@ int main(int argc, char* argv[]) {
 
                 if (assigned != nullptr) {
                     if (assigned->type == ProfileType::Adaptive) {
-                        TuningPreset preset = TuningPreset::Default;
-                        if (assigned->tuning == "silent") preset = TuningPreset::Silent;
-                        else if (assigned->tuning == "performance") preset = TuningPreset::Performance;
+                        TuningPreset preset = tuning_preset_from_string(assigned->tuning)
+                                                  .value_or(TuningPreset::Balanced);
 
-                        adaptive->activate(preset, assigned->target_temp_c, assigned->tdp_max_w, assigned->fan_max_pct);
+                        adaptive->activate(preset, assigned->target_temp_c, assigned->tdp_max_w,
+                                           assigned->fan_max_pct, assigned->fan_min_pct);
                         log_info("[power] Auto-applied adaptive profile: " + std::string(assigned->name));
                     } else {
                         (void)tdp->write_tdp(assigned->stapm_w, assigned->fast_w, assigned->slow_w);

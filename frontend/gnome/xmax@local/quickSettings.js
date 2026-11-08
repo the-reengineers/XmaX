@@ -16,10 +16,13 @@ const CHARGE_VALUES = [75, 80, 85, 90, 95, 100];
 const CHARGE_ICON = 'battery-symbolic';
 
 // Map XmaX tuning presets (and `type`) to Adwaita power-profile glyphs.
+// Legacy names (pre-redesign "silent"/"default") kept for older payloads.
 const TUNING_ICONS = {
+    'quiet':        'power-profile-power-saver-symbolic',
+    'balanced':     'power-profile-balanced-symbolic',
+    'performance':  'power-profile-performance-symbolic',
     'silent':       'power-profile-power-saver-symbolic',
     'default':      'power-profile-balanced-symbolic',
-    'performance':  'power-profile-performance-symbolic',
 };
 const ADAPTIVE_ICON = 'preferences-system-power-symbolic';
 const PROFILE_FALLBACK_ICON = 'power-profile-balanced-symbolic';

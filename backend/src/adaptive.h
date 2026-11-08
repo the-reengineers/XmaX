@@ -8,6 +8,8 @@
 #include <chrono>
 #include <functional>
 #include <mutex>
+#include <optional>
+#include <string>
 #include <thread>
 
 // Adaptive controller -- PID-based dual-loop control for dynamic TDP and fan adjustment.
@@ -16,10 +18,17 @@
 //   Inner loop: Fan PID controller maintains target temperature
 //   Outer loop: TDP adjustment when fan runs out of headroom
 //
-// Tuning presets:
-//   Silent      -- Hard fan ceiling, TDP is primary control
-//   Default     -- Balanced fan and TDP
+// Tuning presets (names follow the handheld ecosystem convention:
+// OneXConsole, ASUS, Legion Go, GNOME power-profiles-daemon):
+//   Quiet       -- Low power, capped fan; TDP is primary control
+//   Balanced    -- Balanced fan and TDP
 //   Performance -- Maximize TDP, allow high fan
+//
+// Presets are *value bundles*, not hidden modifiers: each preset supplies
+// default values for the user-facing knobs (target temp, TDP max, fan max,
+// fan min) which live in the profile and are fully user-editable.  The only
+// preset-internal state is control *character* -- PID gains and TDP ramp
+// rates.  No preset value silently overrides a user setting.
 //
 // Features:
 //   - Asymmetric temperature smoothing (fast rise, slow decay)
@@ -30,17 +39,37 @@
 // Thread safety: all public methods are safe to call from any thread.
 
 enum class TuningPreset {
-    Silent,
-    Default,
+    Quiet,
+    Balanced,
     Performance
 };
 
+// User-facing knob values a preset pre-fills the profile editor with.
+// Targeted at the ONEXPLAYER SUPER X (Strix Halo); the same bundle works
+// for other handhelds with proportionally lower TDP values.
+struct PresetDefaults {
+    int target_temp_c;
+    int tdp_max_w;
+    int fan_max_pct;
+    int fan_min_pct;
+};
+
+// Knob values each preset pre-fills (Quiet / Balanced / Performance).
+auto preset_defaults(TuningPreset preset) -> PresetDefaults;
+
+// Tuning string <-> enum ("quiet" | "balanced" | "performance").
+// Accepts the legacy names "silent" and "default" (used before the
+// redesign) so existing profiles.json files keep working.
+auto tuning_preset_from_string(const std::string& name) -> std::optional<TuningPreset>;
+auto tuning_preset_to_string(TuningPreset preset) -> std::string;
+
 struct AdaptiveConfig {
     bool active = false;
-    TuningPreset tuning = TuningPreset::Default;
+    TuningPreset tuning = TuningPreset::Balanced;
     int target_temp_c = 85;
     int tdp_max_w = 55;
     int fan_max_pct = 100;
+    int fan_min_pct = 20;
 };
 
 class AdaptiveController {
@@ -58,8 +87,11 @@ public:
     // Stop control thread.
     void stop();
 
-    // Activate adaptive controller with given config.
-    void activate(TuningPreset preset, int target_temp_c, int tdp_max_w, int fan_max_pct);
+    // Activate adaptive controller with given config.  Fan floor and ceiling
+    // come from the profile (pre-filled by the preset's defaults; see
+    // preset_defaults()) -- the preset itself imposes no hidden cap.
+    void activate(TuningPreset preset, int target_temp_c, int tdp_max_w,
+                  int fan_max_pct, int fan_min_pct);
 
     // Deactivate adaptive controller.
     void deactivate();
@@ -88,10 +120,10 @@ public:
     auto last_smoothed_temp() const -> int;
 
 private:
-    // Tuning preset parameters
+    // Tuning preset character: control responsiveness only.  Fan range and
+    // thermal targets come from the profile (AdaptiveConfig), not here.
     struct PresetParams {
         double kp, ki, kd;           // PID gains
-        int fan_min, fan_max;         // Fan speed range
         int tdp_ramp_down_rate;       // Watts per second to ramp down
         int tdp_ramp_up_rate;         // Watts per second to ramp up
         double alpha_rise, alpha_fall; // Smoothing factors

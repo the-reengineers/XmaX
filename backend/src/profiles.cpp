@@ -1,4 +1,5 @@
 #include "profiles.h"
+#include "adaptive.h"
 #include "logger.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
@@ -129,6 +130,10 @@ ProfileStorage load_profiles(const std::filesystem::path& profiles_path) {
                     // Adaptive profile fields
                     if (profile_json.contains("tuning") && profile_json["tuning"].is_string()) {
                         profile.tuning = profile_json["tuning"].get<std::string>();
+                        // Migrate legacy preset names (pre-redesign profiles).
+                        // Saved back in the new spelling on the next save.
+                        if (profile.tuning == "silent") profile.tuning = "quiet";
+                        else if (profile.tuning == "default") profile.tuning = "balanced";
                     }
                     if (profile_json.contains("target_temp_c") && profile_json["target_temp_c"].is_number_integer()) {
                         profile.target_temp_c = profile_json["target_temp_c"].get<int>();
@@ -138,6 +143,16 @@ ProfileStorage load_profiles(const std::filesystem::path& profiles_path) {
                     }
                     if (profile_json.contains("fan_max_pct") && profile_json["fan_max_pct"].is_number_integer()) {
                         profile.fan_max_pct = profile_json["fan_max_pct"].get<int>();
+                    }
+                    if (profile_json.contains("fan_min_pct") && profile_json["fan_min_pct"].is_number_integer()) {
+                        profile.fan_min_pct = profile_json["fan_min_pct"].get<int>();
+                    } else if (auto preset = tuning_preset_from_string(profile.tuning)) {
+                        // Pre-redesign profiles have no fan floor field.  The
+                        // old presets hard-coded one (20/25/30 per tuning);
+                        // the redesigned bundles use the same values, so
+                        // backfilling from the preset keeps behaviour
+                        // bit-identical for existing profiles.
+                        profile.fan_min_pct = preset_defaults(*preset).fan_min_pct;
                     }
                 }
 
@@ -286,6 +301,7 @@ bool save_profiles(const std::filesystem::path& profiles_path, const ProfileStor
                 profile_json["target_temp_c"] = profile.target_temp_c;
                 profile_json["tdp_max_w"] = profile.tdp_max_w;
                 profile_json["fan_max_pct"] = profile.fan_max_pct;
+                profile_json["fan_min_pct"] = profile.fan_min_pct;
             }
 
             profiles_json[slug] = profile_json;
@@ -456,8 +472,8 @@ std::optional<std::string> save_profile(ProfileStorage& storage, Profile profile
         }
     } else {
         // Adaptive profile validation
-        if (profile.tuning != "silent" && profile.tuning != "default" && profile.tuning != "performance") {
-            return "Tuning must be 'silent', 'default', or 'performance'";
+        if (!tuning_preset_from_string(profile.tuning).has_value()) {
+            return "Tuning must be 'quiet', 'balanced', or 'performance'";
         }
         if (profile.target_temp_c < 50 || profile.target_temp_c > 100) {
             return "Target temperature must be between 50 and 100°C";
@@ -472,6 +488,10 @@ std::optional<std::string> save_profile(ProfileStorage& storage, Profile profile
         }
         if (profile.fan_max_pct < 0 || profile.fan_max_pct > 100) {
             return "Fan max must be between 0 and 100%";
+        }
+        if (profile.fan_min_pct < 0 || profile.fan_min_pct > profile.fan_max_pct) {
+            return "Fan min must be between 0 and fan max (" +
+                   std::to_string(profile.fan_max_pct) + "%)";
         }
     }
 
@@ -589,7 +609,7 @@ std::vector<Profile> get_builtin_profiles() {
         p.stapm_w = 15;
         p.fast_w = 20;
         p.slow_w = 10;
-        p.tuning = "default";
+        p.tuning = "balanced";
         p.target_temp_c = 85;
         p.tdp_max_w = 55;
         p.fan_max_pct = 100;
@@ -605,7 +625,7 @@ std::vector<Profile> get_builtin_profiles() {
         p.stapm_w = 12;
         p.fast_w = 15;
         p.slow_w = 8;
-        p.tuning = "default";
+        p.tuning = "balanced";
         p.target_temp_c = 85;
         p.tdp_max_w = 55;
         p.fan_max_pct = 100;
@@ -621,7 +641,7 @@ std::vector<Profile> get_builtin_profiles() {
         p.stapm_w = 30;
         p.fast_w = 40;
         p.slow_w = 25;
-        p.tuning = "default";
+        p.tuning = "balanced";
         p.target_temp_c = 85;
         p.tdp_max_w = 55;
         p.fan_max_pct = 100;
@@ -637,7 +657,7 @@ std::vector<Profile> get_builtin_profiles() {
         p.stapm_w = 55;
         p.fast_w = 65;
         p.slow_w = 45;
-        p.tuning = "default";
+        p.tuning = "balanced";
         p.target_temp_c = 85;
         p.tdp_max_w = 55;
         p.fan_max_pct = 100;

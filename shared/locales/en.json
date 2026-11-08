@@ -37,6 +37,8 @@
   "button.add_point": "Add Point",
   "button.revert_defaults": "Revert to System Defaults",
   "button.silent": "Silent",
+  "button.quiet": "Quiet",
+  "button.balanced": "Balanced",
   "button.default": "Default",
   "button.performance": "Performance",
 
@@ -71,6 +73,7 @@
   "form.target_temp": "Target Temp (°C)",
   "form.tdp_max": "TDP Max (W)",
   "form.fan_max": "Fan Max (%)",
+  "form.fan_min": "Fan Min (%)",
   "form.temp": "Temp (°C)",
   "form.speed": "Speed (%)",
   "form.none": "(none)",

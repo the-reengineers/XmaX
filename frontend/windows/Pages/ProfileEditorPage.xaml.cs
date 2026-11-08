@@ -21,6 +21,21 @@ public sealed partial class ProfileEditorPage : Page
     private readonly List<Profile> _existingProfiles;
     private bool _isDirty;
     private bool _isLoading;
+    private bool _adaptivePrefillApplied;
+
+    /// <summary>
+    /// Tuning presets — value bundles matching the handheld ecosystem convention
+    /// (OneXConsole, ASUS, Legion Go, power-profiles-daemon). Selecting a preset
+    /// pre-fills the adaptive sliders; tweaking them afterwards makes the profile
+    /// custom.  Mirrors the GNOME prefs editor and backend preset_defaults().
+    /// Order: quiet, balanced, performance — indexes must match TuningCombo items.
+    /// </summary>
+    private static readonly (int TargetTemp, int TdpMax, int FanMax, int FanMin)[] PresetBundles =
+    {
+        (80, 25, 45, 20),    // quiet
+        (85, 45, 80, 25),    // balanced
+        (90, 100, 100, 30),  // performance
+    };
 
     /// <summary>
     /// Sentinel combo entry meaning "no fan curve" — the backend leaves the
@@ -75,14 +90,16 @@ public sealed partial class ProfileEditorPage : Page
         }
 
         TuningCombo.Header = Loc.Form_Tuning;
-        TuningCombo.Items.Add(new ComboBoxItem { Content = Loc.Button_Silent, Tag = "silent" });
-        TuningCombo.Items.Add(new ComboBoxItem { Content = Loc.Button_Default, Tag = "default" });
+        TuningCombo.Items.Add(new ComboBoxItem { Content = Loc.Button_Quiet, Tag = "quiet" });
+        TuningCombo.Items.Add(new ComboBoxItem { Content = Loc.Button_Balanced, Tag = "balanced" });
         TuningCombo.Items.Add(new ComboBoxItem { Content = Loc.Button_Performance, Tag = "performance" });
-        TuningCombo.SelectedIndex = 1; // Default
+        TuningCombo.SelectedIndex = 1; // Balanced
+        TuningCombo.SelectionChanged += OnTuningChanged;
 
         TargetTempSlider.Header = Loc.Form_TargetTemp;
         TdpMaxSlider.Header = Loc.Form_TdpMax;
         FanMaxSlider.Header = Loc.Form_FanMax;
+        FanMinSlider.Header = Loc.Form_FanMin;
 
         CancelButton.Content = Loc.Button_Cancel;
         SaveButton.Content = Loc.Button_Save;
@@ -95,10 +112,10 @@ public sealed partial class ProfileEditorPage : Page
         FastSlider.ValueChanged += MarkDirty;
         SlowSlider.ValueChanged += MarkDirty;
         FanCurveCombo.SelectionChanged += MarkDirty;
-        TuningCombo.SelectionChanged += MarkDirty;
         TargetTempSlider.ValueChanged += MarkDirty;
         TdpMaxSlider.ValueChanged += MarkDirty;
         FanMaxSlider.ValueChanged += MarkDirty;
+        FanMinSlider.ValueChanged += MarkDirty;
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -150,10 +167,17 @@ public sealed partial class ProfileEditorPage : Page
 
         if (existingProfile.IsAdaptive)
         {
-            // Set adaptive fields
+            // Set adaptive fields. The backend normalizes legacy tuning names
+            // on load; map any leftovers here so the combo still resolves.
+            var tuning = existingProfile.Tuning switch
+            {
+                "silent" => "quiet",
+                "default" => "balanced",
+                _ => existingProfile.Tuning,
+            };
             for (int i = 0; i < TuningCombo.Items.Count; i++)
             {
-                if (TuningCombo.Items[i] is ComboBoxItem item && (string?)item.Tag == existingProfile.Tuning)
+                if (TuningCombo.Items[i] is ComboBoxItem item && (string?)item.Tag == tuning)
                 {
                     TuningCombo.SelectedIndex = i;
                     break;
@@ -162,6 +186,10 @@ public sealed partial class ProfileEditorPage : Page
             TargetTempSlider.Value = existingProfile.TargetTempC;
             TdpMaxSlider.Value = existingProfile.TdpMaxW;
             FanMaxSlider.Value = existingProfile.FanMaxPercent;
+            FanMinSlider.Value = existingProfile.FanMinPercent;
+            // Values came from the profile — don't clobber them with preset
+            // defaults when the type combo fires change events.
+            _adaptivePrefillApplied = true;
         }
         else
         {
@@ -195,7 +223,38 @@ public sealed partial class ProfileEditorPage : Page
         var isAdaptive = TypeCombo.SelectedIndex == 1;
         FixedPanel.Visibility = isAdaptive ? Visibility.Collapsed : Visibility.Visible;
         AdaptivePanel.Visibility = isAdaptive ? Visibility.Visible : Visibility.Collapsed;
+        // A brand-new profile switching to Adaptive starts from the current
+        // preset's value bundle (existing profiles skip this — their values
+        // were populated from the profile itself).
+        if (isAdaptive && !_isLoading && !_adaptivePrefillApplied)
+        {
+            ApplyPresetBundles();
+            _adaptivePrefillApplied = true;
+        }
         if (!_isLoading) _isDirty = true;
+    }
+
+    private void OnTuningChanged(object sender, SelectionChangedEventArgs e)
+    {
+        // Selecting a preset loads its value bundle into the sliders.  The
+        // preset is a starting point, not a hidden cap: every value stays
+        // editable afterwards ("custom").
+        if (!_isLoading)
+        {
+            ApplyPresetBundles();
+            MarkDirty(sender, e);
+        }
+    }
+
+    private void ApplyPresetBundles()
+    {
+        var idx = TuningCombo.SelectedIndex;
+        if (idx < 0 || idx >= PresetBundles.Length) return;
+        var bundle = PresetBundles[idx];
+        TargetTempSlider.Value = bundle.TargetTemp;
+        TdpMaxSlider.Value = bundle.TdpMax;
+        FanMaxSlider.Value = bundle.FanMax;
+        FanMinSlider.Value = bundle.FanMin;
     }
 
     private void OnPowerStateChanged(object sender, SelectionChangedEventArgs e)
@@ -272,13 +331,16 @@ public sealed partial class ProfileEditorPage : Page
                 // Create new profile
                 if (isAdaptive)
                 {
-                    var tuning = (TuningCombo.SelectedItem as ComboBoxItem)?.Tag as string ?? "default";
+                    var tuning = (TuningCombo.SelectedItem as ComboBoxItem)?.Tag as string ?? "balanced";
+                    // Floor can never exceed the ceiling (backend validates too).
+                    var fanMin = Math.Min((int)FanMinSlider.Value, (int)FanMaxSlider.Value);
                     await viewModel.CreateAdaptiveProfileAsync(
                         name,
                         tuning,
                         (int)TargetTempSlider.Value,
                         (int)TdpMaxSlider.Value,
                         (int)FanMaxSlider.Value,
+                        fanMin,
                         powerState);
                 }
                 else
@@ -298,7 +360,7 @@ public sealed partial class ProfileEditorPage : Page
                 Profile profile;
                 if (isAdaptive)
                 {
-                    var tuning = (TuningCombo.SelectedItem as ComboBoxItem)?.Tag as string ?? "default";
+                    var tuning = (TuningCombo.SelectedItem as ComboBoxItem)?.Tag as string ?? "balanced";
                     profile = new Profile
                     {
                         Id = _editingProfileId ?? "",
@@ -310,6 +372,7 @@ public sealed partial class ProfileEditorPage : Page
                         TargetTempC = (int)TargetTempSlider.Value,
                         TdpMaxW = (int)TdpMaxSlider.Value,
                         FanMaxPercent = (int)FanMaxSlider.Value,
+                        FanMinPercent = Math.Min((int)FanMinSlider.Value, (int)FanMaxSlider.Value),
                     };
                 }
                 else

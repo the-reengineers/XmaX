@@ -1530,7 +1530,7 @@ TEST_F(AdaptiveControllerTest, InitiallyInactive) {
 }
 
 TEST_F(AdaptiveControllerTest, ActivateAndDeactivate) {
-    adaptive_->activate(TuningPreset::Default, 85, 55, 100);
+    adaptive_->activate(TuningPreset::Balanced, 85, 55, 100, 25);
     EXPECT_TRUE(adaptive_->is_active());
 
     adaptive_->deactivate();
@@ -1538,7 +1538,7 @@ TEST_F(AdaptiveControllerTest, ActivateAndDeactivate) {
 }
 
 TEST_F(AdaptiveControllerTest, ConfigStored) {
-    adaptive_->activate(TuningPreset::Performance, 80, 60, 90);
+    adaptive_->activate(TuningPreset::Performance, 80, 60, 90, 30);
 
     auto config = adaptive_->config();
     EXPECT_TRUE(config.active);
@@ -1546,17 +1546,64 @@ TEST_F(AdaptiveControllerTest, ConfigStored) {
     EXPECT_EQ(config.target_temp_c, 80);
     EXPECT_EQ(config.tdp_max_w, 60);
     EXPECT_EQ(config.fan_max_pct, 90);
+    EXPECT_EQ(config.fan_min_pct, 30);
+}
+
+TEST_F(AdaptiveControllerTest, FanMaxFromConfigNotPreset) {
+    // Presets are value bundles, not hidden caps: a fan_max above the old
+    // preset ceilings (Quiet was 40, Balanced 80) must be honoured — the
+    // profile's knobs are the only authority on the fan range.
+    adaptive_->activate(TuningPreset::Quiet, 85, 55, 60, 20);
+
+    // Hot enough that the PID + rapid-response override pushes the fan to
+    // its configured ceiling (93C: above target, below the 95C safety
+    // override which would force 100% regardless of config).
+    for (int i = 0; i < 3; i++) {
+        adaptive_->tick(93, 93);
+    }
+
+    // 10C over target -> rapid-response urgency = 2*(60-20)/5 = 16 above
+    // the 20 floor, and the PID adds more; the ceiling is what matters.
+    EXPECT_EQ(adaptive_->last_fan_pct(), 60);
+}
+
+TEST(TuningPresetHelpers, LegacyStringsAccepted) {
+    EXPECT_EQ(tuning_preset_from_string("quiet"), TuningPreset::Quiet);
+    EXPECT_EQ(tuning_preset_from_string("balanced"), TuningPreset::Balanced);
+    EXPECT_EQ(tuning_preset_from_string("performance"), TuningPreset::Performance);
+    // Legacy names from before the redesign
+    EXPECT_EQ(tuning_preset_from_string("silent"), TuningPreset::Quiet);
+    EXPECT_EQ(tuning_preset_from_string("default"), TuningPreset::Balanced);
+    EXPECT_FALSE(tuning_preset_from_string("turbo").has_value());
+    EXPECT_EQ(tuning_preset_to_string(TuningPreset::Quiet), "quiet");
+}
+
+TEST(TuningPresetHelpers, PresetDefaultsOrdered) {
+    // The bundles must be strictly ordered along the performance axis so
+    // the presets stay non-redundant.
+    auto quiet = preset_defaults(TuningPreset::Quiet);
+    auto balanced = preset_defaults(TuningPreset::Balanced);
+    auto perf = preset_defaults(TuningPreset::Performance);
+    EXPECT_LT(quiet.tdp_max_w, balanced.tdp_max_w);
+    EXPECT_LT(balanced.tdp_max_w, perf.tdp_max_w);
+    EXPECT_LT(quiet.fan_max_pct, balanced.fan_max_pct);
+    EXPECT_LT(balanced.fan_max_pct, perf.fan_max_pct);
+    EXPECT_LT(quiet.target_temp_c, balanced.target_temp_c);
+    EXPECT_LT(balanced.target_temp_c, perf.target_temp_c);
+    EXPECT_LE(quiet.fan_min_pct, quiet.fan_max_pct);
+    EXPECT_LE(balanced.fan_min_pct, balanced.fan_max_pct);
+    EXPECT_LE(perf.fan_min_pct, perf.fan_max_pct);
 }
 
 TEST_F(AdaptiveControllerTest, EffectiveTdpMaxUsesMinimum) {
-    adaptive_->activate(TuningPreset::Default, 85, 55, 100);
+    adaptive_->activate(TuningPreset::Balanced, 85, 55, 100, 25);
     adaptive_->set_power_state_ceiling(45);
 
     EXPECT_EQ(adaptive_->effective_tdp_max(), 45);  // min(55, 45)
 }
 
 TEST_F(AdaptiveControllerTest, EffectiveTdpMaxWithHigherPowerState) {
-    adaptive_->activate(TuningPreset::Default, 85, 55, 100);
+    adaptive_->activate(TuningPreset::Balanced, 85, 55, 100, 25);
     adaptive_->set_power_state_ceiling(65);
 
     EXPECT_EQ(adaptive_->effective_tdp_max(), 55);  // min(55, 65)
@@ -1571,7 +1618,7 @@ TEST_F(AdaptiveControllerTest, TickWhenInactiveDoesNothing) {
 }
 
 TEST_F(AdaptiveControllerTest, TickAppliesPidControl) {
-    adaptive_->activate(TuningPreset::Default, 85, 55, 100);
+    adaptive_->activate(TuningPreset::Balanced, 85, 55, 100, 25);
 
     // Temp above target → fan should increase
     adaptive_->tick(90, 85);
@@ -1585,7 +1632,7 @@ TEST_F(AdaptiveControllerTest, TickAppliesPidControl) {
 }
 
 TEST_F(AdaptiveControllerTest, CriticalTempTriggersSafetyOverride) {
-    adaptive_->activate(TuningPreset::Default, 85, 55, 100);
+    adaptive_->activate(TuningPreset::Balanced, 85, 55, 100, 25);
 
     bool callback_called = false;
     std::string reason;
@@ -1610,7 +1657,7 @@ TEST_F(AdaptiveControllerTest, CriticalTempTriggersSafetyOverride) {
 }
 
 TEST_F(AdaptiveControllerTest, AsymmetricSmoothingFastRise) {
-    adaptive_->activate(TuningPreset::Default, 85, 55, 100);
+    adaptive_->activate(TuningPreset::Balanced, 85, 55, 100, 25);
 
     // Start at 50°C
     adaptive_->tick(50, 50);
@@ -1627,7 +1674,7 @@ TEST_F(AdaptiveControllerTest, AsymmetricSmoothingFastRise) {
 }
 
 TEST_F(AdaptiveControllerTest, AsymmetricSmoothingSlowFall) {
-    adaptive_->activate(TuningPreset::Default, 85, 55, 100);
+    adaptive_->activate(TuningPreset::Balanced, 85, 55, 100, 25);
 
     // Start at 80°C
     adaptive_->tick(80, 80);
@@ -1644,7 +1691,7 @@ TEST_F(AdaptiveControllerTest, AsymmetricSmoothingSlowFall) {
 }
 
 TEST_F(AdaptiveControllerTest, CallbackCalledOnValueChange) {
-    adaptive_->activate(TuningPreset::Default, 85, 55, 100);
+    adaptive_->activate(TuningPreset::Balanced, 85, 55, 100, 25);
 
     int call_count = 0;
     adaptive_->on_adjust([&](int, int, int, int, const std::string&) {
@@ -1664,7 +1711,7 @@ TEST_F(AdaptiveControllerTest, CallbackCalledOnValueChange) {
 }
 
 TEST_F(AdaptiveControllerTest, DestructorStopsThread) {
-    adaptive_->activate(TuningPreset::Default, 85, 55, 100);
+    adaptive_->activate(TuningPreset::Balanced, 85, 55, 100, 25);
     adaptive_->start();
     EXPECT_TRUE(adaptive_->is_active());
 

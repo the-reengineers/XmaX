@@ -43,9 +43,9 @@ public sealed class Profile
 
     // Adaptive profile fields (used when Type == "adaptive")
 
-    /// <summary>Tuning preset: "silent", "default", or "performance".</summary>
+    /// <summary>Tuning preset: "quiet", "balanced", or "performance". Legacy values "silent"/"default" are accepted on load and normalized by the backend.</summary>
     [JsonPropertyName("tuning")]
-    public string Tuning { get; set; } = "default";
+    public string Tuning { get; set; } = "balanced";
 
     /// <summary>Target temperature in Celsius (50–100).</summary>
     [JsonPropertyName("target_temp_c")]
@@ -59,8 +59,12 @@ public sealed class Profile
     [JsonPropertyName("fan_max_pct")]
     public int FanMaxPercent { get; set; } = 100;
 
+    /// <summary>Minimum fan speed percentage (0–FanMaxPercent); pre-filled per preset.</summary>
+    [JsonPropertyName("fan_min_pct")]
+    public int FanMinPercent { get; set; } = 25;
+
     public override string ToString() => IsAdaptive
-        ? $"Profile({Id}: \"{Name}\", Adaptive, {Tuning}, target:{TargetTempC}°C, TDP≤{TdpMaxW}W, fan≤{FanMaxPercent}%)"
+        ? $"Profile({Id}: \"{Name}\", Adaptive, {Tuning}, target:{TargetTempC}°C, TDP≤{TdpMaxW}W, fan:{FanMinPercent}-{FanMaxPercent}%)"
         : $"Profile({Id}: \"{Name}\", TDP:{Tdp.Stapm}/{Tdp.Fast}/{Tdp.Slow}W, Fan:{FanCurve ?? "auto"})";
 }
 

@@ -224,9 +224,13 @@ public sealed partial class ProfilesSubPage : Page
     {
         return tuning switch
         {
-            "silent" => Loc.Button_Silent,
-            "default" => Loc.Button_Default,
+            "quiet" => Loc.Button_Quiet,
+            "balanced" => Loc.Button_Balanced,
             "performance" => Loc.Button_Performance,
+            // Legacy names (pre-redesign) — backend normalizes on load;
+            // map leftovers so the label still renders.
+            "silent" => Loc.Button_Quiet,
+            "default" => Loc.Button_Balanced,
             _ => tuning
         };
     }

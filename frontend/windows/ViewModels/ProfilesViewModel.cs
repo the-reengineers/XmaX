@@ -68,7 +68,7 @@ public sealed class ProfilesViewModel : INotifyPropertyChanged
     /// <summary>
     /// Create a new adaptive profile with the given config and optional power state.
     /// </summary>
-    public async Task CreateAdaptiveProfileAsync(string name, string tuning, int targetTempC, int tdpMaxW, int fanMaxPct, string? powerState = null)
+    public async Task CreateAdaptiveProfileAsync(string name, string tuning, int targetTempC, int tdpMaxW, int fanMaxPct, int fanMinPct, string? powerState = null)
     {
         var slug = GenerateSlug(name);
         var profile = new Profile
@@ -81,6 +81,7 @@ public sealed class ProfilesViewModel : INotifyPropertyChanged
             TargetTempC = targetTempC,
             TdpMaxW = tdpMaxW,
             FanMaxPercent = fanMaxPct,
+            FanMinPercent = Math.Min(fanMinPct, fanMaxPct),
         };
 
         await _profileService.SaveProfileAsync(profile).ConfigureAwait(false);

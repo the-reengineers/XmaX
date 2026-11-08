@@ -37,6 +37,8 @@
   "button.add_point": "添加点",
   "button.revert_defaults": "还原为系统默认值",
   "button.silent": "静音",
+  "button.quiet": "安静",
+  "button.balanced": "均衡",
   "button.default": "默认",
   "button.performance": "性能",
 
@@ -71,6 +73,7 @@
   "form.target_temp": "目标温度 (°C)",
   "form.tdp_max": "最大 TDP (W)",
   "form.fan_max": "最大风扇 (%)",
+  "form.fan_min": "最小风扇 (%)",
   "form.temp": "温度 (°C)",
   "form.speed": "速度 (%)",
   "form.none": "(无)",

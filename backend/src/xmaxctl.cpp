@@ -15,8 +15,8 @@
 //   xmaxctl profiles set <id>
 //   xmaxctl profiles save --name <name> [--id <slug>] [--type fixed|adaptive]
 //     [--stapm W --fast W --slow W] [--fan-curve <id>]
-//     [--tuning silent|default|performance] [--target-temp C]
-//     [--tdp-max W] [--fan-max PCT] [--power-state <state>]
+//     [--tuning quiet|balanced|performance] [--target-temp C]
+//     [--tdp-max W] [--fan-max PCT] [--fan-min PCT] [--power-state <state>]
 //   xmaxctl profiles delete <id>
 //   xmaxctl fan-curves list [--json]
 //   xmaxctl fan-curves save --id <slug> --name <name> --points <temp:speed,...>
@@ -560,10 +560,11 @@ int cmd_profiles_list(bool as_json) {
             }
             std::cout << "\n";
         } else if (type == "adaptive") {
-            std::cout << "                  tuning=" << p.value("tuning", "default")
+            std::cout << "                  tuning=" << p.value("tuning", "balanced")
                       << "  target_temp=" << p.value("target_temp_c", 85) << "C"
                       << "  tdp_max=" << p.value("tdp_max_w", 55) << "W"
-                      << "  fan_max=" << p.value("fan_max_pct", 100) << "%\n";
+                      << "  fan_max=" << p.value("fan_max_pct", 100) << "%"
+                      << "  fan_min=" << p.value("fan_min_pct", 20) << "%\n";
         }
     }
     return 0;
@@ -608,9 +609,10 @@ int cmd_profiles_save(const std::vector<std::string>& args, size_t start) {
             if (auto tt = find_flag(args, start, "--target-temp")) profile["target_temp_c"] = std::stoi(*tt);
             if (auto tm = find_flag(args, start, "--tdp-max")) profile["tdp_max_w"] = std::stoi(*tm);
             if (auto fm = find_flag(args, start, "--fan-max")) profile["fan_max_pct"] = std::stoi(*fm);
+            if (auto fn = find_flag(args, start, "--fan-min")) profile["fan_min_pct"] = std::stoi(*fn);
         }
     } catch (const std::exception&) {
-        std::cerr << "profiles save: stapm/fast/slow/target-temp/tdp-max/fan-max must be integers\n";
+        std::cerr << "profiles save: stapm/fast/slow/target-temp/tdp-max/fan-max/fan-min must be integers\n";
         return 1;
     }
 

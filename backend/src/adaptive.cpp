@@ -35,7 +35,8 @@ void AdaptiveController::stop() {
     }
 }
 
-void AdaptiveController::activate(TuningPreset preset, int target_temp_c, int tdp_max_w, int fan_max_pct) {
+void AdaptiveController::activate(TuningPreset preset, int target_temp_c, int tdp_max_w,
+                                  int fan_max_pct, int fan_min_pct) {
     std::lock_guard lock(mutex_);
 
     config_.active = true;
@@ -43,6 +44,7 @@ void AdaptiveController::activate(TuningPreset preset, int target_temp_c, int td
     config_.target_temp_c = target_temp_c;
     config_.tdp_max_w = tdp_max_w;
     config_.fan_max_pct = fan_max_pct;
+    config_.fan_min_pct = fan_min_pct;
 
     // Reset PID state
     integral_ = 0.0;
@@ -53,12 +55,11 @@ void AdaptiveController::activate(TuningPreset preset, int target_temp_c, int td
     current_fan_ = 0;
 
     // Take immediate hardware control — set fan to Curve mode, install an
-    // initial curve at the preset's minimum fan speed, and write the initial
+    // initial curve at the profile's fan floor, and write the initial
     // (maximum) TDP value.  The first tick() call (within 2 s via MetricsPoller)
     // will update the curve from the PID.
     {
-        auto params = get_preset_params(preset);
-        int fan_min = params.fan_min;
+        int fan_min = std::clamp(config_.fan_min_pct, 0, config_.fan_max_pct);
         (void)fan_ctrl_.set_mode(FanState::Mode::Curve);
         FanCurve initial_curve;
         initial_curve.points = {{0, fan_min}, {100, fan_min}};
@@ -162,9 +163,12 @@ void AdaptiveController::tick(int cpu_temp, int gpu_temp) {
 
     double fan_output = params.kp * error + params.ki * integral_ + params.kd * derivative;
 
-    // Clamp fan to preset range and config max
-    int fan_min = params.fan_min;
-    int fan_max = std::min(params.fan_max, config_.fan_max_pct);
+    // Fan range comes entirely from the profile config (fan_min_pct..
+    // fan_max_pct, pre-filled by the preset's value bundle).  The preset
+    // contributes only control character — no hidden ceiling overrides
+    // what the user set.
+    int fan_max = std::clamp(config_.fan_max_pct, 0, 100);
+    int fan_min = std::clamp(config_.fan_min_pct, 0, fan_max);
     int fan_pct = static_cast<int>(std::clamp(fan_output, static_cast<double>(fan_min), static_cast<double>(fan_max)));
 
     // Rapid-response override: the PID integral builds up slowly (seconds to
@@ -268,26 +272,22 @@ auto AdaptiveController::last_smoothed_temp() const -> int {
 
 auto AdaptiveController::get_preset_params(TuningPreset preset) -> PresetParams {
     switch (preset) {
-        case TuningPreset::Silent:
+        case TuningPreset::Quiet:
             return {
                 .kp = 2.0,
                 .ki = 0.4,
                 .kd = 0.5,
-                .fan_min = 20,
-                .fan_max = 40,  // Hard ceiling
                 .tdp_ramp_down_rate = 2,
                 .tdp_ramp_up_rate = 1,
                 .alpha_rise = 0.5,
                 .alpha_fall = 0.05
             };
 
-        case TuningPreset::Default:
+        case TuningPreset::Balanced:
             return {
                 .kp = 3.0,
                 .ki = 0.5,
                 .kd = 0.8,
-                .fan_min = 25,
-                .fan_max = 80,
                 .tdp_ramp_down_rate = 3,
                 .tdp_ramp_up_rate = 2,
                 .alpha_rise = 0.5,
@@ -299,8 +299,6 @@ auto AdaptiveController::get_preset_params(TuningPreset preset) -> PresetParams 
                 .kp = 4.0,
                 .ki = 0.6,
                 .kd = 1.0,
-                .fan_min = 30,
-                .fan_max = 100,
                 .tdp_ramp_down_rate = 4,
                 .tdp_ramp_up_rate = 3,
                 .alpha_rise = 0.5,
@@ -309,7 +307,41 @@ auto AdaptiveController::get_preset_params(TuningPreset preset) -> PresetParams 
     }
 
     // Default fallback
-    return get_preset_params(TuningPreset::Default);
+    return get_preset_params(TuningPreset::Balanced);
+}
+
+auto preset_defaults(TuningPreset preset) -> PresetDefaults {
+    // Value bundles per preset, tuned for the ONEXPLAYER SUPER X (Strix
+    // Halo, ~120 W part).  Selecting a preset pre-fills the profile editor
+    // with these; everything stays user-editable afterwards ("custom").
+    switch (preset) {
+        case TuningPreset::Quiet:
+            return {.target_temp_c = 80, .tdp_max_w = 25,
+                    .fan_max_pct = 45, .fan_min_pct = 20};
+        case TuningPreset::Balanced:
+            return {.target_temp_c = 85, .tdp_max_w = 45,
+                    .fan_max_pct = 80, .fan_min_pct = 25};
+        case TuningPreset::Performance:
+            return {.target_temp_c = 90, .tdp_max_w = 100,
+                    .fan_max_pct = 100, .fan_min_pct = 30};
+    }
+    return preset_defaults(TuningPreset::Balanced);
+}
+
+auto tuning_preset_from_string(const std::string& name) -> std::optional<TuningPreset> {
+    if (name == "quiet" || name == "silent")          return TuningPreset::Quiet;
+    if (name == "balanced" || name == "default")      return TuningPreset::Balanced;
+    if (name == "performance")                        return TuningPreset::Performance;
+    return std::nullopt;
+}
+
+auto tuning_preset_to_string(TuningPreset preset) -> std::string {
+    switch (preset) {
+        case TuningPreset::Quiet:         return "quiet";
+        case TuningPreset::Balanced:      return "balanced";
+        case TuningPreset::Performance:   return "performance";
+    }
+    return "balanced";
 }
 
 void AdaptiveController::control_loop() {

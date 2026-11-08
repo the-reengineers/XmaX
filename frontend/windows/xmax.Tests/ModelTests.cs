@@ -164,10 +164,11 @@ public class ModelTests
             "name": "Quiet Adaptive",
             "type": "adaptive",
             "power_state": "battery",
-            "tuning": "silent",
+            "tuning": "quiet",
             "target_temp_c": 75,
             "tdp_max_w": 40,
-            "fan_max_pct": 80
+            "fan_max_pct": 80,
+            "fan_min_pct": 20
         }
         """;
 
@@ -179,10 +180,11 @@ public class ModelTests
         Assert.Equal("adaptive", profile.Type);
         Assert.True(profile.IsAdaptive);
         Assert.Equal("battery", profile.PowerState);
-        Assert.Equal("silent", profile.Tuning);
+        Assert.Equal("quiet", profile.Tuning);
         Assert.Equal(75, profile.TargetTempC);
         Assert.Equal(40, profile.TdpMaxW);
         Assert.Equal(80, profile.FanMaxPercent);
+        Assert.Equal(20, profile.FanMinPercent);
     }
 
     [Fact]

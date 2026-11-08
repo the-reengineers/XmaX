@@ -40,10 +40,11 @@ struct Profile {
     std::optional<std::string> fan_curve;  // Slug reference or nullopt
 
     // Adaptive profile fields (used when type == Adaptive)
-    std::string tuning = "default";     // "silent", "default", "performance"
+    std::string tuning = "balanced";    // "quiet", "balanced", "performance"
     int target_temp_c = 85;
     int tdp_max_w = 55;
     int fan_max_pct = 100;
+    int fan_min_pct = 20;               // Fan floor; pre-filled per preset
 };
 
 // Profile storage

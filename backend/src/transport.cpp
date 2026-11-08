@@ -741,6 +741,7 @@ auto TransportService::handle_get_profiles(const Command& cmd) -> Response {
             p["target_temp_c"] = profile.target_temp_c;
             p["tdp_max_w"] = profile.tdp_max_w;
             p["fan_max_pct"] = profile.fan_max_pct;
+            p["fan_min_pct"] = profile.fan_min_pct;
         }
 
         profiles_array.push_back(p);
@@ -785,12 +786,13 @@ auto TransportService::handle_set_profile(const Command& cmd) -> Response {
         adaptive_.set_power_state_ceiling(ceiling);
 
         if (profile.type == ProfileType::Adaptive) {
-            // Activate adaptive controller with profile's config
-            TuningPreset preset = TuningPreset::Default;
-            if (profile.tuning == "silent") preset = TuningPreset::Silent;
-            else if (profile.tuning == "performance") preset = TuningPreset::Performance;
+            // Activate adaptive controller with profile's config (tuning
+            // strings are normalized at load; legacy names still accepted)
+            TuningPreset preset = tuning_preset_from_string(profile.tuning)
+                                      .value_or(TuningPreset::Balanced);
 
-            adaptive_.activate(preset, profile.target_temp_c, profile.tdp_max_w, profile.fan_max_pct);
+            adaptive_.activate(preset, profile.target_temp_c, profile.tdp_max_w,
+                               profile.fan_max_pct, profile.fan_min_pct);
         } else {
             // Fixed profile: write TDP + fan curve, deactivate adaptive
             auto tdp_result = tdp_.write_tdp(profile.stapm_w, profile.fast_w, profile.slow_w);
@@ -876,10 +878,14 @@ auto TransportService::handle_save_profile(const Command& cmd) -> Response {
                                                      : std::optional{curve_id};
             }
         } else {
-            profile.tuning = payload.value("tuning", "default");
+            profile.tuning = payload.value("tuning", "balanced");
+            // Legacy preset names (pre-redesign frontends) normalize here too.
+            if (profile.tuning == "silent") profile.tuning = "quiet";
+            else if (profile.tuning == "default") profile.tuning = "balanced";
             profile.target_temp_c = payload.value("target_temp_c", 85);
             profile.tdp_max_w = payload.value("tdp_max_w", 55);
             profile.fan_max_pct = payload.value("fan_max_pct", 100);
+            profile.fan_min_pct = payload.value("fan_min_pct", 20);
         }
 
         // Generate slug if id is empty
@@ -1583,11 +1589,11 @@ void TransportService::apply_all_settings() {
     if (assigned != nullptr) {
         if (assigned->type == ProfileType::Adaptive) {
             // Activate adaptive controller
-            TuningPreset preset = TuningPreset::Default;
-            if (assigned->tuning == "silent") preset = TuningPreset::Silent;
-            else if (assigned->tuning == "performance") preset = TuningPreset::Performance;
+            TuningPreset preset = tuning_preset_from_string(assigned->tuning)
+                                      .value_or(TuningPreset::Balanced);
 
-            adaptive_.activate(preset, assigned->target_temp_c, assigned->tdp_max_w, assigned->fan_max_pct);
+            adaptive_.activate(preset, assigned->target_temp_c, assigned->tdp_max_w,
+                               assigned->fan_max_pct, assigned->fan_min_pct);
         } else {
             // Apply fixed profile
             auto tdp_result = tdp_.write_tdp(assigned->stapm_w, assigned->fast_w, assigned->slow_w);

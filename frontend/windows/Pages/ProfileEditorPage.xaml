@@ -36,6 +36,7 @@
                 <Slider x:Name="TargetTempSlider" Minimum="50" Maximum="100" StepFrequency="1" Value="85" />
                 <Slider x:Name="TdpMaxSlider" Minimum="6" Maximum="120" StepFrequency="1" Value="55" />
                 <Slider x:Name="FanMaxSlider" Minimum="0" Maximum="100" StepFrequency="1" Value="100" />
+                <Slider x:Name="FanMinSlider" Minimum="0" Maximum="100" StepFrequency="1" Value="25" />
             </StackPanel>
 
             <!-- Buttons -->

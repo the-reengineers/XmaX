@@ -232,7 +232,9 @@ export default class XmaxPreferences extends ExtensionPreferences {
 
     _profileSubtitle(profile) {
         if (profile.type === 'adaptive') {
-            const tuning = profile.tuning || 'default';
+            // Backend normalizes legacy names on load; map leftovers here too.
+            const legacy = {silent: 'quiet', default: 'balanced'};
+            const tuning = legacy[profile.tuning] || profile.tuning || 'balanced';
             return `Adaptive — ${tuning.charAt(0).toUpperCase() + tuning.slice(1)}`;
         }
         // Fixed profile — TDP values may be nested in `tdp` or flat.
@@ -274,10 +276,11 @@ export default class XmaxPreferences extends ExtensionPreferences {
             fast: 30,
             slow: 25,
             fan_curve: '',
-            tuning: 'default',
-            target_temp_c: 80,
+            tuning: 'balanced',
+            target_temp_c: 85,
             tdp_max_w: 45,
-            fan_max_pct: 100,
+            fan_max_pct: 80,
+            fan_min_pct: 25,
             power_state: '',
         };
         // Fixed-profile TDP values come back nested (profile.tdp.stapm/fast/slow)
@@ -382,14 +385,29 @@ export default class XmaxPreferences extends ExtensionPreferences {
         const adaptiveGroup = new Adw.PreferencesGroup({title: _('Adaptive Profile Settings')});
         page.add(adaptiveGroup);
 
+        // Tuning presets — value bundles matching the handheld ecosystem
+        // convention (OneXConsole, ASUS, Legion Go, power-profiles-daemon).
+        // Selecting a preset pre-fills the knob rows below; tweaking them
+        // afterwards simply makes the profile custom.  Mirrors the Windows
+        // ProfileEditorPage and backend preset_defaults().
+        const TUNING_VALUES = ['quiet', 'balanced', 'performance'];
+        const TUNING_LABELS = [_('Quiet'), _('Balanced'), _('Performance')];
+        // Knob defaults per preset: [targetTemp, tdpMax, fanMax, fanMin].
+        const PRESET_DEFAULTS = {
+            quiet:       [80, 25, 45, 20],
+            balanced:    [85, 45, 80, 25],
+            performance: [90, 100, 100, 30],
+        };
         const tuningModel = new Gtk.StringList();
-        tuningModel.append('silent');
-        tuningModel.append('default');
-        tuningModel.append('performance');
+        for (const label of TUNING_LABELS) tuningModel.append(label);
+        // Backend normalizes legacy names ("silent"/"default") on load;
+        // map them here too in case an old payload slips through.
+        const legacyTuning = {silent: 'quiet', default: 'balanced'};
+        const tuningValue = legacyTuning[profile.tuning] || profile.tuning || 'balanced';
         const tuningRow = new Adw.ComboRow({
             title: _('Tuning Preset'),
             model: tuningModel,
-            selected: ['silent', 'default', 'performance'].indexOf(profile.tuning || 'default'),
+            selected: TUNING_VALUES.indexOf(tuningValue),
         });
         if (tuningRow.selected < 0) tuningRow.selected = 1;
         adaptiveGroup.add(tuningRow);
@@ -398,7 +416,7 @@ export default class XmaxPreferences extends ExtensionPreferences {
             title: _('Target Temperature (°C)'),
             adjustment: new Gtk.Adjustment({
                 lower: 60, upper: 95, step_increment: 1, page_increment: 5,
-                value: profile.target_temp_c ?? 80,
+                value: profile.target_temp_c ?? 85,
             }),
         });
         adaptiveGroup.add(targetTempRow);
@@ -416,10 +434,33 @@ export default class XmaxPreferences extends ExtensionPreferences {
             title: _('Fan Max (%)'),
             adjustment: new Gtk.Adjustment({
                 lower: 0, upper: 100, step_increment: 1, page_increment: 10,
-                value: profile.fan_max_pct ?? 100,
+                value: profile.fan_max_pct ?? 80,
             }),
         });
         adaptiveGroup.add(fanMaxRow);
+
+        const fanMinRow = new Adw.SpinRow({
+            title: _('Fan Min (%)'),
+            adjustment: new Gtk.Adjustment({
+                lower: 0, upper: 100, step_increment: 1, page_increment: 10,
+                value: profile.fan_min_pct ?? 25,
+            }),
+        });
+        adaptiveGroup.add(fanMinRow);
+
+        // Selecting a preset loads its value bundle into the knob rows.
+        // The preset is a starting point, not a hidden cap: every value
+        // stays editable afterwards.
+        tuningRow.connect('notify::selected', () => {
+            const preset = TUNING_VALUES[tuningRow.selected];
+            const defaults = PRESET_DEFAULTS[preset];
+            if (!defaults)
+                return;
+            targetTempRow.value = defaults[0];
+            tdpMaxRow.value = defaults[1];
+            fanMaxRow.value = defaults[2];
+            fanMinRow.value = defaults[3];
+        });
 
         // ---- Power state assignment ------------------------------------------
         // Values must match the backend's snake_case power state strings
@@ -494,7 +535,7 @@ export default class XmaxPreferences extends ExtensionPreferences {
             }
 
             const type = typeRow.selected === 1 ? 'adaptive' : 'fixed';
-            const tunings = ['silent', 'default', 'performance'];
+            const tunings = TUNING_VALUES;
 
             // id: empty for new profiles (backend generates the slug), or the
             // existing profile's id when editing.
@@ -511,10 +552,12 @@ export default class XmaxPreferences extends ExtensionPreferences {
                 newProfile.slow = slowRow.value;
                 newProfile.fan_curve = fanCurveIds[fanCurveRow.selected] || '';
             } else {
-                newProfile.tuning = tunings[tuningRow.selected] || 'default';
+                newProfile.tuning = tunings[tuningRow.selected] || 'balanced';
                 newProfile.target_temp_c = targetTempRow.value;
                 newProfile.tdp_max_w = tdpMaxRow.value;
                 newProfile.fan_max_pct = fanMaxRow.value;
+                // Floor can never exceed the ceiling (backend validates too).
+                newProfile.fan_min_pct = Math.min(fanMinRow.value, fanMaxRow.value);
             }
 
             try {

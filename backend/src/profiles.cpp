@@ -447,13 +447,11 @@ std::optional<std::string> save_profile(ProfileStorage& storage, Profile profile
             return "TDP values must be between 6 and " + std::to_string(tdp_ceiling) + "W";
         }
 
-        // Fan curve is mandatory for fixed profiles
-        if (!profile.fan_curve.has_value()) {
-            return "A fan curve is required for fixed profiles";
-        }
-
-        // Validate fan curve reference exists
-        if (storage.fan_curves.find(profile.fan_curve.value()) == storage.fan_curves.end()) {
+        // Fan curve is optional for fixed profiles: nullopt / empty string
+        // means "Auto mode" (the EC firmware's hardware fan curve).  When a
+        // curve IS specified, the reference must resolve to a known curve.
+        if (profile.fan_curve.has_value() &&
+            storage.fan_curves.find(profile.fan_curve.value()) == storage.fan_curves.end()) {
             return "Fan curve not found: " + profile.fan_curve.value();
         }
     } else {

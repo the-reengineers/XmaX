@@ -220,7 +220,10 @@ export class XmaxClient {
             CALL_TIMEOUT,
             null,
         );
-        return ret.deep_unpack()[0];
+        // Get returns (v) — a single-element tuple containing a variant.
+        // deep_unpack() unpacks the outer tuple but leaves the variant
+        // wrapper intact (GJS limitation).  Unwrap it ourselves.
+        return ret.get_child_value(0).get_variant().unpack();
     }
 
     _readString(key) {

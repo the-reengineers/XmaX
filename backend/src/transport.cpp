@@ -1347,6 +1347,8 @@ auto TransportService::handle_set_session_persist(const Command& cmd) -> Respons
             std::lock_guard lock(state_mutex_);
             old_value = config_.session_persist;
             config_.session_persist = new_value;
+            config_.persist = new_value;
+            save_config(config_path_, config_);
         }
 
         // If transitioning from false to true, apply all settings to hardware

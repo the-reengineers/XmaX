@@ -88,6 +88,12 @@ reinstall-fe:
 install-smu:
     sudo scripts/linux/install-smu-driver.sh
 
+# Install the vendored xmax_sio_ec kernel module via DKMS (root, one-time).
+# Provides the IT87 Super I/O EC RAM bypass for charge-limit writes on the
+# ONEXPLAYER SUPER X. Same Secure Boot / MOK enrollment flow as install-smu.
+install-sio:
+    sudo scripts/linux/install-sio-driver.sh
+
 # Dev mode: build both, copy to out/, start backend (which spawns the frontend). Ctrl+C stops both.
 dev: copy
     @echo "Starting {{_be_name}} ({{config}}) — frontend spawned automatically"

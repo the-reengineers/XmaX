@@ -197,6 +197,7 @@ elseif(UNIX)
         src/platform/platform_linux.cpp
         src/platform/linux/ec.cpp
         src/platform/linux/oxpec.cpp
+        src/platform/linux/sio_ec.cpp
         src/platform/linux/procfs.cpp
         src/platform/linux/ryzenadj.cpp
         src/dbus/dbus_service.cpp

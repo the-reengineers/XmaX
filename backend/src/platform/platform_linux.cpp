@@ -2,6 +2,7 @@
 #include "../logger.h"
 #include "linux/ec.h"
 #include "linux/oxpec.h"
+#include "linux/sio_ec.h"
 #include "linux/procfs.h"
 #include "linux/ryzenadj.h"
 
@@ -175,6 +176,7 @@ public:
         // per-call methods degrade to SensorUnavailable.
         xmax_ec::init();
         xmax_oxp::init();
+        xmax_sio::init();
         bool ryzenadj_ok = ryzenadj::init();
         if (xmax_oxp::available()) {
             log_info("[hw] oxpec driver detected -- fan/charge vendor "
@@ -460,8 +462,23 @@ public:
 
     auto charge_limit_write(uint8_t percent) -> Result<void> override {
         // Battery charge limit lives in EC register 0x04A3 on this platform.
-        // Failure surfaces as an error here; the transport layer maps it to
-        // ChargeLimitWriteFail for the client.
+        //
+        // The ACPI EC command layer silently discards writes to this register
+        // on the ONEXPLAYER SUPER X (and possibly other Strix Halo devices):
+        // the oxpec kernel driver writes via ec_write() hit the same ACPI-level
+        // protection as Windows' UMAInterface SetEcValue.  The working path
+        // is the IT87 Super I/O bypass — writing to EC RAM directly through the
+        // chip's indexed register pair at ports 0x4E/0x4F.
+        //
+        // Try the SIO path first; if it's unavailable (not root, kernel
+        // lockdown), fall back to the standard oxpec sysfs write so the call
+        // succeeds on devices that do not need the bypass.
+        if (xmax_sio::available()) {
+            if (xmax_sio::ecram_write(kEcChargeLimit, percent)) {
+                log_info("[hw] charge limit " + std::to_string(percent)
+                         + "% written via IT87 Super I/O bypass");
+            }
+        }
         return ec_write(kEcChargeLimit, percent);
     }
 

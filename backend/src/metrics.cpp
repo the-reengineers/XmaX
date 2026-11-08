@@ -91,10 +91,11 @@ static auto battery_pct_wmi() -> std::optional<int> {
 }
 #endif
 
-MetricsPoller::MetricsPoller(Platform& platform, FanController& fan_ctrl, TdpController& tdp_ctrl)
+MetricsPoller::MetricsPoller(Platform& platform, FanController& fan_ctrl, TdpController& tdp_ctrl, AdaptiveController& adaptive_ctrl)
     : platform_(platform)
     , fan_ctrl_(fan_ctrl)
     , tdp_ctrl_(tdp_ctrl)
+    , adaptive_ctrl_(adaptive_ctrl)
 {
 }
 
@@ -140,11 +141,18 @@ void MetricsPoller::poll_loop() {
         poll_fan();
         poll_power();
 
-        // Update fan curve if in Curve mode
-        // This must be called periodically to apply the fan curve
+        // Adaptive control: run the PID loop when an adaptive profile is
+        // active (this writes TDP + fan speed through to hardware).
+        // When no adaptive profile is active, fall back to the manual
+        // fan curve tick (for fixed profiles with a user-defined curve).
         {
             std::lock_guard lock(metrics_mutex_);
-            fan_ctrl_.tick(current_metrics_.cpu.temp_c, current_metrics_.gpu.temp_c);
+            if (adaptive_ctrl_.is_active()) {
+                adaptive_ctrl_.tick(current_metrics_.cpu.temp_c.value_or(0),
+                                    current_metrics_.gpu.temp_c.value_or(0));
+            } else {
+                fan_ctrl_.tick(current_metrics_.cpu.temp_c, current_metrics_.gpu.temp_c);
+            }
         }
 
         // Update timestamp

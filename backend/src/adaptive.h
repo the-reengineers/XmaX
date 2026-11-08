@@ -139,8 +139,6 @@ private:
     static constexpr int TDP_MIN = 6;
     static constexpr int TDP_MAX = 120;
     static constexpr int CRITICAL_TEMP = 95;
-    static constexpr int FAN_SATURATION_THRESHOLD = 90;  // %
-    static constexpr int FAN_LOW_THRESHOLD = 70;          // %
     static constexpr std::chrono::seconds SENSOR_TIMEOUT{5};
     static constexpr std::chrono::seconds TICK_INTERVAL{1};
     static constexpr double INTEGRAL_CLAMP = 100.0;

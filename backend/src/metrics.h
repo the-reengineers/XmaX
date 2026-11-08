@@ -3,6 +3,7 @@
 #include "shared.h"
 #include "fan.h"
 #include "tdp.h"
+#include "adaptive.h"
 #include "platform/platform.h"
 
 #include <atomic>
@@ -24,7 +25,7 @@
 
 class MetricsPoller {
 public:
-    MetricsPoller(Platform& platform, FanController& fan_ctrl, TdpController& tdp_ctrl);
+    MetricsPoller(Platform& platform, FanController& fan_ctrl, TdpController& tdp_ctrl, AdaptiveController& adaptive_ctrl);
     ~MetricsPoller();
 
     // Start polling in background thread.
@@ -53,6 +54,7 @@ private:
     Platform& platform_;
     FanController& fan_ctrl_;
     TdpController& tdp_ctrl_;
+    AdaptiveController& adaptive_ctrl_;
 
     std::thread poll_thread_;
     std::atomic<bool> running_{false};

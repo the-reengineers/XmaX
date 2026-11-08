@@ -222,9 +222,9 @@ int main(int argc, char* argv[]) {
         // Create controllers
         auto fan = std::make_unique<FanController>(*platform);
         auto tdp = std::make_unique<TdpController>(*platform);
-        auto poller = std::make_unique<MetricsPoller>(*platform, *fan, *tdp);
-        auto power = std::make_unique<PowerController>(*platform);
         auto adaptive = std::make_unique<AdaptiveController>(*tdp, *fan);
+        auto poller = std::make_unique<MetricsPoller>(*platform, *fan, *tdp, *adaptive);
+        auto power = std::make_unique<PowerController>(*platform);
         auto button = std::make_unique<ButtonMonitor>(*platform);
         auto process_mgr = std::make_unique<ProcessManager>(*platform);
         auto tray = std::make_unique<TrayManager>(*platform);

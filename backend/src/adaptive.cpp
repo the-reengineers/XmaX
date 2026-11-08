@@ -1,4 +1,5 @@
 #include "adaptive.h"
+#include "logger.h"
 
 #include <algorithm>
 #include <cmath>
@@ -50,6 +51,20 @@ void AdaptiveController::activate(TuningPreset preset, int target_temp_c, int td
     temp_initialized_ = false;
     current_tdp_ = tdp_max_w;
     current_fan_ = 0;
+
+    // Take immediate hardware control — set fan to Curve mode, install an
+    // initial curve at the preset's minimum fan speed, and write the initial
+    // (maximum) TDP value.  The first tick() call (within 2 s via MetricsPoller)
+    // will update the curve from the PID.
+    {
+        auto params = get_preset_params(preset);
+        int fan_min = params.fan_min;
+        (void)fan_ctrl_.set_mode(FanState::Mode::Curve);
+        FanCurve initial_curve;
+        initial_curve.points = {{0, fan_min}, {100, fan_min}};
+        fan_ctrl_.set_curve(initial_curve);
+        (void)tdp_ctrl_.write_tdp(tdp_max_w, tdp_max_w, tdp_max_w);
+    }
 
     active_.store(true);
 }
@@ -152,16 +167,39 @@ void AdaptiveController::tick(int cpu_temp, int gpu_temp) {
     int fan_max = std::min(params.fan_max, config_.fan_max_pct);
     int fan_pct = static_cast<int>(std::clamp(fan_output, static_cast<double>(fan_min), static_cast<double>(fan_max)));
 
+    // Rapid-response override: the PID integral builds up slowly (seconds to
+    // minutes), which lets the system thermally run away before the fan
+    // responds — observed on the SUPER X where the fan sat at fan_min while
+    // the CPU climbed to 90C+ with a Silent profile.  When the smoothed
+    // temperature is meaningfully above target, drive the fan proportionally
+    // toward fan_max immediately; the PID still handles fine-tuning near the
+    // target and owns the fan entirely at/below it.
+    int over_target = smoothed_temp_int - config_.target_temp_c;
+    if (over_target > 0) {
+        // Linear ramp: +0C over target -> fan stays at PID value,
+        // +5C over target (or as far as fan_max allows) -> fan_max.
+        int urgency = over_target * (fan_max - fan_min) / 5;
+        fan_pct = std::max(fan_pct, fan_min + urgency);
+        fan_pct = std::min(fan_pct, fan_max);
+    }
+
     // Outer loop: TDP adjustment
+    //
+    // Saturation/low are measured *relative to the effective fan range*
+    // (fan_min..fan_max), not absolute percentages: a Silent profile caps
+    // the fan at 40%, so an absolute 90% saturation test can never fire and
+    // the TDP would never ramp down while the CPU overheats.
     int effective_max = effective_tdp_max_locked();
     int new_tdp = current_tdp_;
+    bool fan_saturated = fan_pct >= (fan_max - 5);
+    bool fan_low = fan_pct <= (fan_min + 5);
 
     // Ramp down if fan is saturated AND temp > target
-    if (fan_pct >= FAN_SATURATION_THRESHOLD && smoothed_temp_ > config_.target_temp_c) {
+    if (fan_saturated && smoothed_temp_ > config_.target_temp_c) {
         new_tdp = std::max(TDP_MIN, current_tdp_ - params.tdp_ramp_down_rate);
     }
     // Ramp up if fan is low AND temp < target
-    else if (fan_pct < FAN_LOW_THRESHOLD && smoothed_temp_ < config_.target_temp_c) {
+    else if (fan_low && smoothed_temp_ < config_.target_temp_c) {
         new_tdp = std::min(effective_max, current_tdp_ + params.tdp_ramp_up_rate);
     }
 
@@ -185,8 +223,26 @@ void AdaptiveController::tick(int cpu_temp, int gpu_temp) {
 
     (void)tdp_ctrl_.write_tdp(new_tdp, new_tdp, new_tdp);  // Ignore errors -- retry on next tick
 
+    // Log every change and periodic heartbeats so the PID is observable in
+    // the journal (diagnosing runaway temps / stuck fans).
     if (changed) {
+        log_info("[adaptive] pid_adjust: temp=" + std::to_string(smoothed_temp_int)
+                 + "C target=" + std::to_string(config_.target_temp_c)
+                 + "C fan=" + std::to_string(fan_pct)
+                 + "% tdp=" + std::to_string(new_tdp)
+                 + "W max=" + std::to_string(effective_max) + "W");
         emit_adjust(new_tdp, fan_pct, smoothed_temp_int, effective_max, "pid_adjust");
+    } else {
+        static std::chrono::steady_clock::time_point last_heartbeat{};
+        auto now_hb = std::chrono::steady_clock::now();
+        if (last_heartbeat.time_since_epoch().count() == 0 ||
+            now_hb - last_heartbeat >= std::chrono::seconds(30)) {
+            last_heartbeat = now_hb;
+            log_info("[adaptive] steady: temp=" + std::to_string(smoothed_temp_int)
+                     + "C target=" + std::to_string(config_.target_temp_c)
+                     + "C fan=" + std::to_string(fan_pct)
+                     + "% tdp=" + std::to_string(new_tdp) + "W");
+        }
     }
 }
 
@@ -215,7 +271,7 @@ auto AdaptiveController::get_preset_params(TuningPreset preset) -> PresetParams 
         case TuningPreset::Silent:
             return {
                 .kp = 2.0,
-                .ki = 0.1,
+                .ki = 0.4,
                 .kd = 0.5,
                 .fan_min = 20,
                 .fan_max = 40,  // Hard ceiling
@@ -228,7 +284,7 @@ auto AdaptiveController::get_preset_params(TuningPreset preset) -> PresetParams 
         case TuningPreset::Default:
             return {
                 .kp = 3.0,
-                .ki = 0.15,
+                .ki = 0.5,
                 .kd = 0.8,
                 .fan_min = 25,
                 .fan_max = 80,
@@ -241,7 +297,7 @@ auto AdaptiveController::get_preset_params(TuningPreset preset) -> PresetParams 
         case TuningPreset::Performance:
             return {
                 .kp = 4.0,
-                .ki = 0.2,
+                .ki = 0.6,
                 .kd = 1.0,
                 .fan_min = 30,
                 .fan_max = 100,

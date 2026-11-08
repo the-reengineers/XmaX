@@ -1180,7 +1180,8 @@ protected:
     void SetUp() override {
         fan_ctrl_ = std::make_unique<FanController>(platform_);
         tdp_ctrl_ = std::make_unique<TdpController>(platform_);
-        poller_ = std::make_unique<MetricsPoller>(platform_, *fan_ctrl_, *tdp_ctrl_);
+        adaptive_ = std::make_unique<AdaptiveController>(*tdp_ctrl_, *fan_ctrl_);
+        poller_ = std::make_unique<MetricsPoller>(platform_, *fan_ctrl_, *tdp_ctrl_, *adaptive_);
     }
 
     void TearDown() override {
@@ -1192,6 +1193,7 @@ protected:
     MockPlatform platform_;
     std::unique_ptr<FanController> fan_ctrl_;
     std::unique_ptr<TdpController> tdp_ctrl_;
+    std::unique_ptr<AdaptiveController> adaptive_;
     std::unique_ptr<MetricsPoller> poller_;
 };
 
@@ -1879,9 +1881,9 @@ protected:
         // Create controllers
         fan_ = std::make_unique<FanController>(platform_);
         tdp_ = std::make_unique<TdpController>(platform_);
-        poller_ = std::make_unique<MetricsPoller>(platform_, *fan_, *tdp_);
-        power_ = std::make_unique<PowerController>(platform_);
         adaptive_ = std::make_unique<AdaptiveController>(*tdp_, *fan_);
+        poller_ = std::make_unique<MetricsPoller>(platform_, *fan_, *tdp_, *adaptive_);
+        power_ = std::make_unique<PowerController>(platform_);
         button_ = std::make_unique<ButtonMonitor>(platform_);
 
         // Create transport service

@@ -2,7 +2,7 @@
 
 <div align="center">
   <img src="shared/assets/logo.png" alt="XmaX Logo" width="96" height="96">
-  <p>Optimization toolkit for the <b>OneXPlayer Super X</b> (AMD Halo Strix) on Windows (Linux coming soon).
+  <p>Optimization toolkit for the <b>OneXPlayer Super X</b> (AMD Halo Strix) on Windows and Fedora Linux.
   <br>Designed to be a bloat-free and fully functional alternative to the OneXConsole</p>
 </div>
 

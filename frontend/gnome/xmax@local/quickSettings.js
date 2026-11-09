@@ -14,8 +14,9 @@ import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js'
 
 import {PopupMenu, QuickSettings} from './shellCompat.js';
 import {logoGicon} from './logo.js';
-import {addMetricsRows, updateMetricsRows} from './metrics.js';
-import {arraysEqual, getStatWidgets} from './statsConfig.js';
+import {GraphHistory} from './graph.js';
+import {MetricsGridItem} from './statsGrid.js';
+import {getStatColumns, getStatLayout} from './statsConfig.js';
 
 // Valid charge-limit values (multiples of 5 in 75-100).
 const CHARGE_VALUES = [75, 80, 85, 90, 95, 100];
@@ -58,6 +59,12 @@ class XmaxQuickSettingsIndicator extends QuickSettings.SystemIndicator {
         this._settings.connectObject('changed::qs-show-logo',
             () => this._gateLogo(), this);
         this._gateLogo();
+
+        // Usage-graph history: timestamped ring buffer fed on every
+        // MetricsChanged (~2 s), independent of the widgets — so the graph
+        // is already full of recent history whenever the panel opens. It
+        // survives section rebuilds (config changes) too.
+        this._history = new GraphHistory();
 
         // Persistent metrics section added to the QS popup box (not the tile
         // grid) — always visible when the panel opens, no click required.
@@ -110,45 +117,77 @@ class XmaxQuickSettingsIndicator extends QuickSettings.SystemIndicator {
         }
 
         // Cache the latest payload so reloadMetricsSection can replay it
-        // after rebuilding rows (config change).
+        // after rebuilding the grid (config change).
         this._metricsStats = m;
-        updateMetricsRows(this._metricsRows, m);
+        this._gridItem?.updateMetrics(m);
+
+        // Feed the usage-graph history (nulls are skipped per-series at
+        // draw time) and refresh the graph. Cheap when the panel is closed.
+        this._history.push(Date.now(), {
+            cpu: typeof m?.cpu?.util_pct === 'number' ? m.cpu.util_pct : null,
+            gpu: typeof m?.gpu?.util_pct === 'number' ? m.gpu.util_pct : null,
+            ram: typeof m?.ram?.load_pct === 'number' ? m.ram.load_pct : null,
+        });
+        this._gridItem?.graph?.queue_repaint();
     }
 
     /**
      * Persistent metrics section in the Quick Settings popup: a labeled
-     * separator (section header) followed by the live readout rows in the
-     * order defined by config.json's home_layout. No clicking — the stats
-     * are visible whenever the panel is open.
+     * separator (section header) followed by the System Stats tile grid —
+     * stat tiles side-by-side plus the usage graph, laid out by config.json's
+     * home_layout (shared with the Windows home grid). No clicking — the
+     * stats are visible whenever the panel is open.
      */
     _buildMetricsSection() {
         const section = new PopupMenu.PopupMenuSection();
-        section.addMenuItem(
-            new PopupMenu.PopupSeparatorMenuItem(_('System Stats')));
-        this._metricsRows = addMetricsRows(section, getStatWidgets());
+        this._gridItem = null;
+        this._sectionSignature = null;
+        this._repopulateMetricsSection(section);
         return section;
     }
 
     /**
-     * Rebuild the System Stats section from config.json and replay the
-     * latest cached metrics payload. Safe to call from a FileMonitor
-     * callback (the section is only modified when there's a delta).
+     * Fill a (fresh) section from the current config layout. An empty layout
+     * (every widget hidden) renders an empty section — no separator either.
+     *
+     * @param {PopupMenu.PopupMenuSection} section
+     */
+    _repopulateMetricsSection(section) {
+        const widgets = getStatLayout();
+        const columns = getStatColumns();
+        this._sectionSignature = JSON.stringify([widgets, columns]);
+
+        if (widgets.length) {
+            section.addMenuItem(
+                new PopupMenu.PopupSeparatorMenuItem(_('System Stats')));
+            this._gridItem = new MetricsGridItem({
+                widgets,
+                columns,
+                history: this._history,
+                settings: this._settings,
+            });
+            section.addMenuItem(this._gridItem);
+            // Replay the latest snapshot so new tiles are populated at once.
+            if (this._metricsStats)
+                this._gridItem.updateMetrics(this._metricsStats);
+        } else {
+            this._gridItem = null;
+        }
+    }
+
+    /**
+     * Rebuild the System Stats section from config.json when the layout
+     * changed (order, spans, columns, visibility). Safe to call from a
+     * FileMonitor callback — it's a no-op without a delta. The graph's
+     * history survives the rebuild (owned here, not by the grid item).
      */
     reloadMetricsSection() {
-        const ids = getStatWidgets();
-        const currentIds = [...this._metricsRows.keys()];
-        if (arraysEqual(ids, currentIds))
+        const signature = JSON.stringify([getStatLayout(), getStatColumns()]);
+        if (signature === this._sectionSignature)
             return;
 
-        // Rebuild the section: clear existing rows, re-add in the new order.
         this._metricsSection.removeAll();
-        this._metricsSection.addMenuItem(
-            new PopupMenu.PopupSeparatorMenuItem(_('System Stats')));
-        this._metricsRows = addMetricsRows(this._metricsSection, ids);
-
-        // Replay the latest snapshot so the new rows are populated immediately.
-        if (this._metricsStats)
-            updateMetricsRows(this._metricsRows, this._metricsStats);
+        this._repopulateMetricsSection(this._metricsSection);
     }
 
     _buildChargeMenu() {

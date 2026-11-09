@@ -33,15 +33,20 @@ cat <<'EOF'
 
 Manual UI checklist (in a live GNOME session, after `gnome-extensions enable xmax@local`):
   [ ] XmaX logo appears inside the top-bar Quick Settings button (left of the network/battery icons)
-  [ ] "System Stats" section appears in the Quick Settings panel with labeled separator and live readouts
-  [ ] Readout rows are configurable: open extension prefs → System Stats → toggle rows on/off and reorder with the ↑/↓ arrows
-  [ ] The System Stats section reflects config changes on the next panel open (no re-login)
+  [ ] "System Stats" section appears in the Quick Settings panel with labeled separator and a tile grid (up to 3 tiles side-by-side)
+  [ ] A 3-line usage graph (CPU/GPU/RAM, %) appears in the System Stats section spanning its row, titled "Usage (%)" with a color legend
+  [ ] The graph is full of history when the panel opens (data collected while it was closed), newest sample on the right
+  [ ] Graph history window is configurable: prefs → Layout → Graph history (30 s / 1 min / 2 min / 3 min), applies live
+  [ ] prefs → Layout: "Quick Settings preview" on the right mirrors the popup's System Stats grid; "Available widgets" list on the left shows hidden widgets
+  [ ] Preview tiles have an X close button (top-right) that hides the widget; available tiles have a "+" button that shows it
+  [ ] Dragging a preview tile onto another reorders it (drop before/after the target's center); dragging onto the available list hides it
+  [ ] Layout changes apply to the real Quick Settings panel without re-login (config.json monitor)
   [ ] Charge-limit QuickMenuToggle is visible in Quick Settings by default (subtitle: 100%)
   [ ] Power-profile control is visible in Quick Settings by default
   [ ] Charge-limit menu shows 85% and 100% options with 100% checked
   [ ] Selecting 85% applies it to hardware and marks it checked
   [ ] `gsettings set org.xmax.shell qs-show-logo false` removes the logo from the Quick Settings button
-  [ ] `gsettings set org.xmax.shell qs-metrics false` hides the metrics tile
+  [ ] `gsettings set org.xmax.shell qs-metrics false` hides the System Stats section
   [ ] `gsettings set org.xmax.shell show-top-bar-icon true` shows the standalone top-bar logo button
   [ ] `gsettings set org.xmax.shell top-bar-icon-shows-temp true` swaps that button's logo for a °C readout
   [ ] `gsettings set org.xmax.shell qs-charge-limit false` hides the charge-limit control

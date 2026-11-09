@@ -6,13 +6,30 @@
 // gnome-shell.
 
 import Adw from 'gi://Adw';
+import Gdk from 'gi://Gdk';
 import Gio from 'gi://Gio';
-import GLib from 'gi://GLib';
+import GObject from 'gi://GObject';
 import Gtk from 'gi://Gtk';
 
 import {ExtensionPreferences, gettext as _} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 import {XmaxClient} from './dbus.js';
-import {getStatWidgets, setStatWidgets} from './statsConfig.js';
+import {packWidgets} from './gridLayout.js';
+import {getHiddenStats, getStatColumns, getStatLayout, setStatLayout} from './statsConfig.js';
+
+/**
+ * Remove all children of a Gtk container (the editor rebuild path — the GTK
+ * API for this is awkward in GJS).
+ *
+ * @param {Gtk.Widget} container
+ */
+function _clearChildren(container) {
+    let child = container.get_first_child();
+    while (child) {
+        const next = child.get_next_sibling();
+        container.remove(child);
+        child = next;
+    }
+}
 
 export default class XmaxPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
@@ -98,150 +115,380 @@ export default class XmaxPreferences extends ExtensionPreferences {
             chargeGroup.add(row);
         }
 
-        // ---- System Stats ----------------------------------------------------
-        // Configurable list of readouts in the Quick Settings System Stats
-        // section: each row has a visibility checkbox and up/down arrows to
-        // reorder. Written directly to config.json so it stays in sync with
-        // the Windows home/dashboard layout. The extension picks up changes
-        // via a file monitor — no shell restart needed.
-        this._buildSystemStats(page);
+        // ---- Layout page (System Stats widget editor) ------------------------
+        // Drag-and-drop editor for the Quick Settings System Stats grid,
+        // written to config.json and picked up live by the running shell.
+        this._buildLayoutPage(window, settings);
 
         // ---- Profiles page ---------------------------------------------------
         this._buildProfilesPage(window);
     }
 
     /**
-     * System Stats group: one Adw.ActionRow per readout with a checkbox
-     * (visibility) and ↑/↓ buttons (display order). The row order in the
-     * group mirrors the display order in the Quick Settings popup.
+     * Layout page: drag-and-drop editor for the System Stats grid in the
+     * Quick Settings panel — a clone of the popup section on the right, the
+     * available (hidden) widgets on the left. Mirrors the Windows home
+     * editor: visible widgets carry an X close button, available widgets a
+     * "+" button, and drags rearrange the shared config.json layout, which
+     * the running shell picks up via its config file monitor.
+     *
+     * @param {Adw.PreferencesWindow} window
+     * @param {Gio.Settings} settings org.xmax.shell settings
      */
-    _buildSystemStats(page) {
-        const statsGroup = new Adw.PreferencesGroup({
-            title: _('System Stats'),
-            description: _('Choose which readouts appear in the System Stats section of the Quick Settings panel and reorder them with the arrows. At least one readout must stay enabled.'),
+    _buildLayoutPage(window, settings) {
+        const page = new Adw.PreferencesPage({
+            title: _('Layout'),
+            icon_name: 'view-grid-symbolic',
         });
-        page.add(statsGroup);
-        this._statsGroup = statsGroup;
+        window.add(page);
 
-        this._statsLabels = {
+        const group = new Adw.PreferencesGroup({
+            title: _('Quick Settings Layout'),
+            description: _('Arrange the System Stats widgets in the Quick Settings panel. Drag widgets to reorder them; drag between the preview and the available list to show or hide them. Changes apply without restarting the shell.'),
+        });
+        page.add(group);
+
+        // Adw groups only accept preference rows — the whole editor lives
+        // in one full-width non-activatable ActionRow.
+        const editorRow = new Adw.ActionRow({activatable: false});
+        editorRow.add_suffix(this._buildLayoutEditor());
+        group.add(editorRow);
+
+        // History window for the usage graph (seconds). A GSettings key, not
+        // config.json: it is shell-side only, and it applies live — no
+        // section rebuild needed.
+        const GRAPH_WINDOWS = [30, 60, 120, 180];
+        const GRAPH_WINDOW_LABELS = [
+            _('30 seconds'), _('1 minute'), _('2 minutes'), _('3 minutes'),
+        ];
+        const windowModel = new Gtk.StringList();
+        for (const label of GRAPH_WINDOW_LABELS)
+            windowModel.append(label);
+        let selected = GRAPH_WINDOWS.indexOf(settings.get_int('qs-graph-window'));
+        if (selected < 0)
+            selected = GRAPH_WINDOWS.length - 1;
+        this._graphWindowRow = new Adw.ComboRow({
+            title: _('Graph history'),
+            subtitle: _('How far back the usage graph in Quick Settings reaches.'),
+            model: windowModel,
+            selected,
+        });
+        this._graphWindowRow.connect('notify::selected', row => {
+            const sec = GRAPH_WINDOWS[row.selected];
+            if (sec !== undefined)
+                settings.set_int('qs-graph-window', sec);
+        });
+        group.add(this._graphWindowRow);
+    }
+
+    /**
+     * The editor itself: available widgets (left) and the Quick Settings
+     * clone (right), both built from tile widgets with corner buttons and
+     * GTK4 drag-and-drop.
+     *
+     * @returns {Gtk.Widget}
+     */
+    _buildLayoutEditor() {
+        this._layoutWidgets = getStatLayout();
+        this._layoutHidden = getHiddenStats();
+
+        this._ensureLayoutCss();
+
+        const box = new Gtk.Box({
+            orientation: Gtk.Orientation.HORIZONTAL,
+            spacing: 18,
+            hexpand: true,
+            margin_top: 6,
+            margin_bottom: 6,
+        });
+
+        // ---- Available (hidden) widgets, with "+" buttons -----------------
+        const avail = new Gtk.Box({
+            orientation: Gtk.Orientation.VERTICAL,
+            spacing: 6,
+            valign: Gtk.Align.START,
+        });
+        avail.append(new Gtk.Label({
+            label: _('Available widgets'),
+            halign: Gtk.Align.START,
+            css_classes: ['heading'],
+        }));
+        this._availList = new Gtk.Box({
+            orientation: Gtk.Orientation.VERTICAL,
+            spacing: 6,
+        });
+        avail.append(this._availList);
+
+        // Dropping a preview widget onto the available side hides it.
+        // DropTarget.new (static call): the positional `new Gtk.DropTarget(...)`
+        // form is silently ignored by this GJS/GTK combo, leaving the target
+        // with no accepted type — every drop is then rejected.
+        const availTarget = Gtk.DropTarget.new(GObject.TYPE_STRING,
+            Gdk.DragAction.MOVE | Gdk.DragAction.COPY);
+        availTarget.connect('drop', (_t, value) => {
+            this._hideWidget(String(value));
+            return true;
+        });
+        avail.add_controller(availTarget);
+        box.append(avail);
+
+        // ---- Quick Settings clone ------------------------------------------
+        const preview = new Gtk.Box({
+            orientation: Gtk.Orientation.VERTICAL,
+            spacing: 6,
+            hexpand: true,
+        });
+        preview.append(new Gtk.Label({
+            label: _('Quick Settings preview'),
+            halign: Gtk.Align.START,
+            css_classes: ['heading'],
+        }));
+        this._previewFrame = new Gtk.Box({
+            orientation: Gtk.Orientation.VERTICAL,
+            spacing: 8,
+            css_classes: ['xmax-preview'],
+        });
+        this._previewGrid = new Gtk.Grid({
+            row_spacing: 6,
+            column_spacing: 6,
+            hexpand: true,
+        });
+        // Dropping onto empty grid space appends the widget at the end.
+        const gridTarget = Gtk.DropTarget.new(GObject.TYPE_STRING,
+            Gdk.DragAction.MOVE | Gdk.DragAction.COPY);
+        gridTarget.connect('drop', (_t, value) => {
+            this._insertWidget(String(value), null, false);
+            return true;
+        });
+        this._previewGrid.add_controller(gridTarget);
+        this._previewFrame.append(this._previewGrid);
+        preview.append(this._previewFrame);
+        box.append(preview);
+
+        this._refreshLayoutEditor();
+        return box;
+    }
+
+    /**
+     * Tile styling (GTK CSS classes for the editor tiles and preview frame).
+     * Registered once per prefs process.
+     */
+    _ensureLayoutCss() {
+        if (this._layoutCss)
+            return;
+        const css = new Gtk.CssProvider();
+        // load_from_string (GTK 4.12+): the old load_from_data took a
+        // (bytes, length) pair that GJS no longer fills in automatically.
+        css.load_from_string(`
+            .xmax-preview { background: alpha(currentColor, 0.05); border-radius: 12px; padding: 12px; }
+            .xmax-tile { background: alpha(currentColor, 0.08); border-radius: 10px; padding: 10px 12px; min-width: 110px; }
+            .xmax-tile.xmax-graph-tile { min-height: 72px; }
+            .xmax-tile-title { font-size: 11px; opacity: 0.7; font-weight: 600; }
+            .xmax-tile-value { font-size: 13px; }
+            .xmax-tile-btn { border-radius: 999px; min-width: 24px; min-height: 24px; padding: 0; margin: 4px; }
+            .xmax-tile-empty { opacity: 0.55; font-style: italic; }
+        `);
+        Gtk.StyleContext.add_provider_for_display(
+            Gdk.Display.get_default(), css,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION);
+        this._layoutCss = css;
+    }
+
+    /**
+     * Rebuilds both panes from this._layoutWidgets / this._layoutHidden,
+     * packing preview tiles with the same first-fit algorithm the shell uses.
+     */
+    _refreshLayoutEditor() {
+        _clearChildren(this._previewGrid);
+        _clearChildren(this._availList);
+
+        const columns = getStatColumns();
+        const specs = this._layoutWidgets.map(w =>
+            w.id === 'graph' ? {...w, always_fill_row: true} : w);
+        const positions = new Map(
+            packWidgets(specs, columns).map(p => [p.id, p]));
+
+        for (const w of this._layoutWidgets) {
+            const pos = positions.get(w.id);
+            if (!pos)
+                continue;
+            const tile = this._createLayoutTile(
+                w.id,
+                'window-close-symbolic',
+                _('Hide this widget'),
+                () => this._hideWidget(w.id),
+                (targetId, draggedId, after) =>
+                    this._onTileDrop(targetId, draggedId, after));
+            this._previewGrid.attach(
+                tile, pos.column, pos.row, pos.col_span, pos.row_span);
+        }
+        if (!this._layoutWidgets.length)
+            this._previewGrid.attach(new Gtk.Label({
+                label: _('No widgets — drag one in from the available list.'),
+                css_classes: ['xmax-tile-empty'],
+                halign: Gtk.Align.CENTER,
+            }), 0, 0, 1, 1);
+
+        for (const id of this._layoutHidden) {
+            const tile = this._createLayoutTile(
+                id,
+                'list-add-symbolic',
+                _('Show this widget'),
+                () => this._showWidget(id),
+                (_targetId, draggedId) => this._hideWidget(draggedId));
+            this._availList.append(tile);
+        }
+        if (!this._layoutHidden.length)
+            this._availList.append(new Gtk.Label({
+                label: _('Nothing hidden.'),
+                halign: Gtk.Align.START,
+                css_classes: ['xmax-tile-empty'],
+            }));
+    }
+
+    /**
+     * One editor tile: a card with title and sample value, a corner button
+     * (X on preview tiles, + on available tiles), and drag support. The
+     * onDrop callback (preview tiles only) receives
+     * (targetId, draggedId, dropAfterTargetCenter).
+     *
+     * @param {string} id widget id
+     * @param {string} cornerIcon icon name for the corner button
+     * @param {string} cornerTooltip
+     * @param {function()} onCornerClick
+     * @param {function(string, string, boolean)} [onDrop]
+     * @returns {Gtk.Overlay}
+     */
+    _createLayoutTile(id, cornerIcon, cornerTooltip, onCornerClick, onDrop) {
+        const tile = new Gtk.Box({
+            orientation: Gtk.Orientation.VERTICAL,
+            spacing: 2,
+            css_classes: ['xmax-tile'],
+            hexpand: id === 'graph',
+        });
+        if (id === 'graph')
+            tile.add_css_class('xmax-graph-tile');
+        tile.append(new Gtk.Label({
+            label: this._widgetLabel(id),
+            halign: Gtk.Align.START,
+            css_classes: ['xmax-tile-title'],
+        }));
+        tile.append(new Gtk.Label({
+            label: id === 'graph' ? 'CPU ● GPU ● RAM' : '62% · 72°C',
+            halign: Gtk.Align.START,
+            css_classes: ['xmax-tile-value'],
+        }));
+
+        const overlay = new Gtk.Overlay();
+        overlay.set_child(tile);
+
+        const cornerBtn = new Gtk.Button({
+            icon_name: cornerIcon,
+            css_classes: ['xmax-tile-btn'],
+            valign: Gtk.Align.START,
+            halign: Gtk.Align.END,
+            tooltip_text: cornerTooltip,
+        });
+        cornerBtn.connect('clicked', onCornerClick);
+        overlay.add_overlay(cornerBtn);
+
+        const drag = new Gtk.DragSource({
+            actions: Gdk.DragAction.MOVE | Gdk.DragAction.COPY,
+        });
+        drag.connect('prepare', (source, x, y) => {
+            source.set_icon(new Gtk.WidgetPaintable({widget: overlay}), x, y);
+            return Gdk.ContentProvider.new_for_value(id);
+        });
+        overlay.add_controller(drag);
+
+        if (onDrop) {
+            const target = Gtk.DropTarget.new(GObject.TYPE_STRING,
+                Gdk.DragAction.MOVE | Gdk.DragAction.COPY);
+            target.connect('drop', (_t, value, x) => {
+                onDrop(id, String(value), x > overlay.get_width() / 2);
+                return true;
+            });
+            overlay.add_controller(target);
+        }
+
+        return overlay;
+    }
+
+    /** Preview tile drop: insert the dragged widget before/after the target. */
+    _onTileDrop(targetId, draggedId, after) {
+        if (draggedId === targetId)
+            return;
+        this._insertWidget(draggedId, targetId, after);
+    }
+
+    /**
+     * Insert a widget (currently in the grid or the available list) at the
+     * position of `anchorId` (before/after it), or at the end when null.
+     *
+     * @param {string} id
+     * @param {string|null} anchorId
+     * @param {boolean} after
+     */
+    _insertWidget(id, anchorId, after) {
+        let spec = this._layoutWidgets.find(w => w.id === id);
+        if (spec) {
+            this._layoutWidgets = this._layoutWidgets.filter(w => w.id !== id);
+        } else {
+            const hi = this._layoutHidden.indexOf(id);
+            if (hi < 0)
+                return;
+            this._layoutHidden.splice(hi, 1);
+            spec = {id, col_span: 1, row_span: 1};
+        }
+
+        let index = this._layoutWidgets.length;
+        if (anchorId !== null) {
+            const anchor = this._layoutWidgets.findIndex(w => w.id === anchorId);
+            if (anchor >= 0)
+                index = anchor + (after ? 1 : 0);
+        }
+        this._layoutWidgets.splice(index, 0, spec);
+        this._saveLayout();
+    }
+
+    /** Move a widget from the preview grid to the available list. */
+    _hideWidget(id) {
+        const idx = this._layoutWidgets.findIndex(w => w.id === id);
+        if (idx < 0)
+            return;
+        const [spec] = this._layoutWidgets.splice(idx, 1);
+        this._layoutHidden.push(spec.id);
+        this._saveLayout();
+    }
+
+    /** Move a widget from the available list to the end of the grid. */
+    _showWidget(id) {
+        const hi = this._layoutHidden.indexOf(id);
+        if (hi < 0)
+            return;
+        this._layoutHidden.splice(hi, 1);
+        this._layoutWidgets.push({id, col_span: 1, row_span: 1});
+        this._saveLayout();
+    }
+
+    /** Persist the layout and re-render the editor. */
+    _saveLayout() {
+        setStatLayout(this._layoutWidgets, this._layoutHidden);
+        this._refreshLayoutEditor();
+    }
+
+    /** Localised label for a widget id. */
+    _widgetLabel(id) {
+        const labels = {
             cpu:    _('CPU'),
             gpu:    _('GPU'),
             ram:    _('RAM'),
             fan:    _('Fan'),
             power:  _('Power'),
-            charge: _('Charge Limit'),
+            charge: _('Charge limit'),
+            graph:  _('Usage graph'),
         };
-
-        // Current state: visible ids in display order, then hidden ones
-        // (those only carry their checkbox state — their position among
-        // hidden ids doesn't matter).
-        const visibleOrder = getStatWidgets();
-        const hiddenIds = Object.keys(this._statsLabels).filter(
-            id => !visibleOrder.includes(id));
-        this._statsList = [
-            ...visibleOrder.map(id => ({id, visible: true})),
-            ...hiddenIds.map(id => ({id, visible: false})),
-        ];
-
-        this._rebuildStatsRows();
-    }
-
-    /**
-     * (Re)creates the stat rows in this._statsList order. Adw.PreferencesGroup
-     * offers no insert-at-index, so reordering rebuilds all rows — six rows,
-     * cheap enough to not matter.
-     */
-    _rebuildStatsRows() {
-        for (const row of this._statsRows ?? [])
-            this._statsGroup.remove(row);
-        this._statsRows = [];
-        this._statsChecks = new Map();
-        this._statsMoveButtons = new Map();
-
-        this._statsList.forEach(stat => {
-            const row = new Adw.ActionRow({title: this._statsLabels[stat.id]});
-
-            const check = new Gtk.CheckButton({valign: Gtk.Align.CENTER});
-            check.active = stat.visible;
-            check.connect('toggled', () => this._toggleStat(stat.id));
-            row.add_prefix(check);
-            row.activatable_widget = check;
-            this._statsChecks.set(stat.id, check);
-
-            const upBtn = new Gtk.Button({
-                icon_name: 'go-up-symbolic',
-                valign: Gtk.Align.CENTER,
-                css_classes: ['flat'],
-                tooltip_text: _('Move up'),
-            });
-            upBtn.connect('clicked', () => this._moveStat(stat.id, -1));
-            row.add_suffix(upBtn);
-
-            const downBtn = new Gtk.Button({
-                icon_name: 'go-down-symbolic',
-                valign: Gtk.Align.CENTER,
-                css_classes: ['flat'],
-                tooltip_text: _('Move down'),
-            });
-            downBtn.connect('clicked', () => this._moveStat(stat.id, +1));
-            row.add_suffix(downBtn);
-            this._statsMoveButtons.set(stat.id, {up: upBtn, down: downBtn});
-
-            this._statsGroup.add(row);
-            this._statsRows.push(row);
-        });
-
-        this._updateStatsMoveButtons();
-    }
-
-    /** Dims ↑ on the first row and ↓ on the last so the layout stays stable. */
-    _updateStatsMoveButtons() {
-        const last = this._statsList.length - 1;
-        this._statsList.forEach((stat, i) => {
-            const btns = this._statsMoveButtons.get(stat.id);
-            if (!btns)
-                return;
-            btns.up.sensitive = i > 0;
-            btns.down.sensitive = i < last;
-        });
-    }
-
-    /** Checkbox handler — flips visibility and saves (min-one enforced). */
-    _toggleStat(id) {
-        const check = this._statsChecks.get(id);
-        const active = check?.active ?? false;
-        const stat = this._statsList.find(s => s.id === id);
-        if (!stat)
-            return;
-
-        // Keep at least one readout visible — revert the checkbox instead.
-        if (!active &&
-            !this._statsList.some(s => s.visible && s.id !== id)) {
-            check.active = true;
-            return;
-        }
-
-        stat.visible = active;
-        this._saveStats();
-    }
-
-    /** ↑/↓ handler — swaps the stat with its neighbour, rebuilds, saves. */
-    _moveStat(id, delta) {
-        const i = this._statsList.findIndex(s => s.id === id);
-        const j = i + delta;
-        if (i < 0 || j < 0 || j >= this._statsList.length)
-            return;
-        const [stat] = this._statsList.splice(i, 1);
-        this._statsList.splice(j, 0, stat);
-        this._rebuildStatsRows();
-        this._saveStats();
-    }
-
-    /** Persists visibility + order to config.json (statsConfig.setStatWidgets). */
-    _saveStats() {
-        const visible = this._statsList.filter(s => s.visible).map(s => s.id);
-        const hidden = this._statsList.filter(s => !s.visible).map(s => s.id);
-        setStatWidgets(visible, hidden);
+        return labels[id] ?? id;
     }
 
     _syncChargeLimitValues(settings) {

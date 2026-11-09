@@ -1,17 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 the-reengineers
-// statsConfig.js — reads the shared config.json home_layout to determine
-// which metrics rows to show in the Quick Settings System Stats section and
-// in what order. The same file also serves the Windows home/dashboard tile
-// page; the GNOME extension mirrors the widget visibility + ordering from
-// home_layout.widgets and home_layout.hidden_widgets.
+// statsConfig.js — reads/writes the shared config.json home_layout that
+// drives the Quick Settings System Stats grid: which stat widgets are
+// visible, in what order, and with which col_span/row_span. The same file
+// also serves the Windows home/dashboard tile page; ids unknown to Windows
+// (fan, charge, graph) are skipped by its widget factory, so the layout
+// round-trips across platforms.
 
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
-// All metric row IDs supported by the System Stats section, in default
-// display order (used when config.json is missing or unreadable).
-const STAT_IDS = ['cpu', 'gpu', 'ram', 'fan', 'power', 'charge'];
+// All widget IDs supported by the System Stats section, in default display
+// order (used when config.json is missing or unreadable). 'graph' is the
+// CPU/GPU/RAM usage graph row; like fan/charge it is not a Windows home tile
+// id, so the Windows frontend ignores it when reading the shared layout.
+const STAT_IDS = ['cpu', 'gpu', 'ram', 'fan', 'power', 'charge', 'graph'];
 const DEFAULT_ORDER = [...STAT_IDS];
 
 /** @param {string[]} a @param {string[]} b @returns {boolean} */
@@ -35,20 +38,35 @@ export function getConfigPath() {
 
 /**
  * Returns the ordered list of stat widget IDs to show, as determined by
- * config.json's home_layout: the order they appear in the widgets array,
- * then any unlisted stat in default order. IDs listed in hidden_widgets
- * are filtered out. GNOME-only rows (fan, charge) share the same array —
- * the Windows frontend skips widget ids it doesn't know, so the ordering
- * round-trips safely across platforms.
+ * config.json's home_layout (see getStatLayout). Convenience wrapper for
+ * consumers that only care about identity/order (indicator.js).
  *
  * When config.json is absent or unreadable the full default order is returned.
  *
  * @returns {string[]} e.g. ['cpu', 'gpu', 'ram', 'fan', 'power', 'charge']
  */
 export function getStatWidgets() {
+    const ids = getStatLayout().map(w => w.id);
+    return ids.length ? ids : DEFAULT_ORDER;
+}
+
+/**
+ * Full layout of the visible stat widgets: the ordered list with each
+ * widget's col_span/row_span taken from config.json's home_layout.widgets
+ * (1×1 for entries without spans). This is the same data the Windows home
+ * grid uses, so spans set on one platform apply on the other (column count
+ * is capped separately — see getStatColumns).
+ *
+ * Unlike getStatWidgets, an explicitly empty layout is returned as-is (the
+ * System Stats section then hides itself); only a missing/unreadable config
+ * falls back to the default layout.
+ *
+ * @returns {{id: string, col_span: number, row_span: number}[]}
+ */
+export function getStatLayout() {
     const cfg = _readConfig();
     if (!cfg)
-        return DEFAULT_ORDER;
+        return DEFAULT_ORDER.map(id => ({id, col_span: 1, row_span: 1}));
 
     const widgets = cfg?.home_layout?.widgets || [];
     const hidden = new Set(cfg?.home_layout?.hidden_widgets || []);
@@ -57,7 +75,11 @@ export function getStatWidgets() {
     const seen = new Set();
     for (const w of widgets) {
         if (STAT_IDS.includes(w.id) && !hidden.has(w.id)) {
-            result.push(w.id);
+            result.push({
+                id: w.id,
+                col_span: Math.max(1, Math.floor(w.col_span) || 1),
+                row_span: Math.max(1, Math.floor(w.row_span) || 1),
+            });
             seen.add(w.id);
         }
     }
@@ -65,25 +87,54 @@ export function getStatWidgets() {
     // Stats not present in the widgets array go last, in default order.
     for (const id of STAT_IDS) {
         if (!seen.has(id) && !hidden.has(id))
-            result.push(id);
+            result.push({id, col_span: 1, row_span: 1});
     }
 
-    return result.length ? result : DEFAULT_ORDER;
+    return result;
 }
 
 /**
- * Writes the visibility and ordering of the given stat IDs into config.json's
- * home_layout.widgets and home_layout.hidden_widgets. All stat IDs (shared
- * and GNOME-only) are reflected in both arrays in the given order; the
- * Windows frontend ignores ids it doesn't know, so reordering fan/charge
- * alongside the shared stats round-trips safely.
+ * IDs of stat widgets the user has hidden (available in the prefs Layout
+ * page palette). A missing config means nothing is hidden.
+ *
+ * @returns {string[]}
+ */
+export function getHiddenStats() {
+    const cfg = _readConfig();
+    if (!cfg)
+        return [];
+    return (cfg?.home_layout?.hidden_widgets || [])
+        .filter(id => STAT_IDS.includes(id));
+}
+
+/**
+ * Column count for the Quick Settings System Stats grid: the shared
+ * home_layout.columns, clamped to 1–3 (the QS popup is narrower than the
+ * Windows home window; three tiles ≈ 120 px each is the comfortable max).
+ *
+ * @returns {number} 1, 2 or 3
+ */
+export function getStatColumns() {
+    const cfg = _readConfig();
+    const columns = Math.floor(cfg?.home_layout?.columns);
+    if (!cfg || !columns || columns < 1)
+        return 3;
+    return Math.min(columns, 3);
+}
+
+/**
+ * Writes the full stat layout — order, spans and visibility — into
+ * config.json's home_layout.widgets and home_layout.hidden_widgets, the
+ * same fields the Windows home grid reads/writes. Non-stat widgets are
+ * preserved untouched; hidden lists are merged for non-stat ids.
  *
  * Creates the config file (with defaults) if it doesn't exist.
  *
- * @param {string[]} visible ordered list of visible stat IDs
- * @param {string[]} hidden list of hidden stat IDs
+ * @param {{id: string, col_span: number, row_span: number}[]} visible
+ * ordered list of visible stat widgets with spans (may be empty)
+ * @param {string[]} hidden ids of hidden stat widgets
  */
-export function setStatWidgets(visible, hidden) {
+export function setStatLayout(visible, hidden) {
     const path = getConfigPath();
     const parent = Gio.File.new_for_path(path).get_parent();
     if (!parent.query_exists(null))
@@ -101,16 +152,11 @@ export function setStatWidgets(visible, hidden) {
     const nonStat = cfg.home_layout.widgets.filter(
         w => !STAT_IDS.includes(w.id));
 
-    // Preserve span metadata the Windows layout may have set on shared
-    // stat widgets (fan/charge are GNOME-only and always 1×1).
-    const statWidgets = visible.map(id => {
-        const existing = cfg.home_layout.widgets.find(w => w.id === id);
-        return {
-            id,
-            col_span: existing?.col_span ?? 1,
-            row_span: existing?.row_span ?? 1,
-        };
-    });
+    const statWidgets = visible.map(w => ({
+        id: w.id,
+        col_span: Math.max(1, Math.floor(w.col_span) || 1),
+        row_span: Math.max(1, Math.floor(w.row_span) || 1),
+    }));
 
     cfg.home_layout.widgets = [...statWidgets, ...nonStat];
 

@@ -35,6 +35,9 @@ fi
 echo "   clean"
 
 echo "== 3. gnome-extensions pack (source dir -> bundle) =="
+# pack copies the schemas dir wholesale — recompile first so a stale
+# gschemas.compiled (older than the .xml) never lands in the bundle.
+glib-compile-schemas "$EXT_DIR/schemas/"
 BUNDLE_DIR="$(mktemp -d)"
 trap 'rm -rf "$BUNDLE_DIR"' EXIT
 gnome-extensions pack --force --out-dir="$BUNDLE_DIR" \
@@ -44,7 +47,10 @@ gnome-extensions pack --force --out-dir="$BUNDLE_DIR" \
     --extra-source=quickSettings.js \
     --extra-source=logo.js \
     --extra-source=metrics.js \
+    --extra-source=graph.js \
     --extra-source=statsConfig.js \
+    --extra-source=gridLayout.js \
+    --extra-source=statsGrid.js \
     --extra-source=icons \
     "$EXT_DIR"
 BUNDLE="$BUNDLE_DIR/xmax@local.shell-extension.zip"

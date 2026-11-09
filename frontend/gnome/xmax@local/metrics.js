@@ -31,6 +31,35 @@ const ROW_PREFIXES = {
 const DEFAULT_ORDER = ['cpu', 'gpu', 'ram', 'fan', 'power', 'charge'];
 
 /**
+ * Localised label prefix for a stat row ID (e.g. 'cpu' → 'CPU'), or null for
+ * non-text rows like 'graph'.
+ *
+ * @param {string} id stat row ID
+ * @returns {string|null}
+ */
+export function metricLabel(id) {
+    const prefix = ROW_PREFIXES[id];
+    return prefix ? _(prefix) : null;
+}
+
+/**
+ * Create one non-reactive readout row ("CPU  ·  --"), or null for non-text
+ * rows like 'graph' (rendered by quickSettings.js instead).
+ *
+ * @param {string} id stat row ID
+ * @returns {PopupMenu.PopupMenuItem|null}
+ */
+export function createMetricsRow(id) {
+    const label = metricLabel(id);
+    if (!label)
+        return null;
+    const item = new PopupMenu.PopupMenuItem(`${label}  ·  --`);
+    item.reactive = false;
+    item.can_focus = false;
+    return item;
+}
+
+/**
  * Add the readout rows to a popup menu in the given order.
  *
  * @param {PopupMenu.PopupMenuBase} menu menu to populate (indicator popup or
@@ -44,15 +73,11 @@ export function addMetricsRows(menu, widgetIds) {
     const rows = new Map();
 
     for (const id of ids) {
-        const prefix = ROW_PREFIXES[id];
-        if (!prefix)
+        const item = createMetricsRow(id);
+        if (!item)
             continue;
-        const item = new PopupMenu.PopupMenuItem(
-            `${_(prefix)}  ·  --`);
-        item.reactive = false;
-        item.can_focus = false;
         menu.addMenuItem(item);
-        rows.set(id, {item, prefix: _(prefix)});
+        rows.set(id, {item, prefix: metricLabel(id)});
     }
 
     return rows;
@@ -111,6 +136,60 @@ export function updateMetricsRows(rows, m) {
         const lim = m.power.charge_limit_pct;
         setValue('charge', lim !== null && lim !== undefined ? pct(lim) : _('disabled'));
     }
+}
+
+/**
+ * Compact value text for one stat widget — the tile (grid cell) form of the
+ * full readout row: title on the tile, this string as the value. Picked to
+ * fit a ~120 px Quick Settings grid cell.
+ *
+ * @param {string} id stat row ID
+ * @param {Object} m parsed metrics object (see protocol.cpp serialize_metrics)
+ * @returns {string} e.g. '62% · 72°C', or '--' without data
+ */
+export function compactValue(id, m) {
+    if (!m)
+        return '--';
+
+    switch (id) {
+    case 'cpu':
+        return _compactTempUtil(m.cpu);
+    case 'gpu':
+        return _compactTempUtil(m.gpu);
+    case 'ram':
+        return typeof m.ram?.load_pct === 'number' ? pct(m.ram.load_pct) : '--';
+    case 'fan':
+        if (!m.fan)
+            return '--';
+        return typeof m.fan.speed_pct === 'number'
+            ? `${m.fan.mode} · ${pct(m.fan.speed_pct)}`
+            : `${m.fan.mode}`;
+    case 'power': {
+        if (!m.power)
+            return '--';
+        return typeof m.power.battery_pct === 'number'
+            ? `${m.power.mode} · ${pct(m.power.battery_pct)}`
+            : `${m.power.mode}`;
+    }
+    case 'charge': {
+        const lim = m.power?.charge_limit_pct;
+        return lim !== null && lim !== undefined ? pct(lim) : _('disabled');
+    }
+    default:
+        return '--';
+    }
+}
+
+/** '62% · 72°C' from a cpu/gpu metrics node. */
+function _compactTempUtil(node) {
+    if (!node)
+        return '--';
+    const parts = [];
+    if (typeof node.util_pct === 'number')
+        parts.push(pct(node.util_pct));
+    else if (node.temp_c !== null && node.temp_c !== undefined)
+        parts.push(temp(node.temp_c));
+    return parts.length ? parts.join(' · ') : '--';
 }
 
 /**

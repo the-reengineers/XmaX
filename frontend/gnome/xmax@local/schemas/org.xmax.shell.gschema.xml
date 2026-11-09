@@ -34,6 +34,13 @@
       <description>Whether the XmaX readouts tile appears in Quick Settings.</description>
     </key>
 
+    <key name="qs-graph-window" type="i">
+      <default>180</default>
+      <range min="30" max="3600"/>
+      <summary>System Stats graph history window</summary>
+      <description>Seconds of history shown in the System Stats usage graph (30, 60, 120 or 180).</description>
+    </key>
+
     <key name="qs-charge-limit" type="b">
       <default>true</default>
       <summary>Charge limit Quick Settings menu</summary>

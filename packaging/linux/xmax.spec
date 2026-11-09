@@ -103,10 +103,16 @@ cp -p frontend/gnome/xmax@local/extension.js \
       frontend/gnome/xmax@local/indicator.js \
       frontend/gnome/xmax@local/quickSettings.js \
       frontend/gnome/xmax@local/shellCompat.js \
+      frontend/gnome/xmax@local/logo.js \
+      frontend/gnome/xmax@local/metrics.js \
       frontend/gnome/xmax@local/dbus.js \
       frontend/gnome/xmax@local/prefs.js \
       frontend/gnome/xmax@local/metadata.json \
       %{buildroot}%{_datadir}/gnome-shell/extensions/xmax@local/
+# Bundled app logo (top-bar indicator icon; synced from shared/assets/logo.svg
+# by `just generate-assets` and committed alongside the source).
+install -D -m 0644 frontend/gnome/xmax@local/icons/logo.svg \
+    %{buildroot}%{_datadir}/gnome-shell/extensions/xmax@local/icons/logo.svg
 install -D -m 0644 frontend/gnome/xmax@local/schemas/org.xmax.shell.gschema.xml \
     %{buildroot}%{_datadir}/glib-2.0/schemas/org.xmax.shell.gschema.xml
 

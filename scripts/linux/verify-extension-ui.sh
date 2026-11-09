@@ -32,16 +32,20 @@ INNER
 cat <<'EOF'
 
 Manual UI checklist (in a live GNOME session, after `gnome-extensions enable xmax@local`):
-  [ ] Top-bar XmaX icon appears
-  [ ] Clicking it opens a popup with CPU / GPU / RAM / Fan / Power / Charge readouts
-  [ ] `gsettings set org.xmax.shell top-bar-icon-shows-temp true` swaps the icon for a °C readout
+  [ ] XmaX logo appears inside the top-bar Quick Settings button (left of the network/battery icons)
+  [ ] XmaX metrics tile is visible in Quick Settings with a live subtitle (e.g. "CPU 62% · GPU 55°C")
+  [ ] Opening the metrics tile shows CPU / GPU / RAM / Fan / Power / Charge readouts
   [ ] Charge-limit QuickMenuToggle is visible in Quick Settings by default (subtitle: 100%)
   [ ] Power-profile control is visible in Quick Settings by default
   [ ] Charge-limit menu shows 85% and 100% options with 100% checked
   [ ] Selecting 85% applies it to hardware and marks it checked
+  [ ] `gsettings set org.xmax.shell qs-show-logo false` removes the logo from the Quick Settings button
+  [ ] `gsettings set org.xmax.shell qs-metrics false` hides the metrics tile
+  [ ] `gsettings set org.xmax.shell show-top-bar-icon true` shows the standalone top-bar logo button
+  [ ] `gsettings set org.xmax.shell top-bar-icon-shows-temp true` swaps that button's logo for a °C readout
   [ ] `gsettings set org.xmax.shell qs-charge-limit false` hides the charge-limit control
   [ ] `gsettings set org.xmax.shell qs-power-profile false` hides the power-profile control
-  [ ] `gsettings set org.xmax.shell show-top-bar-icon false` hides the indicator
+  [ ] `gsettings set org.xmax.shell show-top-bar-icon false` hides the standalone indicator
 EOF
 
 echo

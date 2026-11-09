@@ -63,8 +63,10 @@ export default class XmaxPreferences extends ExtensionPreferences {
         page.add(group);
 
         const toggles = [
-            ['show-top-bar-icon', _('Show top-bar indicator')],
-            ['top-bar-icon-shows-temp', _('Show CPU temperature in the top bar')],
+            ['qs-show-logo', _('XmaX logo in Quick Settings')],
+            ['qs-metrics', _('Metrics readouts Quick Settings menu')],
+            ['show-top-bar-icon', _('Standalone top-bar indicator')],
+            ['top-bar-icon-shows-temp', _('Show CPU temperature in the top-bar indicator')],
             ['qs-charge-limit', _('Charge limit Quick Settings menu')],
             ['qs-power-profile', _('Power profile Quick Settings control')],
         ];

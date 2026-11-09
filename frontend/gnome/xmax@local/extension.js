@@ -22,12 +22,13 @@ export default class XmaxExtension extends Extension {
             },
         });
 
-        this._indicator = new XmaxIndicator(this._settings);
+        this._indicator = new XmaxIndicator(this._settings, this.path);
         Main.panel.addToStatusArea('xmax-indicator', this._indicator);
 
         if (Main.panel.statusArea.quickSettings) {
             this._quickSettings =
-                new XmaxQuickSettingsIndicator(this._client, this._settings);
+                new XmaxQuickSettingsIndicator(this._client, this._settings,
+                    this.path);
             Main.panel.statusArea.quickSettings
                 .addExternalIndicator(this._quickSettings);
         }

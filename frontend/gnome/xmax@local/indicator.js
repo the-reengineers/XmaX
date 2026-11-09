@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 the-reengineers
-// indicator.js — XmaX top-bar indicator (PanelMenu.Button + PopupMenu readouts).
-// The icon is always shown (unless show-top-bar-icon is false); the popup lists
-// live CPU / GPU / RAM / fan / power readouts refreshed from MetricsChanged.
+// indicator.js — XmaX standalone top-bar indicator (PanelMenu.Button +
+// PopupMenu readouts). Disabled by default (show-top-bar-icon): the logo and
+// the readouts normally live in Quick Settings (quickSettings.js) instead.
+// When enabled, the button shows the bundled XmaX logo (or a live °C label)
+// and its popup lists live CPU / GPU / RAM / fan / power readouts refreshed
+// from MetricsChanged.
 
 import GObject from 'gi://GObject';
 import Clutter from 'gi://Clutter';
@@ -10,25 +13,24 @@ import St from 'gi://St';
 
 import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-import {PanelMenu, PopupMenu} from './shellCompat.js';
-
-// Adwaita icon used on the top bar. No dedicated "xmax" icon ships with the
-// shell, so we borrow the system-monitor glyph.
-const INDICATOR_ICON = 'utilities-system-monitor-symbolic';
-
-const pct = n => `${Math.round(n)}%`;
-const temp = n => `${Math.round(n)}°C`;
-const mhz = n => `${Math.round(n)} MHz`;
+import {PanelMenu} from './shellCompat.js';
+import {logoGicon} from './logo.js';
+import {addMetricsRows, updateMetricsRows} from './metrics.js';
 
 export const XmaxIndicator = GObject.registerClass(
 class XmaxIndicator extends PanelMenu.Button {
-    constructor(settings) {
+    /**
+     * @param {Gio.Settings} settings org.xmax.shell settings object
+     * @param {string} extensionDir this extension's install directory
+     * (Extension#path), used to locate the bundled logo
+     */
+    constructor(settings, extensionDir) {
         super(0.0, _('XmaX'), false);
 
         this._settings = settings;
 
         this._icon = new St.Icon({
-            icon_name: INDICATOR_ICON,
+            gicon: logoGicon(extensionDir),
             style_class: 'system-status-icon',
         });
         this.add_child(this._icon);
@@ -41,10 +43,8 @@ class XmaxIndicator extends PanelMenu.Button {
         this._tempLabel.hide();
         this.add_child(this._tempLabel);
 
-        // Readout rows are PopupMenuItems with a static prefix label and a
-        // value we rewrite on each metrics update.
-        this._rows = new Map();
-        this._buildRows();
+        // Readout rows are shared with the Quick Settings metrics tile.
+        this._rows = addMetricsRows(this.menu);
 
         this._settings.connectObject('changed::top-bar-icon-shows-temp',
             () => this._syncTempVisibility(), this);
@@ -53,80 +53,16 @@ class XmaxIndicator extends PanelMenu.Button {
         this._syncVisibility();
     }
 
-    _addRow(id, prefix) {
-        const item = new PopupMenu.PopupMenuItem(`${prefix} --`);
-        item.reactive = false;
-        item.can_focus = false;
-        this.menu.addMenuItem(item);
-        this._rows.set(id, {item, prefix});
-    }
-
-    _buildRows() {
-        this._addRow('cpu', _('CPU'));
-        this._addRow('gpu', _('GPU'));
-        this._addRow('ram', _('RAM'));
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        this._addRow('fan', _('Fan'));
-        this._addRow('power', _('Power'));
-        this._addRow('charge', _('Charge limit'));
-    }
-
-    _setValue(id, value) {
-        const row = this._rows.get(id);
-        if (row)
-            row.item.label.text = `${row.prefix}  ·  ${value}`;
-    }
-
     /** @param {Object} m parsed metrics object (see protocol.cpp serialize_metrics) */
     updateMetrics(m) {
-        if (!m)
-            return;
-
-        if (m.cpu) {
-            const parts = [];
-            if (m.cpu.temp_c !== null && m.cpu.temp_c !== undefined)
-                parts.push(temp(m.cpu.temp_c));
-            if (typeof m.cpu.util_pct === 'number')
-                parts.push(pct(m.cpu.util_pct));
-            if (m.cpu.clock_mhz !== null && m.cpu.clock_mhz !== undefined)
-                parts.push(mhz(m.cpu.clock_mhz));
-            this._setValue('cpu', parts.join('  '));
-        }
-
-        if (m.gpu) {
-            const parts = [];
-            if (m.gpu.temp_c !== null && m.gpu.temp_c !== undefined)
-                parts.push(temp(m.gpu.temp_c));
-            if (typeof m.gpu.util_pct === 'number')
-                parts.push(pct(m.gpu.util_pct));
-            this._setValue('gpu', parts.length ? parts.join('  ') : '--');
-        }
-
-        if (m.ram && typeof m.ram.load_pct === 'number')
-            this._setValue('ram', pct(m.ram.load_pct));
-
-        if (m.fan)
-            this._setValue('fan', `${m.fan.mode}${typeof m.fan.speed_pct === 'number' ? ` · ${pct(m.fan.speed_pct)}` : ''}`);
-
-        if (m.power) {
-            const parts = [m.power.mode];
-            if (typeof m.power.battery_pct === 'number')
-                parts.push(pct(m.power.battery_pct));
-            this._setValue('power', parts.join('  '));
-        }
-
-        if (m.power) {
-            const lim = m.power.charge_limit_pct;
-            this._setValue('charge', lim !== null && lim !== undefined ? pct(lim) : _('disabled'));
-        }
-
-        this._updateTemp(m.cpu?.temp_c ?? null);
+        updateMetricsRows(this._rows, m);
+        this._updateTemp(m?.cpu?.temp_c ?? null);
     }
 
     _updateTemp(celsius) {
         const show = this._settings.get_boolean('top-bar-icon-shows-temp');
         if (show && celsius !== null && celsius !== undefined) {
-            this._tempLabel.text = temp(celsius);
+            this._tempLabel.text = `${Math.round(celsius)}°C`;
             this._icon.hide();
             this._tempLabel.show();
         } else {

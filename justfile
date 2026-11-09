@@ -41,6 +41,7 @@ generate-assets:
     python scripts/generate_icon.py shared/assets/logo.png frontend/windows/Assets/logo.ico
     python scripts/generate_locales.py
     {{ if _os == "windows" { "Copy-Item -Path 'frontend/assets/tabler-icons-300.ttf' -Destination 'frontend/windows/Assets/' -Force" } else { "cp frontend/assets/tabler-icons-300.ttf frontend/windows/Assets/" } }}
+    {{ if _os == "windows" { "New-Item -ItemType Directory -Path 'frontend/gnome/xmax@local/icons' -Force | Out-Null; Copy-Item -Path 'shared/assets/logo.svg' -Destination 'frontend/gnome/xmax@local/icons/logo.svg' -Force" } else { "mkdir -p frontend/gnome/xmax@local/icons && cp shared/assets/logo.svg frontend/gnome/xmax@local/icons/logo.svg" } }}
 
 # Build backend
 build-be: generate-assets

@@ -11,15 +11,27 @@
   <schema id="org.xmax.shell" path="/org/xmax/shell/" gettext-domain="xmax">
 
     <key name="show-top-bar-icon" type="b">
-      <default>true</default>
-      <summary>Show the top-bar indicator</summary>
-      <description>Whether the XmaX indicator icon appears in the top bar.</description>
+      <default>false</default>
+      <summary>Show the standalone top-bar indicator</summary>
+      <description>Whether the standalone XmaX indicator button appears in the top bar. Off by default: the logo and readouts live in Quick Settings instead.</description>
     </key>
 
     <key name="top-bar-icon-shows-temp" type="b">
       <default>true</default>
       <summary>Show CPU temperature in the top bar</summary>
-      <description>Swap the indicator glyph for a live °C label.</description>
+      <description>Swap the standalone indicator's logo for a live °C label.</description>
+    </key>
+
+    <key name="qs-show-logo" type="b">
+      <default>true</default>
+      <summary>Show the XmaX logo in Quick Settings</summary>
+      <description>Whether the XmaX logo appears in the Quick Settings button in the top bar, next to the system status icons.</description>
+    </key>
+
+    <key name="qs-metrics" type="b">
+      <default>true</default>
+      <summary>Metrics readouts Quick Settings menu</summary>
+      <description>Whether the XmaX readouts tile appears in Quick Settings.</description>
     </key>
 
     <key name="qs-charge-limit" type="b">

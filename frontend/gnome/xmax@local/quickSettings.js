@@ -1,17 +1,21 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 the-reengineers
-// quickSettings.js — XmaX Quick Settings controls (charge-limit menu,
-// profile selector). Each control is a tile registered into the Quick Settings
-// panel; it can be hidden via its `qs-*` GSettings flag (default ON). Privileged
-// writes go through XmaxClient to org.xmax.Service. The profile selector
-// replaces GNOME's power-profile control and applies XmaX profiles (fixed
-// TDP+fan, or adaptive PID tuning) instead.
+// quickSettings.js — XmaX Quick Settings presence: the app logo inside the
+// top-bar Quick Settings button (qs-show-logo), a metrics readouts tile
+// (qs-metrics), the charge-limit menu (qs-charge-limit) and the profile
+// selector (qs-power-profile). Each tile is registered into the Quick Settings
+// panel; it can be hidden via its `qs-*` GSettings flag (default ON).
+// Privileged writes go through XmaxClient to org.xmax.Service. The profile
+// selector replaces GNOME's power-profile control and applies XmaX profiles
+// (fixed TDP+fan, or adaptive PID tuning) instead.
 
 import GObject from 'gi://GObject';
 
 import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 import {PopupMenu, QuickSettings} from './shellCompat.js';
+import {logoGicon} from './logo.js';
+import {addMetricsRows, updateMetricsRows, metricsSummary} from './metrics.js';
 
 // Valid charge-limit values (multiples of 5 in 75-100).
 const CHARGE_VALUES = [75, 80, 85, 90, 95, 100];
@@ -31,19 +35,38 @@ const PROFILE_FALLBACK_ICON = 'power-profile-balanced-symbolic';
 
 export const XmaxQuickSettingsIndicator = GObject.registerClass(
 class XmaxQuickSettingsIndicator extends QuickSettings.SystemIndicator {
-    _init(client, settings) {
+    /**
+     * @param {XmaxClient} client D-Bus client (org.xmax.Service)
+     * @param {Gio.Settings} settings org.xmax.shell settings object
+     * @param {string} extensionDir this extension's install directory
+     * (Extension#path), used to locate the bundled logo
+     */
+    _init(client, settings, extensionDir) {
         super._init();
         this._client = client;
         this._settings = settings;
         this._activeProfileId = null;
         this._powerMode = null;
 
+        // The XmaX logo inside the top-bar Quick Settings button, next to the
+        // network / volume / battery icons (addExternalIndicator puts
+        // SystemIndicator children there). The icon itself is not a separate
+        // button — opening the Quick Settings panel is how users reach the
+        // XmaX tiles.
+        this._logo = this._addIndicator();
+        this._logo.gicon = logoGicon(extensionDir);
+        this._settings.connectObject('changed::qs-show-logo',
+            () => this._gateLogo(), this);
+        this._gateLogo();
+
+        this._metrics = this._buildMetricsToggle(extensionDir);
         this._charge = this._buildChargeMenu();
         this._power = this._buildProfileToggle();
 
-        this.quickSettingsItems.push(this._charge, this._power);
+        this.quickSettingsItems.push(this._metrics, this._charge, this._power);
 
         const gates = [
+            ['qs-metrics', this._metrics],
             ['qs-charge-limit', this._charge],
             ['qs-power-profile', this._power],
         ];
@@ -54,6 +77,10 @@ class XmaxQuickSettingsIndicator extends QuickSettings.SystemIndicator {
         }
     }
 
+    _gateLogo() {
+        this._logo.visible = this._settings.get_boolean('qs-show-logo');
+    }
+
     _gate(key, item) {
         item.visible = this._settings.get_boolean(key);
     }
@@ -62,6 +89,7 @@ class XmaxQuickSettingsIndicator extends QuickSettings.SystemIndicator {
      * Called on every MetricsChanged signal (~2 s). When the power source
      * changes (e.g. AC plugged in / unplugged), the profile menu is rebuilt
      * to show only profiles for the active mode and pick the default for it.
+     * The metrics tile subtitle and popup rows are refreshed in passing.
      */
     updateMetrics(m) {
         const mode = m?.power?.mode ?? null;
@@ -69,6 +97,30 @@ class XmaxQuickSettingsIndicator extends QuickSettings.SystemIndicator {
             this._powerMode = mode;
             this._refreshProfileMenu(this._power);
         }
+
+        updateMetricsRows(this._metricsRows, m);
+        this._metricsToggle.subtitle = metricsSummary(m);
+    }
+
+    /**
+     * The metrics tile: a Quick Settings tile with the logo, a compact live
+     * summary as subtitle (e.g. "CPU 62% · GPU 55°C") and a popup listing the
+     * full CPU / GPU / RAM / fan / power / charge readouts — the same rows the
+     * standalone top-bar indicator shows (shared via metrics.js).
+     */
+    _buildMetricsToggle(extensionDir) {
+        const gicon = logoGicon(extensionDir);
+        const toggle = new QuickSettings.QuickMenuToggle({
+            title: _('XmaX'),
+            subtitle: '--',
+            gicon,
+            toggleMode: false,
+            menuButtonAccessibleName: _('Open XmaX readouts'),
+        });
+        this._metricsToggle = toggle;
+        this._metricsRows = addMetricsRows(toggle.menu);
+        toggle.menu.setHeader(gicon, _('XmaX'));
+        return toggle;
     }
 
     _buildChargeMenu() {

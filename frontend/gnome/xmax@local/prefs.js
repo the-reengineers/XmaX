@@ -13,8 +13,8 @@ import Gtk from 'gi://Gtk';
 
 import {ExtensionPreferences, gettext as _} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 import {XmaxClient} from './dbus.js';
-import {packWidgets} from './gridLayout.js';
-import {getHiddenStats, getStatColumns, getStatLayout, setStatLayout} from './statsConfig.js';
+import {defaultSpans, packWidgets, sizeLimits} from './gridLayout.js';
+import {getHiddenStats, getStatColumns, getStatLayout, setStatColumns, setStatLayout} from './statsConfig.js';
 
 /**
  * Remove all children of a Gtk container (the editor rebuild path — the GTK
@@ -154,6 +154,25 @@ export default class XmaxPreferences extends ExtensionPreferences {
         editorRow.add_suffix(this._buildLayoutEditor());
         group.add(editorRow);
 
+        // Column count: 1, 2 or 3 widgets side-by-side. Written to the
+        // shared home_layout.columns (the same field the Windows home grid
+        // reads); the running shell picks it up live via the config monitor.
+        const colModel = new Gtk.StringList();
+        for (const n of [1, 2, 3])
+            colModel.append(`${n}`);
+        this._columnsRow = new Adw.ComboRow({
+            title: _('Columns'),
+            subtitle: _('How many widgets fit side-by-side in the Quick Settings section.'),
+            model: colModel,
+            selected: getStatColumns() - 1,
+        });
+        this._columnsRow.connect('notify::selected', row => {
+            setStatColumns(row.selected + 1);
+            // Re-pack the preview with the new column count.
+            this._refreshLayoutEditor();
+        });
+        group.add(this._columnsRow);
+
         // History window for the usage graph (seconds). A GSettings key, not
         // config.json: it is shell-side only, and it applies live — no
         // section rebuild needed.
@@ -282,7 +301,6 @@ export default class XmaxPreferences extends ExtensionPreferences {
         css.load_from_string(`
             .xmax-preview { background: alpha(currentColor, 0.05); border-radius: 12px; padding: 12px; }
             .xmax-tile { background: alpha(currentColor, 0.08); border-radius: 10px; padding: 10px 12px; min-width: 110px; }
-            .xmax-tile.xmax-graph-tile { min-height: 72px; }
             .xmax-tile-title { font-size: 11px; opacity: 0.7; font-weight: 600; }
             .xmax-tile-value { font-size: 13px; }
             .xmax-tile-btn { border-radius: 999px; min-width: 24px; min-height: 24px; padding: 0; margin: 4px; }
@@ -303,10 +321,8 @@ export default class XmaxPreferences extends ExtensionPreferences {
         _clearChildren(this._availList);
 
         const columns = getStatColumns();
-        const specs = this._layoutWidgets.map(w =>
-            w.id === 'graph' ? {...w, always_fill_row: true} : w);
         const positions = new Map(
-            packWidgets(specs, columns).map(p => [p.id, p]));
+            packWidgets(this._layoutWidgets, columns).map(p => [p.id, p]));
 
         for (const w of this._layoutWidgets) {
             const pos = positions.get(w.id);
@@ -318,7 +334,8 @@ export default class XmaxPreferences extends ExtensionPreferences {
                 _('Hide this widget'),
                 () => this._hideWidget(w.id),
                 (targetId, draggedId, after) =>
-                    this._onTileDrop(targetId, draggedId, after));
+                    this._onTileDrop(targetId, draggedId, after),
+                pos);
             this._previewGrid.attach(
                 tile, pos.column, pos.row, pos.col_span, pos.row_span);
         }
@@ -348,7 +365,10 @@ export default class XmaxPreferences extends ExtensionPreferences {
 
     /**
      * One editor tile: a card with title and sample value, a corner button
-     * (X on preview tiles, + on available tiles), and drag support. The
+     * (X on preview tiles, + on available tiles), and drag support. Preview
+     * tiles of resizable widgets additionally carry the packed position
+     * (`pos`): the tile height tracks its row span and a resize button
+     * (bottom-right, like the Windows editor) opens a size popover. The
      * onDrop callback (preview tiles only) receives
      * (targetId, draggedId, dropAfterTargetCenter).
      *
@@ -357,17 +377,16 @@ export default class XmaxPreferences extends ExtensionPreferences {
      * @param {string} cornerTooltip
      * @param {function()} onCornerClick
      * @param {function(string, string, boolean)} [onDrop]
+     * @param {WidgetPosition|null} [pos] packed position (preview tiles)
      * @returns {Gtk.Overlay}
      */
-    _createLayoutTile(id, cornerIcon, cornerTooltip, onCornerClick, onDrop) {
+    _createLayoutTile(id, cornerIcon, cornerTooltip, onCornerClick, onDrop, pos = null) {
         const tile = new Gtk.Box({
             orientation: Gtk.Orientation.VERTICAL,
             spacing: 2,
             css_classes: ['xmax-tile'],
             hexpand: id === 'graph',
         });
-        if (id === 'graph')
-            tile.add_css_class('xmax-graph-tile');
         tile.append(new Gtk.Label({
             label: this._widgetLabel(id),
             halign: Gtk.Align.START,
@@ -392,6 +411,14 @@ export default class XmaxPreferences extends ExtensionPreferences {
         cornerBtn.connect('clicked', onCornerClick);
         overlay.add_overlay(cornerBtn);
 
+        // Resizable preview tiles: height tracks the row span, and a
+        // bottom-right resize button (as in the Windows editor) opens the
+        // size popover.
+        if (pos && sizeLimits(id)) {
+            tile.height_request = pos.row_span * 54;
+            this._addResizeControl(overlay, id);
+        }
+
         const drag = new Gtk.DragSource({
             actions: Gdk.DragAction.MOVE | Gdk.DragAction.COPY,
         });
@@ -412,6 +439,118 @@ export default class XmaxPreferences extends ExtensionPreferences {
         }
 
         return overlay;
+    }
+
+    /**
+     * Resize control for a resizable preview tile: a bottom-right
+     * MenuButton whose popover offers the allowed column/row spans
+     * (one button per value, the current one highlighted).
+     *
+     * @param {Gtk.Overlay} overlay tile overlay to attach to
+     * @param {string} id widget id (must be in WIDGET_SIZE_LIMITS)
+     */
+    _addResizeControl(overlay, id) {
+        const limits = sizeLimits(id);
+        const columns = getStatColumns();
+        const spec = this._layoutWidgets.find(w => w.id === id);
+        // Effective spans (clamped the same way the packer does) — highlight
+        // the button matching what's actually on screen.
+        const maxCol = Math.min(limits.maxColSpan ?? Infinity, columns);
+        const minCol = Math.min(limits.minColSpan, columns);
+        const currentCol = Math.min(
+            Math.max(Math.floor(spec?.col_span) || limits.defaultColSpan, minCol), maxCol);
+        const currentRow = Math.min(
+            Math.max(Math.floor(spec?.row_span) || limits.defaultRowSpan, limits.minRowSpan),
+            limits.maxRowSpan);
+
+        const box = new Gtk.Box({
+            orientation: Gtk.Orientation.VERTICAL,
+            spacing: 6,
+            margin_top: 6,
+            margin_bottom: 6,
+            margin_start: 6,
+            margin_end: 6,
+        });
+
+        // Width choices — only offered when there is more than one.
+        const widthOptions = [];
+        for (let n = minCol; n <= maxCol; n++)
+            widthOptions.push(n);
+        if (widthOptions.length > 1) {
+            box.append(new Gtk.Label({
+                label: _('Width'),
+                halign: Gtk.Align.START,
+                css_classes: ['heading'],
+            }));
+            const rowBox = new Gtk.Box({
+                orientation: Gtk.Orientation.HORIZONTAL,
+                spacing: 6,
+            });
+            for (const n of widthOptions) {
+                rowBox.append(this._createSizeButton(
+                    n >= columns ? _('Full') : `${n}`,
+                    n === currentCol,
+                    () => this._resizeWidget(id, n, currentRow)));
+            }
+            box.append(rowBox);
+        }
+
+        // Height choices.
+        box.append(new Gtk.Label({
+            label: _('Height'),
+            halign: Gtk.Align.START,
+            css_classes: ['heading'],
+        }));
+        const heightBox = new Gtk.Box({
+            orientation: Gtk.Orientation.HORIZONTAL,
+            spacing: 6,
+        });
+        for (let n = limits.minRowSpan; n <= limits.maxRowSpan; n++) {
+            heightBox.append(this._createSizeButton(
+                `${n}`, n === currentRow,
+                () => this._resizeWidget(id, currentCol, n)));
+        }
+        box.append(heightBox);
+
+        const popover = new Gtk.Popover();
+        popover.set_child(box);
+
+        const resizeBtn = new Gtk.MenuButton({
+            icon_name: 'zoom-fit-best-symbolic',
+            css_classes: ['xmax-tile-btn'],
+            valign: Gtk.Align.END,
+            halign: Gtk.Align.END,
+            tooltip_text: _('Resize'),
+            popover,
+        });
+        overlay.add_overlay(resizeBtn);
+    }
+
+    /**
+     * One size-choice button for the resize popover.
+     *
+     * @param {string} label
+     * @param {boolean} isCurrent
+     * @param {function()} onClick
+     * @returns {Gtk.Button}
+     */
+    _createSizeButton(label, isCurrent, onClick) {
+        const btn = new Gtk.Button({
+            label,
+            css_classes: [isCurrent ? 'suggested-action' : 'flat'],
+        });
+        btn.connect('clicked', onClick);
+        return btn;
+    }
+
+    /** Resize a widget: update its spans in the layout and save. */
+    _resizeWidget(id, colSpan, rowSpan) {
+        const spec = this._layoutWidgets.find(w => w.id === id);
+        if (!spec)
+            return;
+        spec.col_span = colSpan;
+        spec.row_span = rowSpan;
+        this._saveLayout();
     }
 
     /** Preview tile drop: insert the dragged widget before/after the target. */
@@ -438,7 +577,7 @@ export default class XmaxPreferences extends ExtensionPreferences {
             if (hi < 0)
                 return;
             this._layoutHidden.splice(hi, 1);
-            spec = {id, col_span: 1, row_span: 1};
+            spec = {id, ...defaultSpans(id)};
         }
 
         let index = this._layoutWidgets.length;
@@ -467,7 +606,7 @@ export default class XmaxPreferences extends ExtensionPreferences {
         if (hi < 0)
             return;
         this._layoutHidden.splice(hi, 1);
-        this._layoutWidgets.push({id, col_span: 1, row_span: 1});
+        this._layoutWidgets.push({id, ...defaultSpans(id)});
         this._saveLayout();
     }
 

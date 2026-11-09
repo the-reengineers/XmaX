@@ -37,6 +37,9 @@ Manual UI checklist (in a live GNOME session, after `gnome-extensions enable xma
   [ ] A 3-line usage graph (CPU/GPU/RAM, %) appears in the System Stats section spanning its row, titled "Usage (%)" with a color legend
   [ ] The graph is full of history when the panel opens (data collected while it was closed), newest sample on the right
   [ ] Graph history window is configurable: prefs → Layout → Graph history (30 s / 1 min / 2 min / 3 min), applies live
+  [ ] Column count is configurable: prefs → Layout → Columns (1 / 2 / 3), the QS grid re-flows on the next panel open
+  [ ] The graph tile in the preview has a resize button (bottom-right) offering width (2 / Full) and height (2 / 3 / 4 rows); default full × 3
+  [ ] Resizing the graph is reflected in the Quick Settings panel (graph height tracks its row span) without re-login
   [ ] prefs → Layout: "Quick Settings preview" on the right mirrors the popup's System Stats grid; "Available widgets" list on the left shows hidden widgets
   [ ] Preview tiles have an X close button (top-right) that hides the widget; available tiles have a "+" button that shows it
   [ ] Dragging a preview tile onto another reorders it (drop before/after the target's center); dragging onto the available list hides it

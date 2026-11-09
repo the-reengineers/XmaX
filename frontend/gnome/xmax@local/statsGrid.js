@@ -2,9 +2,10 @@
 // Copyright (C) 2026 the-reengineers
 // statsGrid.js — the Quick Settings System Stats section as a tile grid:
 // compact stat tiles (title + value) laid out side-by-side by the shared
-// first-fit packer (gridLayout.js), with the usage graph spanning its row.
-// Mirrors the Windows home grid: same config data (order + col_span/row_span),
-// same packing algorithm, capped at 3 columns for the popup's width.
+// first-fit packer (gridLayout.js), with the resizable usage graph (its
+// height tracks its row span). Mirrors the Windows home grid: same config
+// data (order + col_span/row_span), same packing algorithm, capped at 3
+// columns for the popup's width.
 
 import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
@@ -94,9 +95,9 @@ class MetricsGridItem extends PopupMenu.PopupBaseMenuItem {
 
         this._columns = columns;
 
-        // The graph spans the full row regardless of its configured span.
-        this._packSpecs = widgets.map(w =>
-            w.id === 'graph' ? {...w, always_fill_row: true} : w);
+        // Spans are clamped to per-widget size limits at pack time
+        // (gridLayout.WIDGET_SIZE_LIMITS) — the graph is the resizable one.
+        this._packSpecs = widgets;
         const positions = packWidgets(this._packSpecs, columns);
 
         const layout = new Clutter.GridLayout();
@@ -127,6 +128,9 @@ class MetricsGridItem extends PopupMenu.PopupBaseMenuItem {
                     ],
                     history,
                     windowSeconds: settings.get_int('qs-graph-window'),
+                    // Graph height tracks the row span: ~34 px of drawing
+                    // area per grid row (2 rows ≈ 68 px … 4 rows ≈ 136 px).
+                    height: pos.row_span * 34,
                 });
                 settings.connectObject('changed::qs-graph-window',
                     () => {

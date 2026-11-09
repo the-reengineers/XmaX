@@ -10,6 +10,8 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
+import {defaultSpans, sizeLimits} from './gridLayout.js';
+
 // All widget IDs supported by the System Stats section, in default display
 // order (used when config.json is missing or unreadable). 'graph' is the
 // CPU/GPU/RAM usage graph row; like fan/charge it is not a Windows home tile
@@ -66,7 +68,7 @@ export function getStatWidgets() {
 export function getStatLayout() {
     const cfg = _readConfig();
     if (!cfg)
-        return DEFAULT_ORDER.map(id => ({id, col_span: 1, row_span: 1}));
+        return DEFAULT_ORDER.map(id => ({id, ...defaultSpans(id)}));
 
     const widgets = cfg?.home_layout?.widgets || [];
     const hidden = new Set(cfg?.home_layout?.hidden_widgets || []);
@@ -75,11 +77,19 @@ export function getStatLayout() {
     const seen = new Set();
     for (const w of widgets) {
         if (STAT_IDS.includes(w.id) && !hidden.has(w.id)) {
-            result.push({
-                id: w.id,
-                col_span: Math.max(1, Math.floor(w.col_span) || 1),
-                row_span: Math.max(1, Math.floor(w.row_span) || 1),
-            });
+            // Resizable widgets stored with the old editor's 1×1 placeholder
+            // (below any size limit) were never explicitly sized — give them
+            // the size-limit defaults instead of clamping up to the minimum.
+            const stale1x1 = sizeLimits(w.id) &&
+                (Math.floor(w.col_span) || 1) <= 1 &&
+                (Math.floor(w.row_span) || 1) <= 1;
+            result.push(stale1x1
+                ? {id: w.id, ...defaultSpans(w.id)}
+                : {
+                    id: w.id,
+                    col_span: Math.max(1, Math.floor(w.col_span) || 1),
+                    row_span: Math.max(1, Math.floor(w.row_span) || 1),
+                });
             seen.add(w.id);
         }
     }
@@ -87,7 +97,7 @@ export function getStatLayout() {
     // Stats not present in the widgets array go last, in default order.
     for (const id of STAT_IDS) {
         if (!seen.has(id) && !hidden.has(id))
-            result.push({id, col_span: 1, row_span: 1});
+            result.push({id, ...defaultSpans(id)});
     }
 
     return result;
@@ -116,10 +126,37 @@ export function getHiddenStats() {
  */
 export function getStatColumns() {
     const cfg = _readConfig();
-    const columns = Math.floor(cfg?.home_layout?.columns);
-    if (!cfg || !columns || columns < 1)
+    if (!cfg)
         return 3;
-    return Math.min(columns, 3);
+    return _clampColumns(cfg?.home_layout?.columns);
+}
+
+/**
+ * Writes the column count into config.json's home_layout.columns (the same
+ * field the Windows home grid reads), clamped to 1–3. Creates the config
+ * file (with defaults) if it doesn't exist.
+ *
+ * @param {number} columns desired column count
+ */
+export function setStatColumns(columns) {
+    const path = getConfigPath();
+    const parent = Gio.File.new_for_path(path).get_parent();
+    if (!parent.query_exists(null))
+        parent.make_directory_with_parents(null);
+
+    const cfg = _readConfig() || _defaultConfig();
+    if (!cfg.home_layout)
+        cfg.home_layout = {};
+    cfg.home_layout.columns = _clampColumns(columns);
+    _writeConfig(path, cfg);
+}
+
+/** Clamp a column count to 1–3; invalid/missing values become 3. */
+function _clampColumns(columns) {
+    const n = Math.floor(Number(columns));
+    if (!n || n < 1)
+        return 3;
+    return Math.min(n, 3);
 }
 
 /**
@@ -223,6 +260,9 @@ function _defaultConfig() {
                 {id: 'gpu', col_span: 1, row_span: 1},
                 {id: 'ram', col_span: 1, row_span: 1},
                 {id: 'power', col_span: 1, row_span: 1},
+                // Graph default: full row width (3 = the max column count),
+                // 3 rows tall (clamped at pack time when columns differ).
+                {id: 'graph', col_span: 3, row_span: 3},
             ],
             hidden_widgets: [],
             columns: 3,

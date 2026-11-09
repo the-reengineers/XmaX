@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 the-reengineers
 // quickSettings.js — XmaX Quick Settings presence: the app logo inside the
-// top-bar Quick Settings button (qs-show-logo), a metrics readouts tile
-// (qs-metrics), the charge-limit menu (qs-charge-limit) and the profile
-// selector (qs-power-profile). Each tile is registered into the Quick Settings
-// panel; it can be hidden via its `qs-*` GSettings flag (default ON).
-// Privileged writes go through XmaxClient to org.xmax.Service. The profile
-// selector replaces GNOME's power-profile control and applies XmaX profiles
-// (fixed TDP+fan, or adaptive PID tuning) instead.
+// top-bar Quick Settings button (qs-show-logo), a persistent metrics section
+// in the QS popup (qs-metrics), the charge-limit menu (qs-charge-limit) and
+// the profile selector (qs-power-profile). Privileged writes go through
+// XmaxClient to org.xmax.Service. The profile selector replaces GNOME's
+// power-profile control and applies XmaX profiles (fixed TDP+fan, or adaptive
+// PID tuning) instead.
 
 import GObject from 'gi://GObject';
 
@@ -15,7 +14,7 @@ import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js'
 
 import {PopupMenu, QuickSettings} from './shellCompat.js';
 import {logoGicon} from './logo.js';
-import {addMetricsRows, updateMetricsRows, metricsSummary} from './metrics.js';
+import {addMetricsRows, updateMetricsRows} from './metrics.js';
 
 // Valid charge-limit values (multiples of 5 in 75-100).
 const CHARGE_VALUES = [75, 80, 85, 90, 95, 100];
@@ -59,14 +58,21 @@ class XmaxQuickSettingsIndicator extends QuickSettings.SystemIndicator {
             () => this._gateLogo(), this);
         this._gateLogo();
 
-        this._metrics = this._buildMetricsToggle(extensionDir);
+        // Persistent metrics section added to the QS popup box (not the tile
+        // grid) — always visible when the panel opens, no click required.
+        this._metricsSection = this._buildMetricsSection();
+
+        this._settings.connectObject('changed::qs-metrics',
+            () => this._metricsSection.visible =
+                this._settings.get_boolean('qs-metrics'), this);
+        this._metricsSection.visible = this._settings.get_boolean('qs-metrics');
+
         this._charge = this._buildChargeMenu();
         this._power = this._buildProfileToggle();
 
-        this.quickSettingsItems.push(this._metrics, this._charge, this._power);
+        this.quickSettingsItems.push(this._charge, this._power);
 
         const gates = [
-            ['qs-metrics', this._metrics],
             ['qs-charge-limit', this._charge],
             ['qs-power-profile', this._power],
         ];
@@ -76,6 +82,9 @@ class XmaxQuickSettingsIndicator extends QuickSettings.SystemIndicator {
             this._gate(key, item);
         }
     }
+
+    /** @returns {PopupMenu.PopupMenuSection} persistent metrics section */
+    get metricsSection() { return this._metricsSection; }
 
     _gateLogo() {
         this._logo.visible = this._settings.get_boolean('qs-show-logo');
@@ -99,28 +108,19 @@ class XmaxQuickSettingsIndicator extends QuickSettings.SystemIndicator {
         }
 
         updateMetricsRows(this._metricsRows, m);
-        this._metricsToggle.subtitle = metricsSummary(m);
     }
 
     /**
-     * The metrics tile: a Quick Settings tile with the logo, a compact live
-     * summary as subtitle (e.g. "CPU 62% · GPU 55°C") and a popup listing the
-     * full CPU / GPU / RAM / fan / power / charge readouts — the same rows the
-     * standalone top-bar indicator shows (shared via metrics.js).
+     * Persistent metrics section in the Quick Settings popup: a labeled
+     * separator (section header) followed by the live readout rows. No
+     * clicking — the stats are visible whenever the panel is open.
      */
-    _buildMetricsToggle(extensionDir) {
-        const gicon = logoGicon(extensionDir);
-        const toggle = new QuickSettings.QuickMenuToggle({
-            title: _('XmaX'),
-            subtitle: '--',
-            gicon,
-            toggleMode: false,
-            menuButtonAccessibleName: _('Open XmaX readouts'),
-        });
-        this._metricsToggle = toggle;
-        this._metricsRows = addMetricsRows(toggle.menu);
-        toggle.menu.setHeader(gicon, _('XmaX'));
-        return toggle;
+    _buildMetricsSection() {
+        const section = new PopupMenu.PopupMenuSection();
+        section.addMenuItem(
+            new PopupMenu.PopupSeparatorMenuItem(_('XmaX')));
+        this._metricsRows = addMetricsRows(section);
+        return section;
     }
 
     _buildChargeMenu() {
@@ -363,6 +363,11 @@ class XmaxQuickSettingsIndicator extends QuickSettings.SystemIndicator {
         for (const item of this.quickSettingsItems)
             item.destroy();
         this.quickSettingsItems = [];
+
+        // The metrics section lives in the QS popup box (not the grid) — also
+        // not a child of this SystemIndicator.
+        this._metricsSection?.destroy();
+        this._metricsSection = null;
 
         super.destroy();
     }

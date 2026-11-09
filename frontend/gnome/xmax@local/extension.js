@@ -31,6 +31,11 @@ export default class XmaxExtension extends Extension {
                     this.path);
             Main.panel.statusArea.quickSettings
                 .addExternalIndicator(this._quickSettings);
+
+            // Persistent metrics section in the QS popup (below the tile
+            // grid) — always visible when the panel opens, no tile needed.
+            Main.panel.statusArea.quickSettings.menu
+                .addMenuItem(this._quickSettings.metricsSection);
         }
 
         this._client.init();

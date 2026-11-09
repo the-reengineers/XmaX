@@ -13,6 +13,7 @@ import Gtk from 'gi://Gtk';
 
 import {ExtensionPreferences, gettext as _} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 import {XmaxClient} from './dbus.js';
+import {chartDef, chartIds, LEGEND_SYMBOLS, seriesIdsFor, SERIES} from './chartSeries.js';
 import {defaultSpans, packWidgets, sizeLimits} from './gridLayout.js';
 import {getHiddenStats, getStatColumns, getStatLayout, setStatColumns, setStatLayout} from './statsConfig.js';
 
@@ -198,6 +199,90 @@ export default class XmaxPreferences extends ExtensionPreferences {
                 settings.set_int('qs-graph-window', sec);
         });
         group.add(this._graphWindowRow);
+
+        // ---- Usage graph chart/series -------------------------------------
+        this._chartGroup = new Adw.PreferencesGroup({
+            title: _('Usage graph'),
+            description: _('Choose what the Quick Settings usage graph charts and which lines it draws. All lines use the system accent color; the symbol shows the line style.'),
+        });
+        page.add(this._chartGroup);
+        this._chartSettings = settings;
+
+        const chartModel = new Gtk.StringList();
+        for (const id of chartIds())
+            chartModel.append(this._chartLabel(id));
+        let chartSel = chartIds().indexOf(settings.get_string('graph-chart'));
+        if (chartSel < 0)
+            chartSel = 0;
+        this._chartRow = new Adw.ComboRow({
+            title: _('Chart'),
+            model: chartModel,
+            selected: chartSel,
+        });
+        this._chartRow.connect('notify::selected', row => {
+            const id = chartIds()[row.selected];
+            settings.set_string('graph-chart', id);
+            // Switching charts resets the series to the new chart's
+            // defaults (a series list only makes sense within one chart).
+            settings.set_strv('graph-series', chartDef(id).defaultSeries);
+            this._rebuildSeriesRows();
+        });
+        this._chartGroup.add(this._chartRow);
+
+        this._rebuildSeriesRows();
+    }
+
+    /** "Temperature (°C)"-style label for a chart id. */
+    _chartLabel(id) {
+        const chart = chartDef(id);
+        return `${_(chart.title)} (${chart.unit})`;
+    }
+
+    /**
+     * (Re)builds the series rows for the selected chart: one row per
+     * available series with an enabled checkbox. The title is prefixed
+     * with the legend symbol for that series' line style (all lines draw
+     * in the system accent color). Changing a row writes GSettings
+     * immediately — the running shell rebuilds the graph section on those
+     * keys.
+     */
+    _rebuildSeriesRows() {
+        const settings = this._chartSettings;
+        const chartId = settings.get_string('graph-chart');
+        const enabled = new Set(settings.get_strv('graph-series'));
+
+        for (const row of this._seriesRows ?? [])
+            this._chartGroup.remove(row);
+        this._seriesRows = [];
+
+        for (const sid of seriesIdsFor(chartId)) {
+            const series = SERIES[sid];
+            const row = new Adw.ActionRow({
+                title: `${LEGEND_SYMBOLS[series.style] ?? '●'} ${_(series.label)}`,
+            });
+
+            const check = new Gtk.CheckButton({valign: Gtk.Align.CENTER});
+            check.active = enabled.has(sid);
+            check.connect('toggled', () => {
+                const next = new Set(settings.get_strv('graph-series'));
+                if (check.active) {
+                    next.add(sid);
+                } else {
+                    // Keep at least one series — revert the checkbox.
+                    if (next.size <= 1) {
+                        check.active = true;
+                        return;
+                    }
+                    next.delete(sid);
+                }
+                settings.set_strv('graph-series', [...next]);
+            });
+            row.add_prefix(check);
+            row.activatable_widget = check;
+
+            this._chartGroup.add(row);
+            this._seriesRows.push(row);
+        }
     }
 
     /**
@@ -393,7 +478,9 @@ export default class XmaxPreferences extends ExtensionPreferences {
             css_classes: ['xmax-tile-title'],
         }));
         tile.append(new Gtk.Label({
-            label: id === 'graph' ? 'CPU ● GPU ● RAM' : '62% · 72°C',
+            // Mirrors the graph legend: symbol per line style (solid CPU,
+            // dotted GPU, filled RAM) — see chartSeries.LEGEND_SYMBOLS.
+            label: id === 'graph' ? '○ CPU  ◌ GPU  ● RAM' : '62% · 72°C',
             halign: Gtk.Align.START,
             css_classes: ['xmax-tile-value'],
         }));

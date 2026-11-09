@@ -41,6 +41,18 @@
       <description>Seconds of history shown in the System Stats usage graph (30, 60, 120 or 180).</description>
     </key>
 
+    <key name="graph-chart" type="s">
+      <default>'usage'</default>
+      <summary>Usage graph chart type</summary>
+      <description>What the System Stats usage graph charts: usage, temp, clock, memory or power.</description>
+    </key>
+
+    <key name="graph-series" type="as">
+      <default>['cpu_util', 'gpu_util', 'ram_util']</default>
+      <summary>Usage graph series</summary>
+      <description>Series ids drawn in the usage graph's chart (see chartSeries.js).</description>
+    </key>
+
     <key name="qs-charge-limit" type="b">
       <default>true</default>
       <summary>Charge limit Quick Settings menu</summary>

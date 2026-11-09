@@ -106,6 +106,7 @@ cp -p frontend/gnome/xmax@local/extension.js \
       frontend/gnome/xmax@local/logo.js \
       frontend/gnome/xmax@local/metrics.js \
       frontend/gnome/xmax@local/graph.js \
+      frontend/gnome/xmax@local/chartSeries.js \
       frontend/gnome/xmax@local/statsConfig.js \
       frontend/gnome/xmax@local/gridLayout.js \
       frontend/gnome/xmax@local/statsGrid.js \

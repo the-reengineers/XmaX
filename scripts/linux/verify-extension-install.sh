@@ -48,6 +48,7 @@ gnome-extensions pack --force --out-dir="$BUNDLE_DIR" \
     --extra-source=logo.js \
     --extra-source=metrics.js \
     --extra-source=graph.js \
+    --extra-source=chartSeries.js \
     --extra-source=statsConfig.js \
     --extra-source=gridLayout.js \
     --extra-source=statsGrid.js \

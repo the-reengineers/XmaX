@@ -9,6 +9,7 @@
 // PID tuning) instead.
 
 import GObject from 'gi://GObject';
+import St from 'gi://St';
 
 import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 
@@ -17,6 +18,7 @@ import {logoGicon} from './logo.js';
 import {GraphHistory} from './graph.js';
 import {MetricsGridItem} from './statsGrid.js';
 import {getStatColumns, getStatLayout} from './statsConfig.js';
+import {sampleSeries} from './chartSeries.js';
 
 // Valid charge-limit values (multiples of 5 in 75-100).
 const CHARGE_VALUES = [75, 80, 85, 90, 95, 100];
@@ -123,11 +125,7 @@ class XmaxQuickSettingsIndicator extends QuickSettings.SystemIndicator {
 
         // Feed the usage-graph history (nulls are skipped per-series at
         // draw time) and refresh the graph. Cheap when the panel is closed.
-        this._history.push(Date.now(), {
-            cpu: typeof m?.cpu?.util_pct === 'number' ? m.cpu.util_pct : null,
-            gpu: typeof m?.gpu?.util_pct === 'number' ? m.gpu.util_pct : null,
-            ram: typeof m?.ram?.load_pct === 'number' ? m.ram.load_pct : null,
-        });
+        this._history.push(Date.now(), sampleSeries(m));
         this._gridItem?.graph?.queue_repaint();
     }
 
@@ -143,6 +141,17 @@ class XmaxQuickSettingsIndicator extends QuickSettings.SystemIndicator {
         this._gridItem = null;
         this._sectionSignature = null;
         this._repopulateMetricsSection(section);
+
+        // Chart/series changes (GSettings, set by the prefs Layout page)
+        // rebuild the section — the graph's series list is baked into the
+        // GraphBox. The history survives (owned here). The accent color is
+        // tracked live through St.Settings (dconf appearance accent-color).
+        for (const key of ['graph-chart', 'graph-series'])
+            this._settings.connectObject(`changed::${key}`,
+                () => this.reloadMetricsSection(), this);
+        St.Settings.get().connectObject('notify::accent-color',
+            () => this.reloadMetricsSection(), this);
+
         return section;
     }
 
@@ -155,16 +164,25 @@ class XmaxQuickSettingsIndicator extends QuickSettings.SystemIndicator {
     _repopulateMetricsSection(section) {
         const widgets = getStatLayout();
         const columns = getStatColumns();
-        this._sectionSignature = JSON.stringify([widgets, columns]);
+        this._sectionSignature = JSON.stringify([
+            widgets, columns, this._graphSettingsSnapshot()]);
 
         if (widgets.length) {
-            section.addMenuItem(
-                new PopupMenu.PopupSeparatorMenuItem(_('System Stats')));
+            const separator =
+                new PopupMenu.PopupSeparatorMenuItem(_('System Stats'));
+            // St 18 greys out non-reactive widgets (:insensitive → dim
+            // text). The section header is informational, not disabled:
+            // flip reactive after construction to get the standard primary
+            // text color. track_hover stays off (set from the constructor's
+            // reactive: false), so there is no hover highlight.
+            separator.reactive = true;
+            section.addMenuItem(separator);
             this._gridItem = new MetricsGridItem({
                 widgets,
                 columns,
                 history: this._history,
                 settings: this._settings,
+                accentColor: this._accentHex(),
             });
             section.addMenuItem(this._gridItem);
             // Replay the latest snapshot so new tiles are populated at once.
@@ -182,12 +200,45 @@ class XmaxQuickSettingsIndicator extends QuickSettings.SystemIndicator {
      * history survives the rebuild (owned here, not by the grid item).
      */
     reloadMetricsSection() {
-        const signature = JSON.stringify([getStatLayout(), getStatColumns()]);
+        const signature = JSON.stringify([
+            getStatLayout(), getStatColumns(), this._graphSettingsSnapshot()]);
         if (signature === this._sectionSignature)
             return;
 
         this._metricsSection.removeAll();
         this._repopulateMetricsSection(this._metricsSection);
+    }
+
+    /** Current chart/series/accent settings — part of the section signature. */
+    _graphSettingsSnapshot() {
+        return [
+            this._settings.get_string('graph-chart'),
+            this._settings.get_strv('graph-series'),
+            this._accentHex(),
+        ];
+    }
+
+    /**
+     * The live system accent color as '#rrggbb' — the line color for every
+     * chart series. Resolved straight from St's theme machinery
+     * (st_theme_context_get_accent_color), i.e. exactly the value
+     * -st-accent-color expands to in the running theme — no palette
+     * duplicated here to drift from the system. fg is the accent's
+     * contrasting foreground color (unused). Returns '' (neutral graph
+     * fallback) if the API ever moves.
+     *
+     * @returns {string}
+     */
+    _accentHex() {
+        try {
+            const [bg] = St.ThemeContext.get_for_stage(global.stage)
+                .get_accent_color();
+            const hex = v => v.toString(16).padStart(2, '0');
+            return `#${hex(bg.red)}${hex(bg.green)}${hex(bg.blue)}`;
+        } catch (e) {
+            console.warn(`XmaX: accent color unavailable: ${e.message}`);
+            return '';
+        }
     }
 
     _buildChargeMenu() {

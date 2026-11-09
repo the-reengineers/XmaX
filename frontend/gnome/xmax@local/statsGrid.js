@@ -17,6 +17,7 @@ import {PopupMenu} from './shellCompat.js';
 import {packWidgets} from './gridLayout.js';
 import {compactValue, metricLabel} from './metrics.js';
 import {GraphBox} from './graph.js';
+import {buildChartSeries, chartDef} from './chartSeries.js';
 
 // One tile: small dim title, value below. Sized to sit in ~120 px cells.
 const TILE_STYLE = 'spacing: 2px; padding: 8px 12px;';
@@ -78,15 +79,22 @@ class MetricsGridItem extends PopupMenu.PopupBaseMenuItem {
      * @param {GraphHistory} opts.history usage-graph data source
      * @param {Gio.Settings} opts.settings org.xmax.shell settings, for the
      * graph's live history-window key
-     * @param {string} opts.extensionDir unused, reserved
+     * @param {string} [opts.accentColor] line color for every chart series
+     * ('#rrggbb', the system accent color — resolved by quickSettings.js)
      */
-    _init({widgets, columns, history, settings}) {
+    _init({widgets, columns, history, settings, accentColor}) {
+        // St 18 marks any non-reactive widget with the :insensitive
+        // pseudo-class, which the theme greys out (dim text). This item is
+        // informational, not disabled, so keep it reactive — the stats are
+        // still not clickable (activate: false, disabled ClickGesture) and
+        // track_hover is turned off so the block gets no hover highlight.
         super._init({
-            reactive: false,
+            reactive: true,
             activate: false,
             hover: false,
             can_focus: false,
         });
+        this.track_hover = false;
         // PopupBaseMenuItem carries the theme's .popup-menu-item padding,
         // which insets the grid more than the Quick Settings controls above
         // it. Zero it so the section spans the popup's full content width —
@@ -118,14 +126,21 @@ class MetricsGridItem extends PopupMenu.PopupBaseMenuItem {
                 continue;
 
             if (spec.id === 'graph') {
+                // Chart/series come from GSettings (graph-chart,
+                // graph-series — see chartSeries.js). Series changes
+                // rebuild this whole item (quickSettings reloads on those
+                // keys); qs-graph-window applies live. Every line draws in
+                // the system accent color.
+                const chartId = settings.get_string('graph-chart');
+                const chart = chartDef(chartId);
                 this.graphBox = new GraphBox({
-                    title: _('Usage'),
-                    unit: '%',
-                    series: [
-                        {id: 'cpu', label: _('CPU'), color: '#3584e4'},
-                        {id: 'gpu', label: _('GPU'), color: '#9141ac'},
-                        {id: 'ram', label: _('RAM'), color: '#33d17a'},
-                    ],
+                    title: _(chart.title),
+                    unit: chart.unit,
+                    series: buildChartSeries(
+                        chartId,
+                        settings.get_strv('graph-series'),
+                    ).map(s => ({...s, label: _(s.label)})),
+                    color: accentColor,
                     history,
                     windowSeconds: settings.get_int('qs-graph-window'),
                     // Graph height tracks the row span: ~34 px of drawing

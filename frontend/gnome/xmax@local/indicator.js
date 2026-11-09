@@ -16,6 +16,7 @@ import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js'
 import {PanelMenu} from './shellCompat.js';
 import {logoGicon} from './logo.js';
 import {addMetricsRows, updateMetricsRows} from './metrics.js';
+import {arraysEqual, getStatWidgets} from './statsConfig.js';
 
 export const XmaxIndicator = GObject.registerClass(
 class XmaxIndicator extends PanelMenu.Button {
@@ -43,8 +44,10 @@ class XmaxIndicator extends PanelMenu.Button {
         this._tempLabel.hide();
         this.add_child(this._tempLabel);
 
-        // Readout rows are shared with the Quick Settings metrics tile.
-        this._rows = addMetricsRows(this.menu);
+        // Readout rows are driven by config.json home_layout, same as the
+        // Quick Settings System Stats section (shared via metrics.js).
+        this._rows = addMetricsRows(this.menu, getStatWidgets());
+        this._stats = null;
 
         this._settings.connectObject('changed::top-bar-icon-shows-temp',
             () => this._syncTempVisibility(), this);
@@ -55,6 +58,7 @@ class XmaxIndicator extends PanelMenu.Button {
 
     /** @param {Object} m parsed metrics object (see protocol.cpp serialize_metrics) */
     updateMetrics(m) {
+        this._stats = m;
         updateMetricsRows(this._rows, m);
         this._updateTemp(m?.cpu?.temp_c ?? null);
     }
@@ -77,6 +81,20 @@ class XmaxIndicator extends PanelMenu.Button {
 
     _syncVisibility() {
         this.visible = this._settings.get_boolean('show-top-bar-icon');
+    }
+
+    /** Rebuild the readout rows from the current config (called by the
+     *  config.json FileMonitor callback). */
+    reloadStats() {
+        const ids = getStatWidgets();
+        const currentIds = [...this._rows.keys()];
+        if (arraysEqual(ids, currentIds))
+            return;
+
+        this.menu.removeAll();
+        this._rows = addMetricsRows(this.menu, ids);
+        if (this._stats)
+            updateMetricsRows(this._rows, this._stats);
     }
 
     destroy() {

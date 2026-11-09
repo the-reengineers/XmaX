@@ -44,6 +44,7 @@ gnome-extensions pack --force --out-dir="$BUNDLE_DIR" \
     --extra-source=quickSettings.js \
     --extra-source=logo.js \
     --extra-source=metrics.js \
+    --extra-source=statsConfig.js \
     --extra-source=icons \
     "$EXT_DIR"
 BUNDLE="$BUNDLE_DIR/xmax@local.shell-extension.zip"

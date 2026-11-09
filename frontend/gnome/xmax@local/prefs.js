@@ -12,6 +12,7 @@ import Gtk from 'gi://Gtk';
 
 import {ExtensionPreferences, gettext as _} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 import {XmaxClient} from './dbus.js';
+import {getStatWidgets, setStatWidgets} from './statsConfig.js';
 
 export default class XmaxPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
@@ -97,8 +98,150 @@ export default class XmaxPreferences extends ExtensionPreferences {
             chargeGroup.add(row);
         }
 
+        // ---- System Stats ----------------------------------------------------
+        // Configurable list of readouts in the Quick Settings System Stats
+        // section: each row has a visibility checkbox and up/down arrows to
+        // reorder. Written directly to config.json so it stays in sync with
+        // the Windows home/dashboard layout. The extension picks up changes
+        // via a file monitor — no shell restart needed.
+        this._buildSystemStats(page);
+
         // ---- Profiles page ---------------------------------------------------
         this._buildProfilesPage(window);
+    }
+
+    /**
+     * System Stats group: one Adw.ActionRow per readout with a checkbox
+     * (visibility) and ↑/↓ buttons (display order). The row order in the
+     * group mirrors the display order in the Quick Settings popup.
+     */
+    _buildSystemStats(page) {
+        const statsGroup = new Adw.PreferencesGroup({
+            title: _('System Stats'),
+            description: _('Choose which readouts appear in the System Stats section of the Quick Settings panel and reorder them with the arrows. At least one readout must stay enabled.'),
+        });
+        page.add(statsGroup);
+        this._statsGroup = statsGroup;
+
+        this._statsLabels = {
+            cpu:    _('CPU'),
+            gpu:    _('GPU'),
+            ram:    _('RAM'),
+            fan:    _('Fan'),
+            power:  _('Power'),
+            charge: _('Charge Limit'),
+        };
+
+        // Current state: visible ids in display order, then hidden ones
+        // (those only carry their checkbox state — their position among
+        // hidden ids doesn't matter).
+        const visibleOrder = getStatWidgets();
+        const hiddenIds = Object.keys(this._statsLabels).filter(
+            id => !visibleOrder.includes(id));
+        this._statsList = [
+            ...visibleOrder.map(id => ({id, visible: true})),
+            ...hiddenIds.map(id => ({id, visible: false})),
+        ];
+
+        this._rebuildStatsRows();
+    }
+
+    /**
+     * (Re)creates the stat rows in this._statsList order. Adw.PreferencesGroup
+     * offers no insert-at-index, so reordering rebuilds all rows — six rows,
+     * cheap enough to not matter.
+     */
+    _rebuildStatsRows() {
+        for (const row of this._statsRows ?? [])
+            this._statsGroup.remove(row);
+        this._statsRows = [];
+        this._statsChecks = new Map();
+        this._statsMoveButtons = new Map();
+
+        this._statsList.forEach(stat => {
+            const row = new Adw.ActionRow({title: this._statsLabels[stat.id]});
+
+            const check = new Gtk.CheckButton({valign: Gtk.Align.CENTER});
+            check.active = stat.visible;
+            check.connect('toggled', () => this._toggleStat(stat.id));
+            row.add_prefix(check);
+            row.activatable_widget = check;
+            this._statsChecks.set(stat.id, check);
+
+            const upBtn = new Gtk.Button({
+                icon_name: 'go-up-symbolic',
+                valign: Gtk.Align.CENTER,
+                css_classes: ['flat'],
+                tooltip_text: _('Move up'),
+            });
+            upBtn.connect('clicked', () => this._moveStat(stat.id, -1));
+            row.add_suffix(upBtn);
+
+            const downBtn = new Gtk.Button({
+                icon_name: 'go-down-symbolic',
+                valign: Gtk.Align.CENTER,
+                css_classes: ['flat'],
+                tooltip_text: _('Move down'),
+            });
+            downBtn.connect('clicked', () => this._moveStat(stat.id, +1));
+            row.add_suffix(downBtn);
+            this._statsMoveButtons.set(stat.id, {up: upBtn, down: downBtn});
+
+            this._statsGroup.add(row);
+            this._statsRows.push(row);
+        });
+
+        this._updateStatsMoveButtons();
+    }
+
+    /** Dims ↑ on the first row and ↓ on the last so the layout stays stable. */
+    _updateStatsMoveButtons() {
+        const last = this._statsList.length - 1;
+        this._statsList.forEach((stat, i) => {
+            const btns = this._statsMoveButtons.get(stat.id);
+            if (!btns)
+                return;
+            btns.up.sensitive = i > 0;
+            btns.down.sensitive = i < last;
+        });
+    }
+
+    /** Checkbox handler — flips visibility and saves (min-one enforced). */
+    _toggleStat(id) {
+        const check = this._statsChecks.get(id);
+        const active = check?.active ?? false;
+        const stat = this._statsList.find(s => s.id === id);
+        if (!stat)
+            return;
+
+        // Keep at least one readout visible — revert the checkbox instead.
+        if (!active &&
+            !this._statsList.some(s => s.visible && s.id !== id)) {
+            check.active = true;
+            return;
+        }
+
+        stat.visible = active;
+        this._saveStats();
+    }
+
+    /** ↑/↓ handler — swaps the stat with its neighbour, rebuilds, saves. */
+    _moveStat(id, delta) {
+        const i = this._statsList.findIndex(s => s.id === id);
+        const j = i + delta;
+        if (i < 0 || j < 0 || j >= this._statsList.length)
+            return;
+        const [stat] = this._statsList.splice(i, 1);
+        this._statsList.splice(j, 0, stat);
+        this._rebuildStatsRows();
+        this._saveStats();
+    }
+
+    /** Persists visibility + order to config.json (statsConfig.setStatWidgets). */
+    _saveStats() {
+        const visible = this._statsList.filter(s => s.visible).map(s => s.id);
+        const hidden = this._statsList.filter(s => !s.visible).map(s => s.id);
+        setStatWidgets(visible, hidden);
     }
 
     _syncChargeLimitValues(settings) {

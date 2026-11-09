@@ -15,6 +15,7 @@ import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js'
 import {PopupMenu, QuickSettings} from './shellCompat.js';
 import {logoGicon} from './logo.js';
 import {addMetricsRows, updateMetricsRows} from './metrics.js';
+import {arraysEqual, getStatWidgets} from './statsConfig.js';
 
 // Valid charge-limit values (multiples of 5 in 75-100).
 const CHARGE_VALUES = [75, 80, 85, 90, 95, 100];
@@ -61,6 +62,7 @@ class XmaxQuickSettingsIndicator extends QuickSettings.SystemIndicator {
         // Persistent metrics section added to the QS popup box (not the tile
         // grid) — always visible when the panel opens, no click required.
         this._metricsSection = this._buildMetricsSection();
+        this._metricsStats = null; // last payload, replayed on reload
 
         this._settings.connectObject('changed::qs-metrics',
             () => this._metricsSection.visible =
@@ -107,20 +109,46 @@ class XmaxQuickSettingsIndicator extends QuickSettings.SystemIndicator {
             this._refreshProfileMenu(this._power);
         }
 
+        // Cache the latest payload so reloadMetricsSection can replay it
+        // after rebuilding rows (config change).
+        this._metricsStats = m;
         updateMetricsRows(this._metricsRows, m);
     }
 
     /**
      * Persistent metrics section in the Quick Settings popup: a labeled
-     * separator (section header) followed by the live readout rows. No
-     * clicking — the stats are visible whenever the panel is open.
+     * separator (section header) followed by the live readout rows in the
+     * order defined by config.json's home_layout. No clicking — the stats
+     * are visible whenever the panel is open.
      */
     _buildMetricsSection() {
         const section = new PopupMenu.PopupMenuSection();
         section.addMenuItem(
-            new PopupMenu.PopupSeparatorMenuItem(_('XmaX')));
-        this._metricsRows = addMetricsRows(section);
+            new PopupMenu.PopupSeparatorMenuItem(_('System Stats')));
+        this._metricsRows = addMetricsRows(section, getStatWidgets());
         return section;
+    }
+
+    /**
+     * Rebuild the System Stats section from config.json and replay the
+     * latest cached metrics payload. Safe to call from a FileMonitor
+     * callback (the section is only modified when there's a delta).
+     */
+    reloadMetricsSection() {
+        const ids = getStatWidgets();
+        const currentIds = [...this._metricsRows.keys()];
+        if (arraysEqual(ids, currentIds))
+            return;
+
+        // Rebuild the section: clear existing rows, re-add in the new order.
+        this._metricsSection.removeAll();
+        this._metricsSection.addMenuItem(
+            new PopupMenu.PopupSeparatorMenuItem(_('System Stats')));
+        this._metricsRows = addMetricsRows(this._metricsSection, ids);
+
+        // Replay the latest snapshot so the new rows are populated immediately.
+        if (this._metricsStats)
+            updateMetricsRows(this._metricsRows, this._metricsStats);
     }
 
     _buildChargeMenu() {

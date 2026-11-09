@@ -33,8 +33,9 @@ cat <<'EOF'
 
 Manual UI checklist (in a live GNOME session, after `gnome-extensions enable xmax@local`):
   [ ] XmaX logo appears inside the top-bar Quick Settings button (left of the network/battery icons)
-  [ ] XmaX metrics tile is visible in Quick Settings with a live subtitle (e.g. "CPU 62% · GPU 55°C")
-  [ ] Opening the metrics tile shows CPU / GPU / RAM / Fan / Power / Charge readouts
+  [ ] "System Stats" section appears in the Quick Settings panel with labeled separator and live readouts
+  [ ] Readout rows are configurable: open extension prefs → System Stats → toggle rows on/off and reorder with the ↑/↓ arrows
+  [ ] The System Stats section reflects config changes on the next panel open (no re-login)
   [ ] Charge-limit QuickMenuToggle is visible in Quick Settings by default (subtitle: 100%)
   [ ] Power-profile control is visible in Quick Settings by default
   [ ] Charge-limit menu shows 85% and 100% options with 100% checked

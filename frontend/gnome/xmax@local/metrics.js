@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 the-reengineers
-// metrics.js — shared rendering of live metrics readouts. Builds the CPU /
-// GPU / RAM / fan / power / charge-limit rows into any popup menu and updates
-// them from a parsed MetricsChanged payload (see protocol.cpp
+// metrics.js — shared rendering of live metrics readouts. Builds the
+// CPU / GPU / RAM / fan / power / charge-limit rows into any popup menu and
+// updates them from a parsed MetricsChanged payload (see protocol.cpp
 // serialize_metrics). Used by both the top-bar indicator popup (indicator.js)
-// and the Quick Settings metrics tile (quickSettings.js).
+// and the Quick Settings System Stats section (quickSettings.js).
 
 import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 
@@ -15,32 +15,45 @@ const temp = n => `${Math.round(n)}°C`;
 const mhz = n => `${Math.round(n)} MHz`;
 
 /**
- * Add the readout rows to a popup menu.
+ * All supported stat row IDs and their localised label prefixes.
+ * @type {Record<string, string>}
+ */
+const ROW_PREFIXES = {
+    cpu:    'CPU',
+    gpu:    'GPU',
+    ram:    'RAM',
+    fan:    'Fan',
+    power:  'Power',
+    charge: 'Charge limit',
+};
+
+/** Default order when no config is available. */
+const DEFAULT_ORDER = ['cpu', 'gpu', 'ram', 'fan', 'power', 'charge'];
+
+/**
+ * Add the readout rows to a popup menu in the given order.
  *
  * @param {PopupMenu.PopupMenuBase} menu menu to populate (indicator popup or
  * Quick Settings tile menu)
+ * @param {string[]} [widgetIds] ordered list of stat row IDs to show; omitting
+ * this defaults to all rows in the default order
  * @returns {Map<string, Object>} row map for updateMetricsRows()
  */
-export function addMetricsRows(menu) {
+export function addMetricsRows(menu, widgetIds) {
+    const ids = widgetIds?.length ? widgetIds : DEFAULT_ORDER;
     const rows = new Map();
 
-    // Readout rows are PopupMenuItems with a static prefix label and a value
-    // we rewrite on each metrics update.
-    const addRow = (id, prefix) => {
-        const item = new PopupMenu.PopupMenuItem(`${prefix} --`);
+    for (const id of ids) {
+        const prefix = ROW_PREFIXES[id];
+        if (!prefix)
+            continue;
+        const item = new PopupMenu.PopupMenuItem(
+            `${_(prefix)}  ·  --`);
         item.reactive = false;
         item.can_focus = false;
         menu.addMenuItem(item);
-        rows.set(id, {item, prefix});
-    };
-
-    addRow('cpu', _('CPU'));
-    addRow('gpu', _('GPU'));
-    addRow('ram', _('RAM'));
-    menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-    addRow('fan', _('Fan'));
-    addRow('power', _('Power'));
-    addRow('charge', _('Charge limit'));
+        rows.set(id, {item, prefix: _(prefix)});
+    }
 
     return rows;
 }

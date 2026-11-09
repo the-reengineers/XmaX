@@ -105,6 +105,7 @@ cp -p frontend/gnome/xmax@local/extension.js \
       frontend/gnome/xmax@local/shellCompat.js \
       frontend/gnome/xmax@local/logo.js \
       frontend/gnome/xmax@local/metrics.js \
+      frontend/gnome/xmax@local/statsConfig.js \
       frontend/gnome/xmax@local/dbus.js \
       frontend/gnome/xmax@local/prefs.js \
       frontend/gnome/xmax@local/metadata.json \

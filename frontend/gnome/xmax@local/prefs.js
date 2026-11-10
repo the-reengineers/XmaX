@@ -1124,7 +1124,10 @@ export default class XmaxPreferences extends ExtensionPreferences {
 
         // ---- Clamp TDP limits per power state ---------------------------------
         // Must match power_state_max_tdp() in backend/src/shared.h.
-        const TDP_CELLINGS = [55, 20, 55, 80]; // battery, usb_c_slow, usb_c_fast, dc_in
+        // TODO: 120W (dc_in) is a temporary placeholder. Add external cooling
+        // device detection and only allow 120W TDP when cooling is present (fall
+        // back to the previous 80W otherwise) once that detection is implemented.
+        const TDP_CELLINGS = [55, 20, 55, 120]; // battery, usb_c_slow, usb_c_fast, dc_in
 
         const clampTdpRows = () => {
             const maxW = TDP_CELLINGS[powerStateRow.selected] ?? 120;

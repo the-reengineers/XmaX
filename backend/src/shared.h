@@ -106,7 +106,10 @@ inline int power_state_max_tdp(PowerState::Source source) {
         case PowerState::Source::Battery:  return 55;   // Battery: 55W
         case PowerState::Source::UsbCSlow: return 20;   // USB-C 65W: 20W
         case PowerState::Source::UsbCFast: return 55;   // USB-C 100W: 55W
-        case PowerState::Source::DcIn:     return 80;   // DC-In: 80W
+        // TODO: 120W is a temporary placeholder. Add external cooling device
+        // detection and only allow 120W TDP when cooling is present (fall back
+        // to the previous 80W otherwise) once that detection is implemented.
+        case PowerState::Source::DcIn:     return 120;  // DC-In: 120W
         default:                           return 55;   // Safe default for Unknown
     }
 }

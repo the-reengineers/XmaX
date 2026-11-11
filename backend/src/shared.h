@@ -12,6 +12,10 @@
 struct CpuMetrics {
     double util_pct = 0.0;
     uint32_t clock_mhz = 0;
+
+    // CPU temperature — platform-dependent:
+    //   Linux:   nullopt (AMD has no CPU-core-only sensor; use apu.hotspot_c instead)
+    //   Windows: EC register 0x0470 via vendor WMI (provenance unconfirmed)
     std::optional<int> temp_c;
     std::optional<double> package_watts;
     // SmartShift: -100 (all CPU) to +100 (all GPU), 0 = balanced
@@ -24,10 +28,26 @@ struct CpuMetrics {
 struct GpuMetrics {
     double util_pct = 0.0;
     uint32_t clock_mhz = 0;
+    // GPU edge temperature (the canonical GPU temp):
+    //   Linux:   amdgpu hwmon temp1 (edge)
+    //   Windows: ADLX GPUTemperature() (edge)
     std::optional<int> temp_c;
+    // GPU hotspot/junction temperature:
+    //   Linux:   nullopt (amdgpu on Strix Halo doesn't expose junction via hwmon)
+    //   Windows: ADLX GPUHotspotTemperature()
+    std::optional<int> temp_hotspot_c;
     std::optional<double> power_w;
     std::optional<uint64_t> vram_used_bytes;
     std::optional<uint64_t> vram_total_bytes;
+};
+
+// ApuMetrics — die-wide / package-level metrics for the full APU (CPU+GPU+I/O die).
+// Only populated on platforms that expose a die-wide thermal sensor.
+struct ApuMetrics {
+    // Die-wide hotspot temperature (the hottest junction across the entire APU die):
+    //   Linux:   k10temp Tctl (the primary thermal control temperature)
+    //   Windows: nullopt (k10temp is a Linux kernel driver; no equivalent exists)
+    std::optional<int> temp_hotspot_c;
 };
 
 struct RamMetrics {
@@ -72,6 +92,7 @@ struct UmaOption {
 struct Metrics {
     CpuMetrics cpu;
     GpuMetrics gpu;
+    ApuMetrics apu;
     RamMetrics ram;
     FanState fan;
     PowerState power;

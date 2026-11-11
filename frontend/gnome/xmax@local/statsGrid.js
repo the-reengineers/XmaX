@@ -79,10 +79,11 @@ class MetricsGridItem extends PopupMenu.PopupBaseMenuItem {
      * @param {GraphHistory} opts.history usage-graph data source
      * @param {Gio.Settings} opts.settings org.xmax.shell settings, for the
      * graph's live history-window key
-     * @param {string} [opts.accentColor] line color for every chart series
-     * ('#rrggbb', the system accent color — resolved by quickSettings.js)
+     * @param {Record<string, string>} [opts.colorMap] colour group → hex
+     *   mapping (e.g. {default: '#3584e4', hot: '#e47835'}). Resolved by
+     *   quickSettings.js from the system accent colour.
      */
-    _init({widgets, columns, history, settings, accentColor}) {
+    _init({widgets, columns, history, settings, colorMap}) {
         // St 18 marks any non-reactive widget with the :insensitive
         // pseudo-class, which the theme greys out (dim text). This item is
         // informational, not disabled, so keep it reactive — the stats are
@@ -139,8 +140,8 @@ class MetricsGridItem extends PopupMenu.PopupBaseMenuItem {
                     series: buildChartSeries(
                         chartId,
                         settings.get_strv('graph-series'),
+                        colorMap,
                     ).map(s => ({...s, label: _(s.label)})),
-                    color: accentColor,
                     history,
                     windowSeconds: settings.get_int('qs-graph-window'),
                     // Graph height tracks the row span: ~34 px of drawing

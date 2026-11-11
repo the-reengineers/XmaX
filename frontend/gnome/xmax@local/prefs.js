@@ -8,12 +8,13 @@
 import Adw from 'gi://Adw';
 import Gdk from 'gi://Gdk';
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Gtk from 'gi://Gtk';
 
 import {ExtensionPreferences, gettext as _} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 import {XmaxClient} from './dbus.js';
-import {chartDef, chartIds, LEGEND_SYMBOLS, seriesIdsFor, SERIES} from './chartSeries.js';
+import {chartDef, chartIds, LEGEND_SYMBOLS, rotateHue, seriesIdsFor, SERIES} from './chartSeries.js';
 import {defaultSpans, packWidgets, sizeLimits} from './gridLayout.js';
 import {getHiddenStats, getStatColumns, getStatLayout, setStatColumns, setStatLayout} from './statsConfig.js';
 
@@ -29,6 +30,38 @@ function _clearChildren(container) {
         const next = child.get_next_sibling();
         container.remove(child);
         child = next;
+    }
+}
+
+/**
+ * Resolve the system accent colour to '#rrggbb' from GSettings, plus its
+ * hue-rotated hotspot variant. Returns {edge, hot} or null if unreadable.
+ * Maps the GNOME accent colour name (e.g. "blue") to its standard hex using
+ * the well-known palette from gsettings-desktop-schemas — the exact values
+ * St.ThemeContext.get_accent_color() resolves in the shell.
+ *
+ * @returns {{edge: string, hot: string}|null}
+ */
+function _accentColors() {
+    try {
+        const iface = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
+        const name = iface.get_string('accent-color');
+        // Standard GNOME 46+ accent palette (from gnome-control-center).
+        const PALETTE = {
+            blue:   '#3584e4',
+            teal:   '#2190a4',
+            green:  '#33d17a',
+            yellow: '#f5c211',
+            orange: '#ff7800',
+            red:    '#e01b24',
+            pink:   '#de4c8a',
+            purple: '#9141ac',
+            slate:  '#697180',
+        };
+        const edge = PALETTE[name] ?? '#3584e4'; // fall back to blue
+        return {edge, hot: rotateHue(edge, 30)};
+    } catch (_) {
+        return null;
     }
 }
 
@@ -255,11 +288,21 @@ export default class XmaxPreferences extends ExtensionPreferences {
             this._chartGroup.remove(row);
         this._seriesRows = [];
 
+        const colors = _accentColors();
+        const edgeHex = colors?.edge ?? '';
+        const hotHex = colors?.hot ?? '';
+
         for (const sid of seriesIdsFor(chartId)) {
             const series = SERIES[sid];
-            const row = new Adw.ActionRow({
-                title: `${LEGEND_SYMBOLS[series.style] ?? '●'} ${_(series.label)}`,
-            });
+            const group = series.colorGroup ?? 'default';
+            const hex = group === 'hot' ? hotHex : edgeHex;
+            const sym = LEGEND_SYMBOLS[series.style] ?? '●';
+            const label = GLib.markup_escape_text(_(series.label), -1);
+            const title = hex
+                ? `<span foreground="${hex}">${sym} ${label}</span>`
+                : `${sym} ${label}`;
+            const row = new Adw.ActionRow({title});
+            row.use_markup = true;
 
             const check = new Gtk.CheckButton({valign: Gtk.Align.CENTER});
             check.active = enabled.has(sid);
@@ -706,13 +749,17 @@ export default class XmaxPreferences extends ExtensionPreferences {
     /** Localised label for a widget id. */
     _widgetLabel(id) {
         const labels = {
-            cpu:    _('CPU'),
-            gpu:    _('GPU'),
-            ram:    _('RAM'),
-            fan:    _('Fan'),
-            power:  _('Power'),
-            charge: _('Charge limit'),
-            graph:  _('Usage graph'),
+            cpu:         _('CPU'),
+            gpu:         _('GPU'),
+            cpu_temp:    _('CPU Temp'),
+            gpu_temp:    _('GPU Temp'),
+            gpu_hotspot: _('GPU HS Temp'),
+            apu:         _('APU HS Temp'),
+            ram:         _('RAM'),
+            fan:         _('Fan'),
+            power:       _('Power'),
+            charge:      _('Charge limit'),
+            graph:       _('Usage graph'),
         };
         return labels[id] ?? id;
     }

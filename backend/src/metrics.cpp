@@ -11,6 +11,7 @@
 #include <wbemidl.h>
 #else
 #include "platform/linux/procfs.h"
+#include "platform/linux/sio_ec.h"
 #endif
 
 // EC register addresses for power state and charge limit
@@ -139,6 +140,7 @@ void MetricsPoller::poll_loop() {
         // Poll all sensor groups
         poll_cpu();
         poll_gpu();
+        poll_apu();
         poll_ram();
         poll_fan();
         poll_power();
@@ -147,13 +149,23 @@ void MetricsPoller::poll_loop() {
         // active (this writes TDP + fan speed through to hardware).
         // When no adaptive profile is active, fall back to the manual
         // fan curve tick (for fixed profiles with a user-defined curve).
+        //
+        // Use the best available die-wide thermal proxy for control:
+        //   Linux:   apu.hotspot_c (k10temp Tctl — die-wide hotspot)
+        //   Windows: cpu.temp_c (EC 0x0470 — vendor CPU/SoC temp)
+        // Falls back to gpu.temp_c (edge) when neither is available.
         {
             std::lock_guard lock(metrics_mutex_);
+
+            auto effective_thermal = current_metrics_.apu.temp_hotspot_c
+                ? current_metrics_.apu.temp_hotspot_c
+                : current_metrics_.cpu.temp_c;
+
             if (adaptive_ctrl_.is_active()) {
-                adaptive_ctrl_.tick(current_metrics_.cpu.temp_c.value_or(0),
+                adaptive_ctrl_.tick(effective_thermal.value_or(0),
                                     current_metrics_.gpu.temp_c.value_or(0));
             } else {
-                fan_ctrl_.tick(current_metrics_.cpu.temp_c, current_metrics_.gpu.temp_c);
+                fan_ctrl_.tick(effective_thermal, current_metrics_.gpu.temp_c);
             }
         }
 
@@ -210,18 +222,26 @@ void MetricsPoller::poll_cpu() {
     // CPU clock speed (platform-generic: WMI on Windows, cpufreq on Linux)
     current_metrics_.cpu.clock_mhz = platform_.cpu_clock_mhz();
 
-    // CPU temperature.
+    // CPU temperature — platform-dependent:
+    //   Windows:   EC register 0x0470 via the vendor WMI/UMAInterface
+    //              (vendor source labels it EC_ADDR_OXP_CPU_TEMP).
+    //   Linux:     EC register 0x0470 via the oxp_ec kernel module's
+    //              IT87 SIO EC RAM read path. Falls back to nullopt when
+    //              the module is not loaded.
 #ifdef _WIN32
-    // Windows: EC register 0x0470 via the vendor WMI/UMAInterface.
     auto temp_result = platform_.ec_read(0x0470);
     if (temp_result) {
         current_metrics_.cpu.temp_c = static_cast<int>(temp_result.value());
     }
 #else
-    // Linux: the vendor EC register 0x0470 is beyond the 256-byte ACPI EC
-    // space that ec_sys exposes (see platform/linux/ec.cpp), so read CPU temp
-    // from the k10temp hwmon chip instead. Gracefully nullopt when absent.
-    current_metrics_.cpu.temp_c = procfs::cpu_temp_c();
+    {
+        auto ec_val = xmax_sio::ecram_read(0x0470);
+        if (ec_val) {
+            current_metrics_.cpu.temp_c = static_cast<int>(ec_val.value());
+        } else {
+            current_metrics_.cpu.temp_c = std::nullopt;
+        }
+    }
 #endif
 
     // CPU package power via SMU PM table (package_watts stays nullopt until wired).
@@ -254,7 +274,8 @@ void MetricsPoller::poll_gpu() {
         const auto& telemetry = result.value();
         current_metrics_.gpu.util_pct = telemetry.util_pct;
         current_metrics_.gpu.clock_mhz = telemetry.clock_mhz;
-        current_metrics_.gpu.temp_c = telemetry.temp_c;
+        current_metrics_.gpu.temp_c = telemetry.temp_c;               // edge
+        current_metrics_.gpu.temp_hotspot_c = telemetry.temp_hotspot_c; // junction/hotspot
         current_metrics_.gpu.power_w = telemetry.power_w;
         current_metrics_.gpu.vram_used_bytes = telemetry.vram_used_bytes;
         current_metrics_.gpu.vram_total_bytes = telemetry.vram_total_bytes;
@@ -263,6 +284,21 @@ void MetricsPoller::poll_gpu() {
         current_metrics_.gpu = GpuMetrics{};
         log_warn("[metrics] GPU metrics unavailable (ADLX may have failed to initialize)");
     }
+}
+
+void MetricsPoller::poll_apu() {
+    std::lock_guard lock(metrics_mutex_);
+
+    // APU die-wide hotspot temperature — platform-dependent:
+    //   Linux:   k10temp Tctl (the primary thermal control temperature for the
+    //            entire APU die; reported by the k10temp hwmon driver)
+    //   Windows: nullopt (k10temp is a Linux kernel driver; ADLX is GPU-only
+    //            and has no die-wide thermal sensor)
+#ifdef _WIN32
+    current_metrics_.apu.temp_hotspot_c = std::nullopt;
+#else
+    current_metrics_.apu.temp_hotspot_c = procfs::cpu_temp_c();
+#endif
 }
 
 void MetricsPoller::poll_ram() {

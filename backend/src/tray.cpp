@@ -110,8 +110,11 @@ auto TrayManager::format_tooltip(const Metrics& metrics, const std::string& prof
 
     ss << " | ";
 
-    // CPU temperature
-    if (metrics.cpu.temp_c.has_value()) {
+    // CPU / APU temperature — prefer the die-wide hotspot (apu) when
+    // available, falling back to the CPU-specific sensor (Windows EC).
+    if (metrics.apu.temp_hotspot_c.has_value()) {
+        ss << metrics.apu.temp_hotspot_c.value() << "°C";
+    } else if (metrics.cpu.temp_c.has_value()) {
         ss << metrics.cpu.temp_c.value() << "°C";
     } else {
         ss << "?°C";

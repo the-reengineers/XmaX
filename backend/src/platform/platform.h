@@ -56,7 +56,12 @@ struct InstanceLock {
 struct GpuTelemetry {
     double util_pct = 0.0;
     uint32_t clock_mhz = 0;
+    // GPU edge temperature (°C)
     std::optional<int> temp_c;
+    // GPU hotspot/junction temperature (°C) — platform-dependent:
+    //   Linux:   nullopt (amdgpu on Strix Halo doesn't expose junction via hwmon)
+    //   Windows: populated via ADLX GPUHotspotTemperature()
+    std::optional<int> temp_hotspot_c;
     std::optional<double> power_w;
     std::optional<uint64_t> vram_used_bytes;
     std::optional<uint64_t> vram_total_bytes;

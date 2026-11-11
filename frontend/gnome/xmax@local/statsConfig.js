@@ -16,7 +16,7 @@ import {defaultSpans, sizeLimits} from './gridLayout.js';
 // order (used when config.json is missing or unreadable). 'graph' is the
 // CPU/GPU/RAM usage graph row; like fan/charge it is not a Windows home tile
 // id, so the Windows frontend ignores it when reading the shared layout.
-const STAT_IDS = ['cpu', 'gpu', 'ram', 'fan', 'power', 'charge', 'graph'];
+const STAT_IDS = ['cpu', 'gpu', 'cpu_temp', 'gpu_temp', 'gpu_hotspot', 'apu', 'ram', 'fan', 'power', 'charge', 'graph'];
 const DEFAULT_ORDER = [...STAT_IDS];
 
 /** @param {string[]} a @param {string[]} b @returns {boolean} */

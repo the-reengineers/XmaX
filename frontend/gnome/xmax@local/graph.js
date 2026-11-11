@@ -9,17 +9,22 @@
 //   GraphHistory  — timestamped ring buffer that accumulates samples whether
 //                   or not anything is displayed (the graph is always "full"
 //                   of recent history when the panel opens).
-//   SystemGraph   — the drawing area: N series all drawn in one chart
-//                   color (the system accent), told apart by line style —
-//                   solid, dotted (round dots, not dashes), filled (area
-//                   filled under the line at ~25% alpha) or dotted-filled
-//                   (both); the visible window (right edge = newest
-//                   sample) is configurable in seconds.
+//   SystemGraph   — the drawing area: N series, each drawn in its own colour
+//                   (a per-series `color` field, '#rrggbb'). Series are told
+//                   apart by line style: solid, dotted (round dots, not
+//                   dashes), filled (area filled under the line at ~25% alpha)
+//                   or dotted-filled (both). The visible window (right edge =
+//                   newest sample) is configurable in seconds.
 //   GraphBox     — a plain St box hosting title + legend + SystemGraph, with
 //                   the chart unit drawn in parentheses after the title
 //                   ("Usage (%)") — the x-axis is always time, so it gets no
 //                   label. Attached into the System Stats grid (statsGrid.js)
 //                   like any other tile, usually spanning the full row.
+//
+// This file is pure graph drawing. Colour resolution belongs to the caller
+// (quickSettings.js resolves system theme accent → per-series hex colours and
+// feeds them through chartSeries.buildChartSeries → the series carry their
+// own `color` field). graph.js has no knowledge of "edge" vs "hotspot" groups.
 
 import Cairo from 'resource:///org/gnome/gjs/modules/esm/cairo.js';
 import Clutter from 'gi://Clutter';
@@ -102,32 +107,30 @@ export class GraphHistory {
 /**
  * The graph itself: an St.DrawingArea that draws one polyline per series.
  *
- * A series is `{id, label, style?, max?}`:
+ * Each series is `{id, label, style?, max?, color?}`:
  *   - `style` — 'solid' (plain line), 'dotted' (round dots, not dashes),
  *               'filled' (area filled under the line at FILL_ALPHA) or
  *               'dotted-filled' (dots plus the area fill)
  *   - `max`   — value that maps to the top edge (default 100, i.e. %);
  *               omit it for a chart-wide dynamic axis (memory GB, power W)
+ *   - `color` — '#rrggbb' hex colour for this series' line; resolved by the
+ *               caller before the series reaches graph.js
  *
- * Every line draws in the single chart color (the system accent color,
- * '#rrggbb'). The x-axis is always time: the newest sample sits on the
- * right edge and `windowSeconds` of history is visible; points older
- * than the window are clipped at the left edge, so every line spans
- * the full drawing width. No x-axis labels are drawn.
+ * The x-axis is always time: the newest sample sits on the right edge
+ * and `windowSeconds` of history is visible; points older than the
+ * window are clipped at the left edge. No x-axis labels are drawn.
  */
 export const SystemGraph = GObject.registerClass(
 class SystemGraph extends St.DrawingArea {
     /**
      * @param {Object} opts
-     * @param {Array} opts.series series definitions (see above)
-     * @param {string} [opts.color] line color, '#rrggbb' — the system
-     * accent color, resolved by the caller (quickSettings._accentHex);
-     * plain white as an inert fallback if omitted
+     * @param {Array} opts.series series definitions (each carries its own
+     *   `color` field — '#rrggbb')
      * @param {GraphHistory} opts.history data source
      * @param {number} [opts.windowSeconds] visible time span (default 180)
      * @param {number} [opts.height] graph height in px (default 56)
      */
-    _init({series, history, color = '#ffffff', windowSeconds = 180, height = 56}) {
+    _init({series, history, windowSeconds = 180, height = 56}) {
         super._init({
             style: `height: ${height}px;`,
             x_expand: true,
@@ -136,7 +139,6 @@ class SystemGraph extends St.DrawingArea {
             can_focus: false,
         });
         this._series = series;
-        this._rgb = _parseColor(color);
         this._history = history;
         this._windowSeconds = windowSeconds;
 
@@ -209,8 +211,6 @@ class SystemGraph extends St.DrawingArea {
             const yOf = (v, max) =>
                 height * (1 - Math.min(Math.max(v / max, 0), 1));
 
-            const [r, g, b] = this._rgb;
-
             // Every recorded point is drawn, not just the in-window ones:
             // older points land at negative x and are clipped by Cairo at
             // the drawing area's left edge, so the line spans the full
@@ -224,6 +224,7 @@ class SystemGraph extends St.DrawingArea {
                     continue;
 
                 const max = s.max ?? dynamicMax ?? 100;
+                const [r, g, b] = _parseColor(s.color ?? '#ffffff');
 
                 if (s.style === 'filled' || s.style === 'dotted-filled') {
                     cr.moveTo(xOf(pts[0].t), height);
@@ -271,15 +272,14 @@ class GraphBox extends St.BoxLayout {
      * @param {Object} opts
      * @param {string} opts.title chart title (already localised)
      * @param {string} [opts.unit] unit drawn in parentheses after the title
-     * @param {Array} opts.series series definitions (see SystemGraph)
-     * @param {string} [opts.color] line color for every series, '#rrggbb'
-     * (the system accent color)
+     * @param {Array} opts.series series definitions — each carries its own
+     *   `color` field (resolved by the caller)
      * @param {GraphHistory} opts.history data source (owned by the caller,
-     * survives this box's destruction)
+     *   survives this box's destruction)
      * @param {number} [opts.windowSeconds] visible time span in seconds
      * @param {number} [opts.height] graph height in px
      */
-    _init({title, unit = '', series, color, history, windowSeconds, height}) {
+    _init({title, unit = '', series, history, windowSeconds, height}) {
         super._init({
             orientation: Clutter.Orientation.VERTICAL,
             x_expand: true,
@@ -289,7 +289,7 @@ class GraphBox extends St.BoxLayout {
         });
 
         // Header: "Usage (%)" left, style-keyed legend right — the symbol
-        // mirrors how each line draws (filled / dotted / solid outline).
+        // mirrors how each line draws, coloured to match the series' line.
         const header = new St.BoxLayout({
             orientation: Clutter.Orientation.HORIZONTAL,
             style: 'spacing: 12px;',
@@ -301,9 +301,12 @@ class GraphBox extends St.BoxLayout {
         }));
         header.add_child(new St.Bin({x_expand: true}));
         for (const s of series) {
+            const sym = LEGEND_SYMBOLS[s.style] ?? '●';
+            const hex = s.color ?? '';
             header.add_child(new St.Label({
-                text: `${LEGEND_SYMBOLS[s.style] ?? '●'} ${s.label}`,
+                text: `${sym} ${s.label}`,
                 y_align: Clutter.ActorAlign.CENTER,
+                style: hex ? `color: ${hex};` : '',
             }));
         }
         this.add_child(header);
@@ -311,7 +314,6 @@ class GraphBox extends St.BoxLayout {
         this.graph = new SystemGraph({
             series,
             history,
-            color,
             windowSeconds,
             height,
         });
@@ -320,7 +322,7 @@ class GraphBox extends St.BoxLayout {
 });
 
 /**
- * Parse a series color into Cairo-friendly normalized RGB.
+ * Parse a colour string into Cairo-friendly normalized RGB.
  * Accepts '#rrggbb' or [r, g, b] (0-255). Falls back to a neutral grey.
  *
  * @param {string|number[]} color
@@ -357,4 +359,3 @@ function _niceMax(v) {
     }
     return 10 * base;
 }
-

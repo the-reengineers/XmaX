@@ -16,6 +16,7 @@ import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js'
 import {PopupMenu, QuickSettings} from './shellCompat.js';
 import {logoGicon} from './logo.js';
 import {GraphHistory} from './graph.js';
+import {rotateHue} from './chartSeries.js';
 import {MetricsGridItem} from './statsGrid.js';
 import {getStatColumns, getStatLayout} from './statsConfig.js';
 import {sampleSeries} from './chartSeries.js';
@@ -162,8 +163,23 @@ class XmaxQuickSettingsIndicator extends QuickSettings.SystemIndicator {
      * @param {PopupMenu.PopupMenuSection} section
      */
     _repopulateMetricsSection(section) {
-        const widgets = getStatLayout();
+        let widgets = getStatLayout();
         const columns = getStatColumns();
+
+        // Filter out stat rows whose metrics are not available on this platform.
+        // The backend sends _avail flags in every metrics payload (platform
+        // constants — they never change during a session). Before the first
+        // payload arrives (_metricsStats is null), show all rows.
+        if (this._metricsStats?._avail) {
+            const avail = this._metricsStats._avail;
+            const hidden = new Set([
+                ...(avail.cpu_temp ? [] : ['cpu_temp']),
+                ...(avail.gpu_temp ? [] : ['gpu_temp']),
+                ...(avail.gpu_hotspot ? [] : ['gpu_hotspot']),
+                ...(avail.apu_hotspot ? [] : ['apu']),
+            ]);
+            widgets = widgets.filter(w => !hidden.has(w.id));
+        }
         this._sectionSignature = JSON.stringify([
             widgets, columns, this._graphSettingsSnapshot()]);
 
@@ -177,12 +193,13 @@ class XmaxQuickSettingsIndicator extends QuickSettings.SystemIndicator {
             // reactive: false), so there is no hover highlight.
             separator.reactive = true;
             section.addMenuItem(separator);
+            const accent = this._accentHex();
             this._gridItem = new MetricsGridItem({
                 widgets,
                 columns,
                 history: this._history,
                 settings: this._settings,
-                accentColor: this._accentHex(),
+                colorMap: {default: accent, hot: rotateHue(accent, 30)},
             });
             section.addMenuItem(this._gridItem);
             // Replay the latest snapshot so new tiles are populated at once.

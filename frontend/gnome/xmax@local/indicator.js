@@ -58,7 +58,13 @@ class XmaxIndicator extends PanelMenu.Button {
 
     /** @param {Object} m parsed metrics object (see protocol.cpp serialize_metrics) */
     updateMetrics(m) {
+        const firstPayload = !this._stats;
         this._stats = m;
+
+        // On the first payload, rebuild rows to hide unavailable metrics.
+        if (firstPayload)
+            this.reloadStats();
+
         updateMetricsRows(this._rows, m);
         this._updateTemp(m?.cpu?.temp_c ?? null);
     }
@@ -83,10 +89,29 @@ class XmaxIndicator extends PanelMenu.Button {
         this.visible = this._settings.get_boolean('show-top-bar-icon');
     }
 
+    /**
+     * Filter stat widget IDs to only those whose metrics are available on
+     * this platform (checked against the backend's _avail flags).
+     * @param {string[]} ids
+     * @returns {string[]}
+     */
+    _filterAvailable(ids) {
+        const avail = this._stats?._avail;
+        if (!avail)
+            return ids;  // no payload yet — show all
+        const hidden = new Set([
+            ...(avail.cpu_temp ? [] : ['cpu_temp']),
+            ...(avail.gpu_temp ? [] : ['gpu_temp']),
+            ...(avail.gpu_hotspot ? [] : ['gpu_hotspot']),
+            ...(avail.apu_hotspot ? [] : ['apu']),
+        ]);
+        return ids.filter(id => !hidden.has(id));
+    }
+
     /** Rebuild the readout rows from the current config (called by the
      *  config.json FileMonitor callback). */
     reloadStats() {
-        const ids = getStatWidgets();
+        const ids = this._filterAvailable(getStatWidgets());
         const currentIds = [...this._rows.keys()];
         if (arraysEqual(ids, currentIds))
             return;

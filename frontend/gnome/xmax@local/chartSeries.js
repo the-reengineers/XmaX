@@ -6,12 +6,17 @@
 // (chart/series editor). Labels are plain English; callers translate them
 // with gettext at render time.
 //
-// One chart = one unit (the graph draws a single y-axis). Every line draws
-// in the system accent color (see graph.js); series are told apart by line
-// style: 'solid', 'dotted' (round dots, not dashes), 'filled' (area filled
-// under the line) or 'dotted-filled' (dots plus the area fill, e.g. VRAM
-// next to RAM). The legend mirrors the style with the matching symbol from
-// LEGEND_SYMBOLS.
+// One chart = one unit (the graph draws a single y-axis). Series are told
+// apart by line style: 'solid', 'dotted' (round dots, not dashes), 'filled'
+// (area filled under the line) or 'dotted-filled' (dots plus the area fill,
+// e.g. VRAM next to RAM). The legend mirrors the style with the matching
+// symbol from LEGEND_SYMBOLS.
+//
+// Colour lives in the `colorGroup` field on each series definition:
+// 'default' gets the main colour, 'hot' gets the hotspot colour. The caller
+// resolves these to actual '#rrggbb' hex values via buildChartSeries()'s
+// `colorMap` parameter — graph.js never sees colour groups, only per-series
+// `color` fields.
 //
 // Series without a fixed `max` (memory GB, power W) share a chart-wide
 // dynamic axis computed at draw time (see graph.js). Clock series each
@@ -119,11 +124,23 @@ export const SERIES = {
     // ---- Temperature (°C) ----
     cpu_temp: {
         chart: 'temp', label: 'CPU', style: 'solid', max: 110,
+        colorGroup: 'edge',
         value: m => _num(m?.cpu?.temp_c),
     },
     gpu_temp: {
         chart: 'temp', label: 'GPU', style: 'dotted', max: 110,
+        colorGroup: 'edge',
         value: m => _num(m?.gpu?.temp_c),
+    },
+    gpu_hotspot: {
+        chart: 'temp', label: 'GPU HS', style: 'dotted', max: 110,
+        colorGroup: 'hot',
+        value: m => _num(m?.gpu?.temp_hotspot_c),
+    },
+    apu_hotspot: {
+        chart: 'temp', label: 'APU HS', style: 'solid', max: 110,
+        colorGroup: 'hot',
+        value: m => _num(m?.apu?.temp_hotspot_c),
     },
 
     // ---- Clock (MHz, per-series ceiling: CPU vs GPU maxes differ) ----
@@ -220,21 +237,85 @@ export function effectiveSeries(chartId, selected) {
 }
 
 /**
- * Render-ready series definitions for the graph widget. Line colors are
- * not part of the definitions — every line draws in the system accent
- * color, resolved by the caller (graph.js GraphBox `color` option).
+ * Render-ready series definitions for the graph widget. Each series gets a
+ * `color` field resolved from `colorMap`: the series' `colorGroup` (or
+ * 'default') is looked up in the map; if the map is a plain string it
+ * applies to every series; if omitted every series gets '' (the graph
+ * falls back to white).
  *
  * @param {string} chartId
  * @param {string[]} [selected] enabled series ids (GSettings graph-series)
- * @returns {{id: string, label: string, style: string, max?: number}[]}
+ * @param {Record<string, string>|string} [colorMap] colour group → hex
+ *   mapping, or a single hex string for every series
+ * @returns {{id: string, label: string, style: string, color: string,
+ *   max?: number}[]}
  */
-export function buildChartSeries(chartId, selected) {
-    return effectiveSeries(chartId, selected).map(id => ({
-        id,
-        label: SERIES[id].label,
-        style: SERIES[id].style,
-        ...(SERIES[id].max !== undefined ? {max: SERIES[id].max} : {}),
-    }));
+export function buildChartSeries(chartId, selected, colorMap) {
+    return effectiveSeries(chartId, selected).map(id => {
+        const group = SERIES[id].colorGroup ?? 'default';
+        const color = typeof colorMap === 'string'
+            ? colorMap
+            : (colorMap?.[group] ?? colorMap?.default ?? '');
+        return {
+            id,
+            label: SERIES[id].label,
+            style: SERIES[id].style,
+            color,
+            ...(SERIES[id].max !== undefined ? {max: SERIES[id].max} : {}),
+        };
+    });
+}
+
+/**
+ * Rotate the hue of a '#rrggbb' colour by `deg` degrees (positive or
+ * negative), returning a new '#rrggbb' string. Lightness and saturation
+ * are preserved. No-op (returns the input) if the hex is empty or the
+ * colour is achromatic (grey/white/black — hue is undefined).
+ *
+ * @param {string} hex colour in '#rrggbb' format
+ * @param {number} deg hue rotation in degrees
+ * @returns {string} rotated '#rrggbb' colour
+ */
+export function rotateHue(hex, deg) {
+    const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex));
+    if (!m)
+        return hex;
+    let r = parseInt(m[1], 16) / 255;
+    let g = parseInt(m[2], 16) / 255;
+    let b = parseInt(m[3], 16) / 255;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const l = (max + min) / 2;
+    if (max === min) {
+        // achromatic — hue is undefined; rotate has no visible effect
+        return hex;
+    }
+    const d = max - min;
+    const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    let h;
+    if (max === r)
+        h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+    else if (max === g)
+        h = ((b - r) / d + 2) / 6;
+    else
+        h = ((r - g) / d + 4) / 6;
+    h = (h * 360 + deg) % 360;
+    if (h < 0)
+        h += 360;
+    h /= 360;
+    // HSL → RGB
+    const hue2rgb = (p, q, t) => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1 / 6) return p + (q - p) * 6 * t;
+        if (t < 1 / 2) return q;
+        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+        return p;
+    };
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    const hexOut = v => Math.round(v * 255).toString(16).padStart(2, '0');
+    return `#${hexOut(hue2rgb(p, q, h + 1 / 3))}${hexOut(hue2rgb(p, q, h))}${hexOut(hue2rgb(p, q, h - 1 / 3))}`;
 }
 
 /** @param {*} v @returns {number|null} a finite number, or null */

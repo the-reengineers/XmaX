@@ -2029,10 +2029,17 @@ public:
             }
         }
 
-        // GPU Temperature (°C)
+        // GPU Temperature — edge (°C)
         if (ADLX_SUCCEEDED(metricsSupport->IsSupportedGPUTemperature(&supported)) && supported) {
             if (ADLX_SUCCEEDED(metrics->GPUTemperature(&value))) {
                 telemetry.temp_c = static_cast<uint32_t>(value);
+            }
+        }
+
+        // GPU Hotspot / Junction Temperature (°C)
+        if (ADLX_SUCCEEDED(metricsSupport->IsSupportedGPUHotspotTemperature(&supported)) && supported) {
+            if (ADLX_SUCCEEDED(metrics->GPUHotspotTemperature(&value))) {
+                telemetry.temp_hotspot_c = static_cast<uint32_t>(value);
             }
         }
 

@@ -16,8 +16,9 @@
 // MetricsPoller -- background thread that polls all sensors and updates shared Metrics struct.
 //
 // Polls at 2000ms intervals:
-//   - CPU: utilization, clock, temperature, package power
-//   - GPU: utilization, clock, temperature, power, VRAM
+//   - CPU: utilization, clock, temperature (platform-dependent), package power
+//   - GPU: utilization, clock, temperature (edge + hotspot), power, VRAM
+//   - APU: die-wide hotspot temperature (platform-dependent)
 //   - RAM: used, total, available, load
 //   - Fan: mode, speed, RPM
 //   - Power: source, battery %, charge limit
@@ -49,6 +50,7 @@ private:
     // Poll individual sensor groups.
     void poll_cpu();
     void poll_gpu();
+    void poll_apu();
     void poll_ram();
     void poll_fan();
     void poll_power();

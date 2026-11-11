@@ -277,6 +277,7 @@ endif()
 if(UNIX)
     target_sources(${BACKEND_TARGET}_tests PRIVATE
         src/platform/linux/procfs.cpp
+        src/platform/linux/sio_ec.cpp
         tests/test_linux_procfs.cpp
     )
     target_compile_definitions(${BACKEND_TARGET}_tests PRIVATE

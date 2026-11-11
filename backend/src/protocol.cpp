@@ -97,6 +97,21 @@ std::string serialize_error(const ErrorMessage& error) {
 std::string serialize_metrics(const Metrics& metrics) {
     json j;
 
+    // _avail — capability flags so the frontend can hide unavailable stat rows.
+    // These are platform constants (set once at compile/init time); per-sample
+    // nulls (e.g. a sensor that exists but briefly drops) don't change them.
+#ifdef _WIN32
+    j["_avail"]["cpu_temp"]     = true;   // EC register 0x0470
+    j["_avail"]["gpu_temp"]     = true;   // ADLX GPUTemperature (edge)
+    j["_avail"]["gpu_hotspot"]  = true;   // ADLX GPUHotspotTemperature
+    j["_avail"]["apu_hotspot"]  = false;  // no k10temp on Windows
+#else
+    j["_avail"]["cpu_temp"]     = true;   // EC register 0x0470 via oxp_ec module
+    j["_avail"]["gpu_temp"]     = true;   // amdgpu hwmon temp1 (edge)
+    j["_avail"]["gpu_hotspot"]  = false;  // amdgpu on Strix Halo doesn't expose junction
+    j["_avail"]["apu_hotspot"]  = true;   // k10temp Tctl (die-wide hotspot)
+#endif
+
     // CPU
     j["cpu"]["util_pct"] = metrics.cpu.util_pct;
     j["cpu"]["clock_mhz"] = metrics.cpu.clock_mhz;
@@ -119,6 +134,11 @@ std::string serialize_metrics(const Metrics& metrics) {
     } else {
         j["gpu"]["temp_c"] = nullptr;
     }
+    if (metrics.gpu.temp_hotspot_c.has_value()) {
+        j["gpu"]["temp_hotspot_c"] = metrics.gpu.temp_hotspot_c.value();
+    } else {
+        j["gpu"]["temp_hotspot_c"] = nullptr;
+    }
     if (metrics.gpu.power_w.has_value()) {
         j["gpu"]["power_w"] = metrics.gpu.power_w.value();
     } else {
@@ -133,6 +153,13 @@ std::string serialize_metrics(const Metrics& metrics) {
         j["gpu"]["vram_total_bytes"] = metrics.gpu.vram_total_bytes.value();
     } else {
         j["gpu"]["vram_total_bytes"] = nullptr;
+    }
+
+    // APU (die-wide / package-level metrics)
+    if (metrics.apu.temp_hotspot_c.has_value()) {
+        j["apu"]["temp_hotspot_c"] = metrics.apu.temp_hotspot_c.value();
+    } else {
+        j["apu"]["temp_hotspot_c"] = nullptr;
     }
 
     // RAM

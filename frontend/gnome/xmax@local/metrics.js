@@ -19,16 +19,20 @@ const mhz = n => `${Math.round(n)} MHz`;
  * @type {Record<string, string>}
  */
 const ROW_PREFIXES = {
-    cpu:    'CPU',
-    gpu:    'GPU',
-    ram:    'RAM',
-    fan:    'Fan',
-    power:  'Power',
-    charge: 'Charge limit',
+    cpu:         'CPU',
+    gpu:         'GPU',
+    cpu_temp:    'CPU Temp',
+    gpu_temp:    'GPU Temp',
+    gpu_hotspot: 'GPU HS Temp',
+    apu:         'APU HS Temp',
+    ram:         'RAM',
+    fan:         'Fan',
+    power:       'Power',
+    charge:      'Charge limit',
 };
 
 /** Default order when no config is available. */
-const DEFAULT_ORDER = ['cpu', 'gpu', 'ram', 'fan', 'power', 'charge'];
+const DEFAULT_ORDER = ['cpu', 'gpu', 'cpu_temp', 'gpu_temp', 'gpu_hotspot', 'apu', 'ram', 'fan', 'power', 'charge'];
 
 /**
  * Localised label prefix for a stat row ID (e.g. 'cpu' → 'CPU'), or null for
@@ -110,6 +114,11 @@ export function updateMetricsRows(rows, m) {
         setValue('cpu', parts.join('  '));
     }
 
+    if (m.cpu && m.cpu.temp_c !== null && m.cpu.temp_c !== undefined)
+        setValue('cpu_temp', temp(m.cpu.temp_c));
+    else
+        setValue('cpu_temp', '--');
+
     if (m.gpu) {
         const parts = [];
         if (m.gpu.temp_c !== null && m.gpu.temp_c !== undefined)
@@ -118,6 +127,21 @@ export function updateMetricsRows(rows, m) {
             parts.push(pct(m.gpu.util_pct));
         setValue('gpu', parts.length ? parts.join('  ') : '--');
     }
+
+    if (m.gpu && m.gpu.temp_c !== null && m.gpu.temp_c !== undefined)
+        setValue('gpu_temp', temp(m.gpu.temp_c));
+    else
+        setValue('gpu_temp', '--');
+
+    if (m.gpu && m.gpu.temp_hotspot_c !== null && m.gpu.temp_hotspot_c !== undefined)
+        setValue('gpu_hotspot', temp(m.gpu.temp_hotspot_c));
+    else
+        setValue('gpu_hotspot', '--');
+
+    if (m.apu && m.apu.temp_hotspot_c !== null && m.apu.temp_hotspot_c !== undefined)
+        setValue('apu', temp(m.apu.temp_hotspot_c));
+    else
+        setValue('apu', '--');
 
     if (m.ram && typeof m.ram.load_pct === 'number')
         setValue('ram', pct(m.ram.load_pct));
@@ -156,6 +180,18 @@ export function compactValue(id, m) {
         return _compactTempUtil(m.cpu);
     case 'gpu':
         return _compactTempUtil(m.gpu);
+    case 'cpu_temp':
+        return m?.cpu?.temp_c !== null && m?.cpu?.temp_c !== undefined
+            ? temp(m.cpu.temp_c) : '--';
+    case 'gpu_temp':
+        return m?.gpu?.temp_c !== null && m?.gpu?.temp_c !== undefined
+            ? temp(m.gpu.temp_c) : '--';
+    case 'gpu_hotspot':
+        return m?.gpu?.temp_hotspot_c !== null && m?.gpu?.temp_hotspot_c !== undefined
+            ? temp(m.gpu.temp_hotspot_c) : '--';
+    case 'apu':
+        return m?.apu?.temp_hotspot_c !== null && m?.apu?.temp_hotspot_c !== undefined
+            ? temp(m.apu.temp_hotspot_c) : '--';
     case 'ram':
         return typeof m.ram?.load_pct === 'number' ? pct(m.ram.load_pct) : '--';
     case 'fan':
@@ -196,7 +232,7 @@ function _compactTempUtil(node) {
  * Compact one-line summary for the Quick Settings tile subtitle.
  *
  * @param {Object} m parsed metrics object (see protocol.cpp serialize_metrics)
- * @returns {string} e.g. "CPU 62% · GPU 55°C", or '--' without data
+ * @returns {string} e.g. "CPU 62% · GPU 55°C · APU 78°C", or '--' without data
  */
 export function metricsSummary(m) {
     const parts = [];
@@ -208,5 +244,7 @@ export function metricsSummary(m) {
     }
     if (m?.gpu && m.gpu.temp_c !== null && m.gpu.temp_c !== undefined)
         parts.push(`GPU ${temp(m.gpu.temp_c)}`);
+    if (m?.apu && m.apu.temp_hotspot_c !== null && m.apu.temp_hotspot_c !== undefined)
+        parts.push(`APU ${temp(m.apu.temp_hotspot_c)}`);
     return parts.length ? parts.join(' · ') : '--';
 }

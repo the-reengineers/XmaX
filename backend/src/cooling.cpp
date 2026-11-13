@@ -6,10 +6,20 @@
 #include <simpleble/SimpleBLE.h>
 
 #include <algorithm>
+#include <cerrno>
 #include <chrono>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <optional>
 #include <string>
+
+#ifdef __linux__
+#include <fcntl.h>
+#include <linux/input.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+#endif
 
 using namespace std::chrono_literals;
 
@@ -32,6 +42,47 @@ static void patch_u8(std::vector<uint8_t>& buf, int offset, uint8_t value) {
 static const char* kCharUuid = "0000ffe1-0000-1000-8000-00805f9b34fb";
 // Device identifier (advertised name)
 static const char* kDeviceName = "CoolingSystem_ONEC1";
+
+#ifdef __linux__
+// ---- Phantom-HID lookup helpers ----
+// BlueZ's HOG plugin turns the cooler's HID-over-GATT service (0x1812) into a
+// uhid input device literally named after the peripheral. Find its sysfs
+// directory by scanning <sysfs_root>/class/input/*/name.
+
+static auto find_input_sysfs_dir(const std::string& name, const std::string& sysfs_root)
+    -> std::optional<std::filesystem::path> {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::path input_root = fs::path(sysfs_root) / "class" / "input";
+    auto it = fs::directory_iterator(input_root, ec);
+    for (; !ec && it != fs::directory_iterator(); it.increment(ec)) {
+        std::ifstream name_file(it->path() / "name");
+        std::string dev_name;
+        if (!std::getline(name_file, dev_name)) continue;
+        if (dev_name == name) return it->path();
+    }
+    return std::nullopt;
+}
+
+auto find_input_event_node(const std::string& name, const std::string& sysfs_root)
+    -> std::optional<std::string> {
+    namespace fs = std::filesystem;
+    auto input_dir = find_input_sysfs_dir(name, sysfs_root);
+    if (!input_dir) return std::nullopt;
+
+    // The eventN child (symlink to a directory on real sysfs) names the
+    // /dev/input node.
+    std::error_code ec;
+    auto it = fs::directory_iterator(*input_dir, ec);
+    for (; !ec && it != fs::directory_iterator(); it.increment(ec)) {
+        std::string fname = it->path().filename().string();
+        if (fname.rfind("event", 0) == 0) {
+            return std::string("/dev/input/") + fname;
+        }
+    }
+    return std::nullopt;
+}
+#endif  // __linux__
 
 // SimpleBLE objects, hidden behind the opaque Ble pimpl declared in cooling.h.
 // Only the connection-loop thread mutates membership; other threads copy the
@@ -64,6 +115,9 @@ void FrostBayController::start() {
 
     running_.store(true);
     connect_thread_ = std::thread(&FrostBayController::connection_loop, this);
+#ifdef __linux__
+    phantom_thread_ = std::thread(&FrostBayController::phantom_hid_watch, this);
+#endif
 }
 
 void FrostBayController::ensure_started() {
@@ -73,6 +127,9 @@ void FrostBayController::ensure_started() {
     if (!running_.load()) {
         running_.store(true);
         connect_thread_ = std::thread(&FrostBayController::connection_loop, this);
+#ifdef __linux__
+        phantom_thread_ = std::thread(&FrostBayController::phantom_hid_watch, this);
+#endif
         newly_armed = false;  // fresh loop reads scan_enabled_ anyway
     }
     if (newly_armed) {
@@ -93,10 +150,16 @@ void FrostBayController::stop() {
 
     // The loop thread performs all BLE teardown before exiting — there is
     // deliberately no disconnect from this thread (that race used to
-    // double-free the peripheral handle).
+    // double-free the peripheral handle). The phantom-HID watcher releases
+    // its own grab before exiting.
     if (connect_thread_.joinable()) {
         connect_thread_.join();
     }
+#ifdef __linux__
+    if (phantom_thread_.joinable()) {
+        phantom_thread_.join();
+    }
+#endif
 }
 
 auto FrostBayController::is_running() const -> bool {
@@ -726,6 +789,157 @@ void FrostBayController::disconnect_device() {
         last_read_buffer_.clear();
     }
 }
+
+#ifdef __linux__
+// ===== Phantom-HID neutralization =====
+// The cooler's HID-over-GATT service makes bluetoothd create a uhid input
+// device that emits its telemetry as volume-down key events (~1/s). The udev
+// rule hides it from libinput; the exclusive grab below ALSO starves raw-evdev
+// consumers (keyd & co), which ignore udev properties. All functions here run
+// exclusively on the watcher thread (phantom_thread_), independently of the
+// BLE connection flow — the node is caught within one scan interval (25ms)
+// of appearing instead of after GATT setup completes (~2s later).
+
+void FrostBayController::phantom_hid_watch() {
+    log_debug("[frostbay] Phantom-HID watcher started");
+
+    while (running_.load()) {
+        auto dev = find_input_event_node(kDeviceName);
+
+        if (phantom_hid_fd_ >= 0) {
+            if (!dev) {
+                release_phantom_hid();  // node gone (disconnect / HOG detach)
+            } else {
+                drain_phantom_hid();    // also detects a vanished node (ENODEV)
+            }
+        } else if (dev) {
+            if (!phantom_hid_done_ && !grab_phantom_hid(*dev)) {
+                phantom_hid_done_ = true;  // give up until the node cycles (warning already logged)
+            }
+        } else {
+            phantom_hid_done_ = false;     // node absent: re-arm for its next appearance
+        }
+
+        // 25ms cadence: bluetoothd's HOG plugin creates the node ~1s after
+        // the link comes up and raw-evdev consumers react within milliseconds
+        // of that — every scan interval of exposure can leak a volume tick.
+        // The sysfs scan is a few dozen tiny reads; negligible at this rate.
+        interruptible_sleep(25ms);
+    }
+
+    release_phantom_hid();
+    log_debug("[frostbay] Phantom-HID watcher stopped");
+}
+
+auto FrostBayController::grab_phantom_hid(const std::string& dev) -> bool {
+    int fd = ::open(dev.c_str(), O_RDONLY | O_NONBLOCK);
+    if (fd < 0) {
+        log_warn("[frostbay] cannot open phantom HID node " + dev + ": " + std::strerror(errno));
+        return false;
+    }
+    int one = 1;
+    if (::ioctl(fd, EVIOCGRAB, &one) == 0) {
+        phantom_hid_fd_ = fd;
+        phantom_hid_path_ = dev;
+        log_info("[frostbay] Phantom HID device neutralized — exclusive grab on " + dev
+                 + " (its volume-key telemetry goes nowhere)");
+        return true;
+    }
+    int err = errno;
+    ::close(fd);
+    if (err == EBUSY) {
+        // Another raw-evdev daemon (keyd & co) grabbed it first — usually
+        // within milliseconds of the node appearing. Escalate: unbind the
+        // HID driver; the input device is unregistered underneath whoever
+        // holds it. Side effect: bluetoothd's report writes start failing,
+        // which may add bt_uhid_input lines to the journal while connected.
+        if (unbind_phantom_hid()) return true;
+    }
+    log_warn("[frostbay] EVIOCGRAB on " + dev + " failed: " + std::strerror(err));
+    return false;
+}
+
+auto FrostBayController::unbind_phantom_hid() -> bool {
+    namespace fs = std::filesystem;
+    auto input_dir = find_input_sysfs_dir(kDeviceName, "/sys");
+    if (!input_dir) return false;
+
+    std::error_code ec;
+    // /sys/class/input/inputN resolves to .../uhid/<hid_id>/input/inputN
+    fs::path real = fs::canonical(*input_dir, ec);
+    if (ec) return false;
+    fs::path hid_dir = real.parent_path().parent_path();
+    std::string hid_id = hid_dir.filename().string();
+    if (hid_id.empty() || hid_id.find(':') == std::string::npos) return false;
+
+    // Unbind via the actual bound driver (normally hid-generic).
+    std::string driver = "hid-generic";
+    fs::path drv_link = fs::read_symlink(hid_dir / "driver", ec);
+    if (!ec && !drv_link.filename().empty()) driver = drv_link.filename().string();
+
+    fs::path unbind_path = fs::path("/sys/bus/hid/drivers") / driver / "unbind";
+    int fd = ::open(unbind_path.c_str(), O_WRONLY);
+    if (fd < 0) {
+        log_warn("[frostbay] cannot open " + unbind_path.string() + ": " + std::strerror(errno));
+        return false;
+    }
+    ssize_t n = ::write(fd, hid_id.data(), hid_id.size());
+    ::close(fd);
+    if (n != static_cast<ssize_t>(hid_id.size())) {
+        log_warn("[frostbay] phantom HID unbind write failed: " + std::string(std::strerror(errno)));
+        return false;
+    }
+    phantom_hid_unbind_ = true;
+    log_info("[frostbay] Phantom HID neutralized via driver unbind (" + hid_id
+             + " → " + driver + ") — device was grabbed by another daemon");
+    return true;
+}
+
+void FrostBayController::drain_phantom_hid() {
+    if (phantom_hid_fd_ < 0) return;
+
+    struct input_event ev {};
+    uint64_t batch = 0;
+    for (;;) {
+        ssize_t n = ::read(phantom_hid_fd_, &ev, sizeof(ev));
+        if (n == static_cast<ssize_t>(sizeof(ev))) {
+            ++batch;
+            continue;
+        }
+        if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+            // Node vanished underneath us (link drop / HOG detach). Release;
+            // the watch loop re-neutralizes if it reappears.
+            log_info("[frostbay] Phantom HID node gone — releasing grab");
+            release_phantom_hid();
+            return;
+        }
+        break;  // queue empty
+    }
+
+    phantom_hid_events_ += batch;
+    if (batch > 0 && !phantom_hid_logged_) {
+        phantom_hid_logged_ = true;
+        log_info("[frostbay] Discarding phantom HID reports (" + std::to_string(batch)
+                 + " input events in first batch — would be volume-down keys)");
+    }
+}
+
+void FrostBayController::release_phantom_hid() {
+    if (phantom_hid_fd_ >= 0) {
+        int zero = 0;
+        ::ioctl(phantom_hid_fd_, EVIOCGRAB, &zero);  // ungrab (close() alone would also release)
+        ::close(phantom_hid_fd_);
+        log_debug("[frostbay] Released phantom HID grab (" + phantom_hid_path_ + ", "
+                  + std::to_string(phantom_hid_events_) + " events discarded)");
+        phantom_hid_fd_ = -1;
+        phantom_hid_path_.clear();
+    }
+    phantom_hid_done_ = false;
+    phantom_hid_unbind_ = false;
+    phantom_hid_events_ = 0;
+    phantom_hid_logged_ = false;
+}
+#endif  // __linux__
 
 // ===== BLE: connection_loop =====
 // Runs in a dedicated thread and is the SOLE owner of BLE teardown.

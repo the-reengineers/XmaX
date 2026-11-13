@@ -2776,3 +2776,45 @@ TEST_F(TrayManagerTest, DestructorStopsTray) {
     // If we get here without hanging, destructor properly stopped the tray
     EXPECT_EQ(platform_.tray_remove_count, 1);
 }
+
+#ifdef __linux__
+// ---- Phantom-HID node lookup (Frost Bay volume-tick neutralization) ----
+
+TEST(FrostBayPhantomHidTest, FindInputEventNodeMatchesName) {
+    namespace fs = std::filesystem;
+    auto root = fs::temp_directory_path() / "xmax_phantom_hid_test";
+    fs::remove_all(root);
+
+    // Fake sysfs: two input devices, one is the cooler's uhid node.
+    fs::create_directories(root / "class/input/input4/event4");
+    { std::ofstream f(root / "class/input/input4/name"); f << "Video Bus\n"; }
+    fs::create_directories(root / "class/input/input47/event16");
+    { std::ofstream f(root / "class/input/input47/name"); f << "CoolingSystem_ONEC1\n"; }
+
+    auto found = find_input_event_node("CoolingSystem_ONEC1", root.string());
+    ASSERT_TRUE(found.has_value());
+    EXPECT_EQ(*found, "/dev/input/event16");
+
+    // Exact match only.
+    EXPECT_FALSE(find_input_event_node("CoolingSystem", root.string()).has_value());
+    EXPECT_FALSE(find_input_event_node("NoSuch Device", root.string()).has_value());
+
+    fs::remove_all(root);
+}
+
+TEST(FrostBayPhantomHidTest, FindInputEventNodeHandlesMissingPaths) {
+    namespace fs = std::filesystem;
+    auto root = fs::temp_directory_path() / "xmax_phantom_hid_test2";
+    fs::remove_all(root);
+
+    // Name matches but no eventN child (device vanished mid-scan) → nullopt.
+    fs::create_directories(root / "class/input/input3");
+    { std::ofstream f(root / "class/input/input3/name"); f << "CoolingSystem_ONEC1\n"; }
+    EXPECT_FALSE(find_input_event_node("CoolingSystem_ONEC1", root.string()).has_value());
+
+    // Nonexistent sysfs root → nullopt, no throw.
+    EXPECT_FALSE(find_input_event_node("CoolingSystem_ONEC1", "/nonexistent_sysfs_root").has_value());
+
+    fs::remove_all(root);
+}
+#endif  // __linux__

@@ -37,10 +37,16 @@
 //     the validated Python reference implementation). If firmware ever
 //     exposes notify, we subscribe and tick() skips reads while fresh.
 //   - The cooler also advertises a HID-over-GATT service (0x1812). Whenever
-//     it is connected, bluetoothd attaches the HOG input profile and its ~1Hz
-//     telemetry reports reach the kernel as phantom consumer-control (volume)
-//     key events. The packaged udev rule 60-xmax-frostbay.rules makes libinput
-//     ignore that input device; nothing in this controller touches HOGP.
+//     it is connected, bluetoothd attaches the HOG input profile and the
+//     cooler's ~1Hz telemetry reports reach the kernel as phantom
+//     consumer-control (volume-down) key events. Two layers silence them:
+//     the packaged udev rule 60-xmax-frostbay.rules (LIBINPUT_IGNORE_DEVICE —
+//     covers libinput consumers: mutter/GNOME, KDE, wlroots), and this
+//     controller taking an exclusive EVIOCGRAB on the phantom evdev node for
+//     the lifetime of the connection — which additionally starves raw-evdev
+//     consumers (keyd & co) that ignore udev properties. If another daemon
+//     already holds the grab, the controller escalates to unbinding the HID
+//     driver, which unregisters the input device for everyone.
 //
 // Design:
 //   - Follows existing controller pattern: constructor takes Platform&,
@@ -49,12 +55,22 @@
 //     don't leak into every consumer of cooling.h. Only the connection-loop
 //     thread mutates them; GATT callers copy the (shared_ptr-based, cheap)
 //     handles out under ble_mutex_ and serialize operations under gatt_mutex_.
-//   - Teardown happens exclusively on the connection-loop thread — stop()
-//     just clears running_ and joins. There is no cross-thread disconnect.
+//   - Teardown happens on the owning thread — stop() just clears running_
+//     and joins: the connection loop tears down BLE, the phantom-HID watcher
+//     (Linux) releases its evdev grab. There is no cross-thread teardown.
 //   - Missing/non-present device is never an error: connected_ stays false,
 //     tick() is a no-op, read_state() returns default state.
 //
 // Thread safety: all public methods are safe to call from any thread.
+
+#ifdef __linux__
+// Locate the evdev node ("/dev/input/eventN") of the input device whose
+// sysfs `name` file exactly matches `name` (the phantom HID node BlueZ
+// creates for the cooler). `sysfs_root` is injectable for tests.
+// Returns nullopt when the device is absent.
+auto find_input_event_node(const std::string& name,
+                           const std::string& sysfs_root = "/sys") -> std::optional<std::string>;
+#endif
 
 class FrostBayController {
 public:
@@ -151,6 +167,23 @@ private:
     void interruptible_sleep(std::chrono::milliseconds d);
     void wake_loop();
 
+    // ---- Phantom-HID neutralization (Linux only) ----
+    // A dedicated watcher thread owns everything below. It scans sysfs for
+    // the uhid input node BlueZ creates for the cooler's HID-over-GATT
+    // service and neutralizes it — exclusive EVIOCGRAB, so no consumer
+    // (libinput or raw-evdev like keyd) sees the volume-key telemetry. If
+    // another daemon grabbed first (EBUSY), escalate to a hid-generic unbind,
+    // which unregisters the node underneath it. Running independently of the
+    // connection loop means the node is caught within one scan interval of
+    // appearing — even when the connection was initiated by someone else.
+#ifdef __linux__
+    void phantom_hid_watch();                               // runs in phantom_thread_
+    auto grab_phantom_hid(const std::string& dev) -> bool;  // single grab/unbind attempt
+    auto unbind_phantom_hid() -> bool;
+    void drain_phantom_hid();                               // discard queued events
+    void release_phantom_hid();                             // close fd / reset state
+#endif
+
     Platform& platform_;
 
     // Cached device state (mutex_)
@@ -169,6 +202,9 @@ private:
     // Lifecycle
     std::mutex lifecycle_mutex_;                        // serializes start/ensure_started/stop
     std::thread connect_thread_;
+#ifdef __linux__
+    std::thread phantom_thread_;                        // phantom-HID watcher
+#endif
     std::atomic<bool> running_{false};
     std::atomic<bool> connected_{false};
     std::atomic<bool> scan_enabled_{false};             // armed by ensure_started()
@@ -182,4 +218,14 @@ private:
     // Loop-thread only: log throttling for repeated connect failures
     int consecutive_failures_ = 0;
     bool no_adapter_warned_ = false;
+
+#ifdef __linux__
+    // Watcher-thread only (phantom_hid_watch): phantom-HID state.
+    int phantom_hid_fd_ = -1;             // open + grabbed evdev fd
+    std::string phantom_hid_path_;
+    bool phantom_hid_done_ = false;       // stop retrying until the node cycles
+    bool phantom_hid_unbind_ = false;     // neutralized via driver unbind
+    uint64_t phantom_hid_events_ = 0;     // discarded input events (diagnostics)
+    bool phantom_hid_logged_ = false;     // first-batch log emitted
+#endif
 };

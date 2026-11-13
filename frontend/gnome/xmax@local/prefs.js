@@ -521,9 +521,12 @@ export default class XmaxPreferences extends ExtensionPreferences {
             css_classes: ['xmax-tile-title'],
         }));
         tile.append(new Gtk.Label({
-            // Mirrors the graph legend: symbol per line style (solid CPU,
-            // dotted GPU, filled RAM) — see chartSeries.LEGEND_SYMBOLS.
-            label: id === 'graph' ? '○ CPU  ◌ GPU  ● RAM' : '62% · 72°C',
+            // Sample value per widget: the graph mirrors its legend (symbol
+            // per line style — see chartSeries.LEGEND_SYMBOLS), gpu_power
+            // shows watts + % of the runtime TDP ceiling, the rest share a
+            // generic util/temp sample.
+            label: id === 'graph' ? '○ CPU  ◌ GPU  ● RAM'
+                : id === 'gpu_power' ? '22W · 27%' : '62% · 72°C',
             halign: Gtk.Align.START,
             css_classes: ['xmax-tile-value'],
         }));
@@ -751,6 +754,7 @@ export default class XmaxPreferences extends ExtensionPreferences {
         const labels = {
             cpu:         _('CPU'),
             gpu:         _('GPU'),
+            gpu_power:   _('GPU Power'),
             cpu_temp:    _('CPU Temp'),
             gpu_temp:    _('GPU Temp'),
             gpu_hotspot: _('GPU HS Temp'),

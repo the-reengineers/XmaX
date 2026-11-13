@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 the-reengineers
 // metrics.js — shared rendering of live metrics readouts. Builds the
-// CPU / GPU / RAM / fan / power / charge-limit rows into any popup menu and
-// updates them from a parsed MetricsChanged payload (see protocol.cpp
-// serialize_metrics). Used by both the top-bar indicator popup (indicator.js)
-// and the Quick Settings System Stats section (quickSettings.js).
+// CPU / GPU / GPU-power / RAM / fan / power / charge-limit rows into any
+// popup menu and updates them from a parsed MetricsChanged payload (see
+// protocol.cpp serialize_metrics). Used by both the top-bar indicator popup
+// (indicator.js) and the Quick Settings System Stats section
+// (quickSettings.js).
 
 import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 
@@ -14,6 +15,34 @@ const pct = n => `${Math.round(n)}%`;
 const temp = n => `${Math.round(n)}°C`;
 const mhz = n => `${Math.round(n)} MHz`;
 
+// Runtime TDP ceiling per power source, in W — mirrors the backend's
+// power_state_max_tdp() / runtime_tdp_ceiling() (shared.h): the max the APU
+// may draw in the current state. DC-In rises to 120W while the Frost Bay
+// cooler is connected.
+const TDP_CEILING_W = {battery: 55, usb_c_slow: 20, usb_c_fast: 55, dc_in: 80};
+
+/**
+ * 'GPU Power' tile/row text: '<watts>W · <pct of ceiling>%'. The draw comes
+ * from gpu.power_w — on APU platforms this is the amdgpu hwmon PPT reading,
+ * i.e. the whole-package power. With an unrecognised power source (ceiling
+ * unknown) only the wattage is shown; '--' when there is no reading at all.
+ *
+ * @param {Object} m parsed metrics object
+ * @returns {string} e.g. '22W · 27%'
+ */
+function _gpuPowerText(m) {
+    const w = m?.gpu?.power_w;
+    if (typeof w !== 'number')
+        return '--';
+    const mode = m?.power?.mode;
+    let ceiling = TDP_CEILING_W[mode];
+    if (mode === 'dc_in' && m?.cooling?.connected)
+        ceiling = 120;  // runtime_tdp_ceiling: Frost Bay raises the DC-In cap
+    return ceiling
+        ? `${Math.round(w)}W · ${Math.round(w / ceiling * 100)}%`
+        : `${Math.round(w)}W`;
+}
+
 /**
  * All supported stat row IDs and their localised label prefixes.
  * @type {Record<string, string>}
@@ -21,6 +50,7 @@ const mhz = n => `${Math.round(n)} MHz`;
 const ROW_PREFIXES = {
     cpu:         'CPU',
     gpu:         'GPU',
+    gpu_power:   'GPU Power',
     cpu_temp:    'CPU Temp',
     gpu_temp:    'GPU Temp',
     gpu_hotspot: 'GPU HS Temp',
@@ -32,7 +62,7 @@ const ROW_PREFIXES = {
 };
 
 /** Default order when no config is available. */
-const DEFAULT_ORDER = ['cpu', 'gpu', 'cpu_temp', 'gpu_temp', 'gpu_hotspot', 'apu', 'ram', 'fan', 'power', 'charge'];
+const DEFAULT_ORDER = ['cpu', 'gpu', 'gpu_power', 'cpu_temp', 'gpu_temp', 'gpu_hotspot', 'apu', 'ram', 'fan', 'power', 'charge'];
 
 /**
  * Localised label prefix for a stat row ID (e.g. 'cpu' → 'CPU'), or null for
@@ -138,6 +168,8 @@ export function updateMetricsRows(rows, m) {
     else
         setValue('gpu_hotspot', '--');
 
+    setValue('gpu_power', _gpuPowerText(m));
+
     if (m.apu && m.apu.temp_hotspot_c !== null && m.apu.temp_hotspot_c !== undefined)
         setValue('apu', temp(m.apu.temp_hotspot_c));
     else
@@ -180,6 +212,8 @@ export function compactValue(id, m) {
         return _compactTempUtil(m.cpu);
     case 'gpu':
         return _compactTempUtil(m.gpu);
+    case 'gpu_power':
+        return _gpuPowerText(m);
     case 'cpu_temp':
         return m?.cpu?.temp_c !== null && m?.cpu?.temp_c !== undefined
             ? temp(m.cpu.temp_c) : '--';

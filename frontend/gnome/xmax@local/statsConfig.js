@@ -4,8 +4,8 @@
 // drives the Quick Settings System Stats grid: which stat widgets are
 // visible, in what order, and with which col_span/row_span. The same file
 // also serves the Windows home/dashboard tile page; ids unknown to Windows
-// (fan, charge, graph) are skipped by its widget factory, so the layout
-// round-trips across platforms.
+// (fan, charge, gpu_power, graph) are skipped by its widget factory, so the
+// layout round-trips across platforms.
 
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
@@ -16,7 +16,7 @@ import {defaultSpans, sizeLimits} from './gridLayout.js';
 // order (used when config.json is missing or unreadable). 'graph' is the
 // CPU/GPU/RAM usage graph row; like fan/charge it is not a Windows home tile
 // id, so the Windows frontend ignores it when reading the shared layout.
-const STAT_IDS = ['cpu', 'gpu', 'cpu_temp', 'gpu_temp', 'gpu_hotspot', 'apu', 'ram', 'fan', 'power', 'charge', 'graph'];
+const STAT_IDS = ['cpu', 'gpu', 'gpu_power', 'cpu_temp', 'gpu_temp', 'gpu_hotspot', 'apu', 'ram', 'fan', 'power', 'charge', 'graph'];
 const DEFAULT_ORDER = [...STAT_IDS];
 
 /** @param {string[]} a @param {string[]} b @returns {boolean} */

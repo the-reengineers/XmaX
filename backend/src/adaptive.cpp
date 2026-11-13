@@ -53,20 +53,24 @@ void AdaptiveController::activate(TuningPreset preset, int target_temp_c, int td
     prev_error_ = 0.0;
     smoothed_temp_ = 0.0;
     temp_initialized_ = false;
-    current_tdp_ = tdp_max_w;
+    // Start at the EFFECTIVE max, not the raw profile value: the power-state
+    // ceiling (e.g. 80W on DC-In without the Frost Bay cooler) must hold from
+    // the very first write — tick() would clamp within ~2s, but activate()
+    // must not transiently exceed what the gate allows.
+    current_tdp_ = effective_tdp_max_locked();
     current_fan_ = 0;
 
     // Take immediate hardware control — set fan to Curve mode, install an
     // initial curve at the profile's fan floor, and write the initial
-    // (maximum) TDP value.  The first tick() call (within 2 s via MetricsPoller)
-    // will update the curve from the PID.
+    // (effective-max) TDP value.  The first tick() call (within 2 s via
+    // MetricsPoller) will update the curve from the PID.
     {
         int fan_min = std::clamp(config_.fan_min_pct, 0, config_.fan_max_pct);
         (void)fan_ctrl_.set_mode(FanState::Mode::Curve);
         FanCurve initial_curve;
         initial_curve.points = {{0, fan_min}, {100, fan_min}};
         fan_ctrl_.set_curve(initial_curve);
-        (void)tdp_ctrl_.write_tdp(tdp_max_w, tdp_max_w, tdp_max_w);
+        (void)tdp_ctrl_.write_tdp(current_tdp_, current_tdp_, current_tdp_);
     }
 
     active_.store(true);

@@ -789,10 +789,7 @@ auto TransportService::handle_set_profile(const Command& cmd) -> Response {
         // Set power state ceiling from profile's assigned power state (or current state if unassigned)
         auto ps_for_ceiling = profile.power_state.has_value()
             ? profile.power_state.value() : power_.current_state();
-        int ceiling = power_state_max_tdp(ps_for_ceiling);
-        if (ps_for_ceiling == PowerState::Source::DcIn && frost_bay_.is_connected()) {
-            ceiling = 120;
-        }
+        int ceiling = runtime_tdp_ceiling(ps_for_ceiling, frost_bay_.is_connected());
         adaptive_.set_power_state_ceiling(ceiling);
 
         if (profile.type == ProfileType::Adaptive) {
@@ -804,8 +801,13 @@ auto TransportService::handle_set_profile(const Command& cmd) -> Response {
             adaptive_.activate(preset, profile.target_temp_c, profile.tdp_max_w,
                                profile.fan_max_pct, profile.fan_min_pct);
         } else {
-            // Fixed profile: write TDP + fan curve, deactivate adaptive
-            auto tdp_result = tdp_.write_tdp(profile.stapm_w, profile.fast_w, profile.slow_w);
+            // Fixed profile: write TDP + fan curve, deactivate adaptive.
+            // Clamp to the runtime ceiling — profiles may be saved up to 120W
+            // for DC-In, but that only applies with the Frost Bay cooler
+            // connected (80W otherwise).
+            auto tdp_result = tdp_.write_tdp(std::min(profile.stapm_w, ceiling),
+                                             std::min(profile.fast_w, ceiling),
+                                             std::min(profile.slow_w, ceiling));
             if (!tdp_result) {
                 Response resp;
                 resp.id = cmd.id;
@@ -1582,11 +1584,9 @@ void TransportService::apply_all_settings() {
     power_.update_power_state();
     auto current_power_state = power_.current_state();
 
-    // Set power state TDP ceiling from hardcoded max
-    int tdp_ceiling = power_state_max_tdp(current_power_state);
-    if (current_power_state == PowerState::Source::DcIn && frost_bay_.is_connected()) {
-        tdp_ceiling = 120;
-    }
+    // Set power state TDP ceiling (raised to 120W on DC-In while the Frost
+    // Bay cooler is connected)
+    int tdp_ceiling = runtime_tdp_ceiling(current_power_state, frost_bay_.is_connected());
     adaptive_.set_power_state_ceiling(tdp_ceiling);
 
     // Find default profile assigned to current power state
@@ -1608,8 +1608,10 @@ void TransportService::apply_all_settings() {
             adaptive_.activate(preset, assigned->target_temp_c, assigned->tdp_max_w,
                                assigned->fan_max_pct, assigned->fan_min_pct);
         } else {
-            // Apply fixed profile
-            auto tdp_result = tdp_.write_tdp(assigned->stapm_w, assigned->fast_w, assigned->slow_w);
+            // Apply fixed profile (clamped to the runtime ceiling — see above)
+            auto tdp_result = tdp_.write_tdp(std::min(assigned->stapm_w, tdp_ceiling),
+                                             std::min(assigned->fast_w, tdp_ceiling),
+                                             std::min(assigned->slow_w, tdp_ceiling));
             if (!tdp_result) {
                 log_error("[apply_all_settings] Failed to write TDP: error code " +
                     std::to_string(static_cast<uint32_t>(tdp_result.error())));

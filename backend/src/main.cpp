@@ -19,6 +19,7 @@
 #include "dbus/dbus_service.h"
 #endif
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <csignal>
@@ -242,11 +243,9 @@ int main(int argc, char* argv[]) {
         if (config.session_persist) {
             log_info("Applying persisted settings...");
 
-            // Set initial power state TDP ceiling from hardcoded max
-            int initial_tdp_ceiling = power_state_max_tdp(current_power_state);
-            if (current_power_state == PowerState::Source::DcIn && frost_bay->is_connected()) {
-                initial_tdp_ceiling = 120;
-            }
+            // Set initial power state TDP ceiling (raised to 120W on DC-In
+            // while the Frost Bay cooler is connected)
+            int initial_tdp_ceiling = runtime_tdp_ceiling(current_power_state, frost_bay->is_connected());
             adaptive->set_power_state_ceiling(initial_tdp_ceiling);
             log_info("Initial power state TDP ceiling: " + std::to_string(initial_tdp_ceiling) + "W");
 
@@ -376,11 +375,9 @@ int main(int argc, char* argv[]) {
         // Power state change → auto-apply assigned profile (if session_persist enabled)
         power->on_state_change([&](PowerState::Source new_state, PowerState::Source /*old_state*/) {
             if (transport->is_session_persist()) {
-                // Set power state TDP ceiling from hardcoded max
-                int new_tdp_ceiling = power_state_max_tdp(new_state);
-                if (new_state == PowerState::Source::DcIn && frost_bay->is_connected()) {
-                    new_tdp_ceiling = 120;
-                }
+                // Set power state TDP ceiling (raised to 120W on DC-In while
+                // the Frost Bay cooler is connected)
+                int new_tdp_ceiling = runtime_tdp_ceiling(new_state, frost_bay->is_connected());
                 adaptive->set_power_state_ceiling(new_tdp_ceiling);
                 log_info("[power] State changed, new TDP ceiling: " + std::to_string(new_tdp_ceiling) + "W");
 
@@ -403,7 +400,12 @@ int main(int argc, char* argv[]) {
                                            assigned->fan_max_pct, assigned->fan_min_pct);
                         log_info("[power] Auto-applied adaptive profile: " + std::string(assigned->name));
                     } else {
-                        (void)tdp->write_tdp(assigned->stapm_w, assigned->fast_w, assigned->slow_w);
+                        // Clamp to the runtime ceiling — profiles may be saved
+                        // up to 120W for DC-In, but that only applies with the
+                        // Frost Bay cooler connected (80W otherwise).
+                        (void)tdp->write_tdp(std::min(assigned->stapm_w, new_tdp_ceiling),
+                                             std::min(assigned->fast_w, new_tdp_ceiling),
+                                             std::min(assigned->slow_w, new_tdp_ceiling));
 
                         if (assigned->fan_curve.has_value()) {
                             auto curve_it = profiles.fan_curves.find(assigned->fan_curve.value());

@@ -1170,10 +1170,10 @@ export default class XmaxPreferences extends ExtensionPreferences {
         updateVisibility();
 
         // ---- Clamp TDP limits per power state ---------------------------------
-        // Must match power_state_max_tdp() in backend/src/shared.h.
-        // TODO: 120W (dc_in) is a temporary placeholder. Add external cooling
-        // device detection and only allow 120W TDP when cooling is present (fall
-        // back to the previous 80W otherwise) once that detection is implemented.
+        // Must match power_state_max_tdp() in backend/src/shared.h. DC-In
+        // offers up to 120W; the backend decides at apply time via
+        // runtime_tdp_ceiling() (shared.h): 80W unless the Frost Bay external
+        // cooler is connected, 120W while it is.
         const TDP_CELLINGS = [55, 20, 55, 120]; // battery, usb_c_slow, usb_c_fast, dc_in
 
         const clampTdpRows = () => {

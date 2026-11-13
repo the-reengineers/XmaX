@@ -684,6 +684,76 @@ TEST_F(ProfileTest, ProfileTdpValidation) {
     EXPECT_EQ(storage.profiles.size(), 0);
 }
 
+TEST_F(ProfileTest, AdaptiveTdpMaxValidationPerPowerState) {
+    ProfileStorage storage;
+
+    auto make_adaptive = [](const std::string& name, int tdp_max) {
+        Profile p;
+        p.name = name;
+        p.type = ProfileType::Adaptive;
+        p.tdp_max_w = tdp_max;
+        return p;
+    };
+
+    // DC-In assignment: up to 120W may be saved — the runtime power-state
+    // ceiling (80W, or 120W while the Frost Bay cooler is connected) decides
+    // what is actually applied.
+    Profile dcin = make_adaptive("Adaptive DcIn", 120);
+    dcin.power_state = PowerState::Source::DcIn;
+    EXPECT_FALSE(save_profile(storage, dcin).has_value());
+
+    // Above the global max is still rejected.
+    Profile dcin_over = make_adaptive("Adaptive DcIn Over", 121);
+    dcin_over.power_state = PowerState::Source::DcIn;
+    EXPECT_TRUE(save_profile(storage, dcin_over).has_value());
+
+    // Unassigned: global max 120W.
+    EXPECT_FALSE(save_profile(storage, make_adaptive("Adaptive Free", 120)).has_value());
+
+    // Battery keeps its hard 55W cap (no external-cooling story there).
+    Profile batt = make_adaptive("Adaptive Batt", 80);
+    batt.power_state = PowerState::Source::Battery;
+    auto err = save_profile(storage, batt);
+    EXPECT_TRUE(err.has_value());
+    EXPECT_EQ(*err, "TDP max must be between 6 and 55W");
+}
+
+TEST_F(ProfileTest, FixedTdpValidationPerPowerState) {
+    ProfileStorage storage;
+
+    auto make_fixed = [](const std::string& name, int watts) {
+        Profile p;
+        p.name = name;
+        p.type = ProfileType::Fixed;
+        p.stapm_w = watts;
+        p.fast_w = watts;
+        p.slow_w = watts;
+        return p;
+    };
+
+    // DC-In assignment: up to 120W may be saved — the runtime ceiling
+    // (80W, or 120W while the Frost Bay cooler is connected) decides
+    // what is actually applied.
+    Profile dcin = make_fixed("Fixed DcIn", 120);
+    dcin.power_state = PowerState::Source::DcIn;
+    EXPECT_FALSE(save_profile(storage, dcin).has_value());
+
+    // Above the global max is still rejected.
+    Profile dcin_over = make_fixed("Fixed DcIn Over", 121);
+    dcin_over.power_state = PowerState::Source::DcIn;
+    EXPECT_TRUE(save_profile(storage, dcin_over).has_value());
+
+    // Unassigned: global max 120W.
+    EXPECT_FALSE(save_profile(storage, make_fixed("Fixed Free", 120)).has_value());
+
+    // Battery keeps its hard 55W cap.
+    Profile batt = make_fixed("Fixed Batt", 60);
+    batt.power_state = PowerState::Source::Battery;
+    auto err = save_profile(storage, batt);
+    EXPECT_TRUE(err.has_value());
+    EXPECT_EQ(*err, "TDP values must be between 6 and 55W");
+}
+
 TEST_F(ProfileTest, FirstProfileWithPowerStateBecomesDefault) {
     ProfileStorage storage;
     FanCurve curve;
@@ -1613,6 +1683,20 @@ TEST_F(AdaptiveControllerTest, EffectiveTdpMaxWithHigherPowerState) {
     EXPECT_EQ(adaptive_->effective_tdp_max(), 55);  // min(55, 65)
 }
 
+TEST_F(AdaptiveControllerTest, ActivateClampsInitialTdpToPowerStateCeiling) {
+    // DC-In without Frost Bay: ceiling 80W. A profile saved with tdp_max 120W
+    // (allowed for DC-In-assigned adaptive profiles) must not drive more than
+    // the ceiling even transiently — activate() used to write the raw profile
+    // value until the first tick() clamped it (~2s window).
+    adaptive_->set_power_state_ceiling(80);
+    adaptive_->activate(TuningPreset::Balanced, 85, 120, 100, 25);
+
+    EXPECT_EQ(adaptive_->effective_tdp_max(), 80);  // min(120, 80)
+    ASSERT_FALSE(platform_.smu_calls.empty());
+    EXPECT_EQ(platform_.smu_calls[0].msg, 0x14);    // STAPM
+    EXPECT_EQ(platform_.smu_calls[0].arg, 80000);   // clamped, not 120000
+}
+
 TEST_F(AdaptiveControllerTest, TickWhenInactiveDoesNothing) {
     // Not activated
     adaptive_->tick(70, 65);
@@ -2187,6 +2271,37 @@ TEST_F(TransportServiceTest, SetProfileNotFound) {
 
     EXPECT_FALSE(resp.ok);
     EXPECT_EQ(resp.error.value(), ErrorCode::ProfileNotFound);
+}
+
+TEST_F(TransportServiceTest, SetFixedProfileClampsTdpToRuntimeCeiling) {
+    config_.persist = true;
+    config_.session_persist = true;
+
+    // Fixed profiles assigned to DC-In may be saved with up to 120W — the
+    // runtime gate allows that only while the Frost Bay cooler is connected.
+    // It is not connected in this fixture, so applying must clamp to the 80W
+    // DC-In ceiling.
+    Profile p;
+    p.id = "dcin-max";
+    p.name = "DcIn Max";
+    p.type = ProfileType::Fixed;
+    p.power_state = PowerState::Source::DcIn;
+    p.stapm_w = 120;
+    p.fast_w = 120;
+    p.slow_w = 120;
+    profiles_.profiles["dcin-max"] = p;
+
+    auto cmd = make_command("set_profile", "req_001", R"({"id": "dcin-max"})");
+    auto resp = service_->dispatch(cmd);
+    EXPECT_TRUE(resp.ok);
+
+    // STAPM/Fast/Slow must be written clamped to 80W (args are in mW).
+    ASSERT_GE(platform_.smu_calls.size(), 3u);
+    EXPECT_EQ(platform_.smu_calls[0].msg, 0x14);  // STAPM
+    EXPECT_EQ(platform_.smu_calls[0].arg, 80000);
+    EXPECT_EQ(platform_.smu_calls[1].msg, 0x15);  // Fast
+    EXPECT_EQ(platform_.smu_calls[1].arg, 80000);
+    EXPECT_EQ(platform_.smu_calls[2].arg, 80000); // Slow
 }
 
 TEST_F(TransportServiceTest, DeleteProfileWithPowerState) {

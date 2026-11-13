@@ -169,3 +169,16 @@ inline int power_state_max_tdp(PowerState::Source source) {
         default:                           return 55;   // Safe default for Unknown
     }
 }
+
+// Runtime TDP ceiling: the hardware max for the power source, raised to 120W
+// on DC-In while the Frost Bay external cooler is connected. Profiles of BOTH
+// types may be saved with TDP values up to 120W for DC-In; every apply path
+// must clamp through this ceiling (adaptive profiles via
+// AdaptiveController::set_power_state_ceiling, fixed profiles at each
+// write_tdp call site).
+inline int runtime_tdp_ceiling(PowerState::Source source, bool frost_bay_connected) {
+    if (source == PowerState::Source::DcIn && frost_bay_connected) {
+        return 120;
+    }
+    return power_state_max_tdp(source);
+}

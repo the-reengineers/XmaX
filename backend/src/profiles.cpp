@@ -453,10 +453,18 @@ std::optional<std::string> save_profile(ProfileStorage& storage, Profile profile
     }
 
     if (profile.type == ProfileType::Fixed) {
-        // Determine TDP ceiling: power state max if assigned, otherwise global max
-        int tdp_ceiling = profile.power_state.has_value()
-            ? power_state_max_tdp(profile.power_state.value())
-            : 120;
+        // Fixed profiles are clamped at APPLY time (runtime_tdp_ceiling() in
+        // shared.h): the DC-In ceiling is 80W unless the Frost Bay cooler is
+        // connected, then 120W. A DC-In-assigned profile may therefore be
+        // *saved* with TDP values up to 120W — the hardware gate decides what
+        // is written. Other power states keep their hard maximums (no
+        // external-cooling story there), and unassigned profiles use the
+        // global max.
+        int tdp_ceiling = 120;
+        if (profile.power_state.has_value() &&
+            profile.power_state.value() != PowerState::Source::DcIn) {
+            tdp_ceiling = power_state_max_tdp(profile.power_state.value());
+        }
 
         // Validate TDP values against ceiling
         if (profile.stapm_w < 6 || profile.stapm_w > tdp_ceiling ||
@@ -481,9 +489,19 @@ std::optional<std::string> save_profile(ProfileStorage& storage, Profile profile
             return "Target temperature must be between 50 and 100°C";
         }
 
-        int tdp_ceiling = profile.power_state.has_value()
-            ? power_state_max_tdp(profile.power_state.value())
-            : 120;
+        // Adaptive profiles are clamped at RUNTIME: the effective TDP max is
+        // min(tdp_max_w, power_state_ceiling), and every apply path raises the
+        // DC-In ceiling to 120W only while the Frost Bay cooler is connected
+        // (runtime_tdp_ceiling(), 80W otherwise). A DC-In-assigned profile may
+        // therefore be *saved* with
+        // tdp_max up to 120W — the hardware gate decides what is applied.
+        // Other power states keep their hard maximums (no external-cooling
+        // story there), and unassigned profiles use the global max.
+        int tdp_ceiling = 120;
+        if (profile.power_state.has_value() &&
+            profile.power_state.value() != PowerState::Source::DcIn) {
+            tdp_ceiling = power_state_max_tdp(profile.power_state.value());
+        }
 
         if (profile.tdp_max_w < 6 || profile.tdp_max_w > tdp_ceiling) {
             return "TDP max must be between 6 and " + std::to_string(tdp_ceiling) + "W";

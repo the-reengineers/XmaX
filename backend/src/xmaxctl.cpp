@@ -23,6 +23,14 @@
 //   xmaxctl fan-curves list [--json]
 //   xmaxctl fan-curves save --id <slug> --name <name> --points <temp:speed,...>
 //   xmaxctl fan-curves delete <id>
+//   xmaxctl cooling status
+//   xmaxctl cooling set [--mode <0|254|255>] [--fan <1-100>] [--pump <1-100>]
+//     [--rgb-mode <2-14|254>] [--rgb-enable <1>] [--rgb-level <1-4>]
+//     [--rgb-r <1-255>] [--rgb-g <1-255>] [--rgb-b <1-255>]
+//     [--curve <temp:speed,...>]
+//   xmaxctl cooling rgb --enable <0|1> --mode <2-14|254> --level <0-4>
+//     --r <0-255> --g <0-255> --b <0-255>
+//   xmaxctl cooling help            (all flags with value ranges)
 
 #include <systemd/sd-bus.h>
 
@@ -49,7 +57,7 @@ constexpr const char* kServiceName = "org.xmax.Service";
 constexpr const char* kServicePath = "/org/xmax/Service";
 
 void usage(std::ostream& out) {
-    out << "usage: xmaxctl version|metrics|tdp|fan|charge-limit|auto-start|profiles|fan-curves [...]\n"
+    out << "usage: xmaxctl version|metrics|tdp|fan|charge-limit|auto-start|profiles|fan-curves|cooling [...]\n"
         << "\n"
         << "  profiles list [--json]              list all profiles\n"
         << "  profiles set <id>                   apply a profile to hardware\n"
@@ -57,7 +65,73 @@ void usage(std::ostream& out) {
         << "  profiles delete <id>                delete a profile\n"
         << "  fan-curves list [--json]            list all fan curves\n"
         << "  fan-curves save --id <s> --name <s> --points <t:s,...>\n"
-        << "  fan-curves delete <id>              delete a fan curve\n";
+        << "  fan-curves delete <id>              delete a fan curve\n"
+        << "  cooling status                      read Frost Bay sensor/control state\n"
+        << "  cooling set [...]                   write Frost Bay settings (partial)\n"
+        << "  cooling rgb --enable 0|1 [...]      write Frost Bay RGB settings (exact)\n"
+        << "  cooling help                        all cooling flags and value ranges\n";
+}
+
+// Detailed help for the `cooling` subcommands: every flag with its value
+// range. Keep the ranges in sync with cooling.cpp (build_write_buffer for
+// `set` patch semantics, set_rgb for the exact write).
+void cooling_usage(std::ostream& out) {
+    out << "usage: xmaxctl cooling status | set [flags] | rgb <flags> | help\n"
+        << "\n"
+        << "  status                              read Frost Bay sensor/control state (JSON)\n"
+        << "\n"
+        << "  set [flags]                         partial update: omitted flags (and 0\n"
+        << "                                      values) leave the device's current\n"
+        << "                                      setting untouched\n"
+        << "    --mode <0|254|255>                  0=Off, 254=IntelliFan (auto, curve-\n"
+        << "                                        controlled), 255=FixedSpeed (manual)\n"
+        << "    --fan <1-100>                       fan duty % (only honored in mode 255)\n"
+        << "    --pump <1-100>                      pump duty % (honored in modes 254/255)\n"
+        << "    --rgb-mode <n>                      RGB effect: 254 = static color (uses\n"
+        << "                                        --rgb-r/-g/-b); 2-14 = animation\n"
+        << "                                        presets:\n"
+        << "                                          2  Aurora           3  Flowing Light\n"
+        << "                                          5  Colorful Neon    7  Dreamy\n"
+        << "                                          8  Warm Sun         9  Cyberpunk\n"
+        << "                                          11 Sunset afterglow 12 Colourful\n"
+        << "                                          13 Monster Woke     14 AOK classic\n"
+        << "    --rgb-enable <1>                    turn RGB on (off: 'cooling rgb\n"
+        << "                                        --enable 0')\n"
+        << "    --rgb-level <1-4>                   brightness step (4 = max; the vendor\n"
+        << "                                        UI offers 1/3/4 — higher values\n"
+        << "                                        behave like 4)\n"
+        << "    --rgb-r <1-255>                     static color red\n"
+        << "    --rgb-g <1-255>                     static color green\n"
+        << "    --rgb-b <1-255>                     static color blue\n"
+        << "    --curve <temp:speed,...>            IntelliFan points, temp C:speed %,\n"
+        << "                                        max 9; written only when the mode is\n"
+        << "                                        254 (set here or current on device).\n"
+        << "                                        Factory temp points (shared by all 3\n"
+        << "                                        factory curves): 30,32,33,34,35,36,\n"
+        << "                                        37,38,40\n"
+        << "\n"
+        << "  rgb <flags>                         exact write: all six RGB fields are\n"
+        << "                                      sent as given, zeros included; every\n"
+        << "                                      flag is required\n"
+        << "    --enable <0|1>                      RGB on/off\n"
+        << "    --mode <n>                          254 = static color; 2-14 = animation\n"
+        << "                                        presets (table above)\n"
+        << "    --level <0-4>                       brightness step (4 = max)\n"
+        << "    --r <0-255>                         red\n"
+        << "    --g <0-255>                         green\n"
+        << "    --b <0-255>                         blue\n"
+        << "\n"
+        << "Examples:\n"
+        << "  xmaxctl cooling rgb --enable 1 --mode 254 --level 4 --r 255 --g 80 --b 0\n"
+        << "  xmaxctl cooling set --mode 255 --fan 70 --pump 80\n"
+        << "  xmaxctl cooling set --mode 254 \\\n"
+        << "      --curve 30:24,32:28,33:36,34:44,35:48,36:52,37:56,38:60,40:70\n"
+        << "\n"
+        << "Notes:\n"
+        << "  - The Frost Bay must be connected ('cooling status' shows \"connected\":\n"
+        << "    true). The first cooling command arms the BLE scan fallback; already-\n"
+        << "    paired devices connect at daemon start without scanning.\n"
+        << "  - Writes are gated by the polkit action org.xmax.set-cooling.\n";
 }
 
 // ---- D-Bus helpers ---------------------------------------------------------
@@ -862,6 +936,299 @@ int cmd_fan_curves(const std::vector<std::string>& args) {
     return 1;
 }
 
+// ---- Cooling (Frost Bay) commands -------------------------------------------
+
+int cmd_cooling_status() {
+    sd_bus* bus = open_system_bus();
+    if (bus) {
+        sd_bus_error err = SD_BUS_ERROR_NULL;
+        sd_bus_message* reply = nullptr;
+        int r = sd_bus_call_method(bus, kServiceName, kServicePath, kServiceName,
+                                   "GetCooling", &err, &reply, "");
+        if (r >= 0) {
+            const char* s = nullptr;
+            sd_bus_message_read(reply, "s", &s);
+            std::cout << (s ? s : "{}") << "\n";
+            sd_bus_message_unref(reply);
+            sd_bus_unref(bus);
+            return 0;
+        }
+        print_dbus_error("cooling", &err);
+        sd_bus_error_free(&err);
+        sd_bus_unref(bus);
+    }
+
+    auto resp = socket_request("get_cooling", json::object());
+    if (!resp) {
+        std::cerr << "cooling: service not reachable (D-Bus or socket)\n";
+        return 1;
+    }
+    if (!resp->value("ok", false)) {
+        std::cerr << "cooling: " << resp->value("error", "error") << "\n";
+        return 1;
+    }
+    std::cout << resp->value("data", json("{}")) << "\n";
+    return 0;
+}
+
+int cmd_cooling_set(const std::vector<std::string>& args, size_t start) {
+    json payload;
+
+    if (auto mode = find_flag(args, start, "--mode")) {
+        int m = 0;
+        try { m = std::stoi(*mode); }
+        catch (...) { std::cerr << "cooling set: --mode must be an integer\n"; return 1; }
+        // Firmware ignores invalid mode bytes (verified for 252: device stays
+        // in its current mode), so reject them here instead of silently no-op'ing.
+        if (m != 0 && m != 254 && m != 255) {
+            std::cerr << "cooling set: --mode must be 0 (Off), 254 (IntelliFan), or 255 (FixedSpeed)\n";
+            return 1;
+        }
+        payload["mode"] = m;
+    }
+    if (auto fan = find_flag(args, start, "--fan")) {
+        try { payload["fanSpeedPercent"] = std::stoi(*fan); }
+        catch (...) { std::cerr << "cooling set: --fan must be an integer\n"; return 1; }
+    }
+    if (auto pump = find_flag(args, start, "--pump")) {
+        try { payload["pumpSpeedPercent"] = std::stoi(*pump); }
+        catch (...) { std::cerr << "cooling set: --pump must be an integer\n"; return 1; }
+    }
+    if (auto rgbm = find_flag(args, start, "--rgb-mode")) {
+        try { payload["rgbMode"] = std::stoi(*rgbm); }
+        catch (...) { std::cerr << "cooling set: --rgb-mode must be an integer\n"; return 1; }
+    }
+    if (auto rgbe = find_flag(args, start, "--rgb-enable")) {
+        try { payload["rgbEnable"] = std::stoi(*rgbe) != 0; }
+        catch (...) { std::cerr << "cooling set: --rgb-enable must be 0 or 1\n"; return 1; }
+    }
+    if (auto rgbl = find_flag(args, start, "--rgb-level")) {
+        try { payload["rgbLightLevel"] = std::stoi(*rgbl); }
+        catch (...) { std::cerr << "cooling set: --rgb-level must be an integer\n"; return 1; }
+    }
+    if (auto r = find_flag(args, start, "--rgb-r")) {
+        try { payload["rgb_r"] = std::stoi(*r); }
+        catch (...) { std::cerr << "cooling set: --rgb-r must be an integer\n"; return 1; }
+    }
+    if (auto g = find_flag(args, start, "--rgb-g")) {
+        try { payload["rgb_g"] = std::stoi(*g); }
+        catch (...) { std::cerr << "cooling set: --rgb-g must be an integer\n"; return 1; }
+    }
+    if (auto b = find_flag(args, start, "--rgb-b")) {
+        try { payload["rgb_b"] = std::stoi(*b); }
+        catch (...) { std::cerr << "cooling set: --rgb-b must be an integer\n"; return 1; }
+    }
+    if (auto curve_str = find_flag(args, start, "--curve")) {
+        json curve = json::array();
+        std::string pts = *curve_str;
+        size_t pos = 0;
+        while (pos < pts.size()) {
+            size_t comma = pts.find(',', pos);
+            std::string pair = pts.substr(pos, comma - pos);
+            size_t colon = pair.find(':');
+            if (colon == std::string::npos) {
+                std::cerr << "cooling set: invalid curve format (use t:s,t:s,...)\n";
+                return 1;
+            }
+            try {
+                int temp = std::stoi(pair.substr(0, colon));
+                int speed = std::stoi(pair.substr(colon + 1));
+                curve.push_back({{"temp_c", temp}, {"speed_pct", speed}});
+            } catch (...) {
+                std::cerr << "cooling set: invalid curve point values\n";
+                return 1;
+            }
+            if (comma == std::string::npos) break;
+            pos = comma + 1;
+        }
+        payload["curve"] = curve;
+    }
+
+    if (payload.empty()) {
+        std::cerr << "cooling set: at least one flag is required\n\n";
+        cooling_usage(std::cerr);
+        return 1;
+    }
+
+    // D-Bus call: SetCooling(a{sv})
+    sd_bus* bus = open_system_bus();
+    if (bus) {
+        sd_bus_message* msg = nullptr;
+        int mc = sd_bus_message_new_method_call(bus, &msg, kServiceName, kServicePath, kServiceName, "SetCooling");
+        if (mc >= 0) {
+            // Build a{sv} from payload. We need to handle mixed types:
+            // bool for rgbEnable, integers for all others.
+            int r = sd_bus_message_open_container(msg, 'a', "{sv}");
+            for (const auto& [key, val] : payload.items()) {
+                if (r < 0) break;
+                r = sd_bus_message_open_container(msg, 'e', "sv");
+                if (r < 0) break;
+                r = sd_bus_message_append(msg, "s", key.c_str());
+                if (r < 0) break;
+                if (val.is_boolean()) {
+                    r = sd_bus_message_open_container(msg, 'v', "b");
+                    if (r < 0) break;
+                    r = sd_bus_message_append(msg, "b", val.get<bool>() ? 1 : 0);
+                } else if (val.is_number_integer()) {
+                    r = sd_bus_message_open_container(msg, 'v', "u");
+                    if (r < 0) break;
+                    r = sd_bus_message_append(msg, "u", static_cast<uint32_t>(val.get<int>()));
+                } else {
+                    r = sd_bus_message_open_container(msg, 'v', "s");
+                    if (r < 0) break;
+                    r = sd_bus_message_append(msg, "s", val.dump().c_str());
+                }
+                if (r < 0) break;
+                r = sd_bus_message_close_container(msg);  // variant
+                if (r < 0) break;
+                r = sd_bus_message_close_container(msg);  // entry
+            }
+            r = sd_bus_message_close_container(msg);  // a{sv}
+
+            if (r >= 0) {
+                sd_bus_error err = SD_BUS_ERROR_NULL;
+                sd_bus_message* reply = nullptr;
+                r = sd_bus_call(bus, msg, 0, &err, &reply);
+                if (r >= 0) {
+                    std::cout << "cooling: settings applied\n";
+                    sd_bus_message_unref(reply);
+                    sd_bus_message_unref(msg);
+                    sd_bus_unref(bus);
+                    return 0;
+                }
+                print_dbus_error("cooling set", &err);
+                sd_bus_error_free(&err);
+            }
+            sd_bus_message_unref(msg);
+        }
+        sd_bus_unref(bus);
+    }
+
+    // Socket fallback
+    auto resp = socket_request("set_cooling", payload);
+    if (!resp) {
+        std::cerr << "cooling set: service not reachable (D-Bus or socket)\n";
+        return 1;
+    }
+    if (!resp->value("ok", false)) {
+        std::cerr << "cooling set: " << resp->value("error", "error") << "\n";
+        return 1;
+    }
+    std::cout << "cooling: settings applied\n";
+    return 0;
+}
+
+int cmd_cooling_rgb(const std::vector<std::string>& args, size_t start) {
+    json payload;
+
+    auto enable_str = find_flag(args, start, "--enable");
+    auto mode_str   = find_flag(args, start, "--mode");
+    auto level_str  = find_flag(args, start, "--level");
+    auto r_str      = find_flag(args, start, "--r");
+    auto g_str      = find_flag(args, start, "--g");
+    auto b_str      = find_flag(args, start, "--b");
+
+    if (!enable_str || !mode_str || !level_str || !r_str || !g_str || !b_str) {
+        std::cerr << "cooling rgb: all six flags (--enable, --mode, --level, --r, --g, --b) are required\n\n";
+        cooling_usage(std::cerr);
+        return 1;
+    }
+
+    try {
+        payload["enable"] = std::stoi(*enable_str) != 0;
+        payload["mode"]   = std::stoi(*mode_str);
+        payload["level"]  = std::stoi(*level_str);
+        payload["r"]      = std::stoi(*r_str);
+        payload["g"]      = std::stoi(*g_str);
+        payload["b"]      = std::stoi(*b_str);
+    } catch (...) {
+        std::cerr << "cooling rgb: all values must be integers\n";
+        return 1;
+    }
+
+    // D-Bus call: SetCoolingRgb(a{sv})
+    sd_bus* bus = open_system_bus();
+    if (bus) {
+        sd_bus_message* msg = nullptr;
+        int mc = sd_bus_message_new_method_call(bus, &msg, kServiceName, kServicePath, kServiceName, "SetCoolingRgb");
+        if (mc >= 0) {
+            int r = sd_bus_message_open_container(msg, 'a', "{sv}");
+            for (const auto& [key, val] : payload.items()) {
+                if (r < 0) break;
+                r = sd_bus_message_open_container(msg, 'e', "sv");
+                if (r < 0) break;
+                r = sd_bus_message_append(msg, "s", key.c_str());
+                if (r < 0) break;
+                if (val.is_boolean()) {
+                    r = sd_bus_message_open_container(msg, 'v', "b");
+                    if (r < 0) break;
+                    r = sd_bus_message_append(msg, "b", val.get<bool>() ? 1 : 0);
+                } else {
+                    r = sd_bus_message_open_container(msg, 'v', "u");
+                    if (r < 0) break;
+                    r = sd_bus_message_append(msg, "u", static_cast<uint32_t>(val.get<int>()));
+                }
+                if (r < 0) break;
+                r = sd_bus_message_close_container(msg);
+                if (r < 0) break;
+                r = sd_bus_message_close_container(msg);
+            }
+            r = sd_bus_message_close_container(msg);
+
+            if (r >= 0) {
+                sd_bus_error err = SD_BUS_ERROR_NULL;
+                sd_bus_message* reply = nullptr;
+                r = sd_bus_call(bus, msg, 0, &err, &reply);
+                if (r >= 0) {
+                    std::cout << "cooling rgb: applied\n";
+                    sd_bus_message_unref(reply);
+                    sd_bus_message_unref(msg);
+                    sd_bus_unref(bus);
+                    return 0;
+                }
+                print_dbus_error("cooling rgb", &err);
+                sd_bus_error_free(&err);
+            }
+            sd_bus_message_unref(msg);
+        }
+        sd_bus_unref(bus);
+    }
+
+    // Socket fallback
+    auto resp = socket_request("set_cooling_rgb", payload);
+    if (!resp) {
+        std::cerr << "cooling rgb: service not reachable (D-Bus or socket)\n";
+        return 1;
+    }
+    if (!resp->value("ok", false)) {
+        std::cerr << "cooling rgb: " << resp->value("error", "error") << "\n";
+        return 1;
+    }
+    std::cout << "cooling rgb: applied\n";
+    return 0;
+}
+
+int cmd_cooling(const std::vector<std::string>& args) {
+    if (args.size() < 2) { cooling_usage(std::cerr); return 1; }
+    const std::string& sub = args[1];
+    if (sub == "help" || sub == "--help" || sub == "-h") {
+        cooling_usage(std::cout);
+        return 0;
+    }
+    if (sub == "status") {
+        return cmd_cooling_status();
+    }
+    if (sub == "set") {
+        return cmd_cooling_set(args, 2);
+    }
+    if (sub == "rgb") {
+        return cmd_cooling_rgb(args, 2);
+    }
+    std::cerr << "cooling: unknown subcommand '" << sub << "'\n\n";
+    cooling_usage(std::cerr);
+    return 1;
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -952,6 +1319,10 @@ int main(int argc, char* argv[]) {
 
     if (cmd == "fan-curves") {
         return cmd_fan_curves(args);
+    }
+
+    if (cmd == "cooling") {
+        return cmd_cooling(args);
     }
 
     usage(std::cerr);

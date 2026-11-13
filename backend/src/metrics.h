@@ -3,6 +3,7 @@
 #pragma once
 
 #include "shared.h"
+#include "cooling.h"
 #include "fan.h"
 #include "tdp.h"
 #include "adaptive.h"
@@ -28,7 +29,8 @@
 
 class MetricsPoller {
 public:
-    MetricsPoller(Platform& platform, FanController& fan_ctrl, TdpController& tdp_ctrl, AdaptiveController& adaptive_ctrl);
+    MetricsPoller(Platform& platform, FanController& fan_ctrl, TdpController& tdp_ctrl,
+                 AdaptiveController& adaptive_ctrl, FrostBayController& frost_bay);
     ~MetricsPoller();
 
     // Start polling in background thread.
@@ -54,11 +56,13 @@ private:
     void poll_ram();
     void poll_fan();
     void poll_power();
+    void poll_cooling();
 
     Platform& platform_;
     FanController& fan_ctrl_;
     TdpController& tdp_ctrl_;
     AdaptiveController& adaptive_ctrl_;
+    FrostBayController& frost_bay_;
 
     std::thread poll_thread_;
     std::atomic<bool> running_{false};

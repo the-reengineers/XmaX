@@ -94,11 +94,13 @@ static auto battery_pct_wmi() -> std::optional<int> {
 }
 #endif
 
-MetricsPoller::MetricsPoller(Platform& platform, FanController& fan_ctrl, TdpController& tdp_ctrl, AdaptiveController& adaptive_ctrl)
+MetricsPoller::MetricsPoller(Platform& platform, FanController& fan_ctrl, TdpController& tdp_ctrl,
+                             AdaptiveController& adaptive_ctrl, FrostBayController& frost_bay)
     : platform_(platform)
     , fan_ctrl_(fan_ctrl)
     , tdp_ctrl_(tdp_ctrl)
     , adaptive_ctrl_(adaptive_ctrl)
+    , frost_bay_(frost_bay)
 {
 }
 
@@ -144,6 +146,7 @@ void MetricsPoller::poll_loop() {
         poll_ram();
         poll_fan();
         poll_power();
+        poll_cooling();
 
         // Adaptive control: run the PID loop when an adaptive profile is
         // active (this writes TDP + fan speed through to hardware).
@@ -400,4 +403,11 @@ void MetricsPoller::poll_power() {
     // Battery percentage via sysfs BAT*/capacity
     current_metrics_.power.battery_pct = procfs::battery_pct();
 #endif
+}
+
+void MetricsPoller::poll_cooling() {
+    frost_bay_.tick();                    // keep state fresh (fallback read)
+    auto state = frost_bay_.read_state(); // cached snapshot
+    std::lock_guard lock(metrics_mutex_);
+    current_metrics_.cooling = state;
 }

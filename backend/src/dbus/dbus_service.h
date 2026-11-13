@@ -62,6 +62,11 @@ private:
     static int on_save_fan_curve(sd_bus_message* m, void* userdata, sd_bus_error* ret_error);
     static int on_delete_fan_curve(sd_bus_message* m, void* userdata, sd_bus_error* ret_error);
 
+    // Cooling (Frost Bay) methods
+    static int on_get_cooling(sd_bus_message* m, void* userdata, sd_bus_error* ret_error);
+    static int on_set_cooling(sd_bus_message* m, void* userdata, sd_bus_error* ret_error);
+    static int on_set_cooling_rgb(sd_bus_message* m, void* userdata, sd_bus_error* ret_error);
+
     static int on_get_version(sd_bus* bus, const char* path, const char* interface,
                               const char* property, sd_bus_message* reply,
                               void* userdata, sd_bus_error* ret_error);

@@ -1,7 +1,9 @@
 [Unit]
 Description=XmaX backend daemon
 Documentation=man:xmaxd(8)
-After=polkit.service dbus.service
+# bluetooth.service ordering is best-effort: if it doesn't exist (no Bluetooth
+# stack), the Frost Bay controller degrades to "no adapter" and retries.
+After=polkit.service dbus.service bluetooth.service
 Requires=dbus.service
 
 [Service]
@@ -11,9 +13,11 @@ ExecStart=/usr/local/bin/xmaxd
 User=root
 # Restart on unexpected exit; systemd treats a clean SIGTERM exit as success.
 Restart=on-failure
-# Give the process a moment to close the AF_UNIX socket and release the lock
-# before systemd considers it stopped.
-TimeoutStopSec=10
+# Stopping joins the Frost Bay BLE thread, which may sit inside a blocking
+# BlueZ connect/disconnect for a few seconds. Keep this comfortably above
+# that worst case: on Fedora, TimeoutStopFailureMode=abort turns a stop
+# timeout into a SIGABRT core dump.
+TimeoutStopSec=30
 
 [Install]
 WantedBy=multi-user.target

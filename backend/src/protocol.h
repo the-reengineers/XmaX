@@ -55,3 +55,6 @@ std::string serialize_error(const ErrorMessage& error);
 
 // Serialize Metrics to JSON string
 std::string serialize_metrics(const Metrics& metrics);
+
+// Serialize FrostBayState to JSON string
+std::string serialize_cooling_state(const FrostBayState& state);

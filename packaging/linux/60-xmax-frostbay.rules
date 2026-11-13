@@ -1,0 +1,15 @@
+# Frost Bay external cooler (CoolingSystem_ONEC1) — ignore its phantom HID input.
+#
+# The cooler advertises a HID-over-GATT service (0x1812) alongside its custom
+# 0xFFE0/0xFFE1 control service, and pairs like a normal HID device. Whenever
+# it is connected, bluetoothd attaches the HOG input profile and creates a
+# uhid input device named after the peripheral. The cooler's ~1 Hz telemetry
+# notifications are then fed to the kernel HID parser, whose consumer-control
+# mapping injects Volume-Down key events — dropping system volume one step per
+# second for as long as the device stays connected (the connection is owned by
+# bluetoothd, not by xmaxd).
+#
+# The input device is useless to userspace: all cooler telemetry and control
+# flows through xmaxd over GATT (0xFFE1). Tell libinput — and thus GNOME/mutter
+# and anything else using libinput — to ignore it.
+SUBSYSTEM=="input", ATTRS{name}=="CoolingSystem_ONEC1", ENV{LIBINPUT_IGNORE_DEVICE}="1"

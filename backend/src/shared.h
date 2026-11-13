@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 // Platform-neutral shared types
 // No HANDLE, DWORD, HWND, pid_t, uid_t, or any OS-specific types
@@ -89,6 +90,42 @@ struct UmaOption {
     double memory_remaining_gb = 0.0; // Remaining system RAM (GB)
 };
 
+// Frost Bay cooling-device sensor snapshot.
+// All read-only sensor fields come from the device's BLE status buffer (≥41 bytes,
+// parsed at fixed offsets). Fields with defaults are writable
+// via read-modify-write; the defaults are zero/inactive.
+struct FrostBayState {
+    bool connected = false;
+
+    // ---- Read-only sensors ----
+    int mode = 0;                    // 0=Off, 254=IntelliFan, 255=FixedSpeed
+    uint16_t fan_speed_rpm = 0;      // raw fan RPM (big-endian on the wire)
+    uint16_t pump_speed_rpm = 0;     // raw pump RPM
+    uint16_t water_flow = 0;         // flow-rate sensor
+    int in_water_temp_c = 0;         // inlet coolant temperature (°C)
+    int out_water_temp_c = 0;        // outlet coolant temperature (°C)
+    int status_flag = 0;             // bitfield: 1=running, 2/64=fault
+    int fw_version = 0;              // firmware version
+
+    // ---- Writable fields (last-known values, default to zero/inactive) ----
+    int fan_speed_percent = 0;       // only honored in mode 255 (Fixed Speed)
+    int pump_speed_percent = 0;      // pump duty % (honored in modes 254 and 255)
+    int rgb_mode = 0;                // 254 = static color (r/g/b below);
+                                     // 2-14 = presets (`xmaxctl cooling help`)
+    bool rgb_enable = false;         // RGB on/off
+    int rgb_level = 0;               // brightness step 0-4 (4 = max)
+    int rgb_r = 0, rgb_g = 0, rgb_b = 0;  // static color (mode 254)
+
+    // ---- 9-point IntelliFan curve (only active in mode 254) ----
+    // Pairs stored as (temp_c, fan_pct). The 3 factory curves share
+    // t1..t9 = 30,32,33,34,35,36,37,38,40 with different fan arrays.
+    struct CurvePoint { int temp_c; int speed_pct; };
+    std::vector<CurvePoint> curve;
+
+    // ---- Derived ----
+    bool is_running = false;  // pumpSpeed>1 && statusFlag not in {2,64}
+};
+
 struct Metrics {
     CpuMetrics cpu;
     GpuMetrics gpu;
@@ -96,6 +133,7 @@ struct Metrics {
     RamMetrics ram;
     FanState fan;
     PowerState power;
+    FrostBayState cooling;
     int64_t ts = 0;  // Unix timestamp
 };
 
@@ -127,10 +165,7 @@ inline int power_state_max_tdp(PowerState::Source source) {
         case PowerState::Source::Battery:  return 55;   // Battery: 55W
         case PowerState::Source::UsbCSlow: return 20;   // USB-C 65W: 20W
         case PowerState::Source::UsbCFast: return 55;   // USB-C 100W: 55W
-        // TODO: 120W is a temporary placeholder. Add external cooling device
-        // detection and only allow 120W TDP when cooling is present (fall back
-        // to the previous 80W otherwise) once that detection is implemented.
-        case PowerState::Source::DcIn:     return 120;  // DC-In: 120W
+        case PowerState::Source::DcIn:     return 80;   // DC-In: 80W (120W with Frost Bay cooling)
         default:                           return 55;   // Safe default for Unknown
     }
 }

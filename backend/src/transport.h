@@ -8,6 +8,7 @@
 #include "profiles.h"
 #include "platform/platform.h"
 #include "metrics.h"
+#include "cooling.h"
 #include "fan.h"
 #include "tdp.h"
 #include "power.h"
@@ -57,6 +58,7 @@ public:
         PowerController& power,
         AdaptiveController& adaptive,
         ButtonMonitor& button,
+        FrostBayController& frost_bay,
         Config& config,
         ProfileStorage& profiles,
         std::filesystem::path config_path,
@@ -133,6 +135,9 @@ private:
     auto handle_get_uma_options(const Command& cmd) -> Response;
     auto handle_set_uma_option(const Command& cmd) -> Response;
     auto handle_reboot(const Command& cmd) -> Response;
+    auto handle_get_cooling(const Command& cmd) -> Response;
+    auto handle_set_cooling(const Command& cmd) -> Response;
+    auto handle_set_cooling_rgb(const Command& cmd) -> Response;
 
     // Apply all configured settings to hardware (used when session_persist transitions to true)
     void apply_all_settings();
@@ -150,8 +155,7 @@ private:
     PowerController& power_;
     AdaptiveController& adaptive_;
     ButtonMonitor& button_;
-
-    // Config and profiles (mutable, shared state)
+    FrostBayController& frost_bay_;
     Config& config_;
     ProfileStorage& profiles_;
     std::filesystem::path config_path_;

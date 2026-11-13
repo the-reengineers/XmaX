@@ -175,6 +175,9 @@ bool DbusService::start() {
         SD_BUS_METHOD("GetFanCurves", "", "s", on_get_fan_curves, SD_BUS_VTABLE_UNPRIVILEGED),
         SD_BUS_METHOD("SaveFanCurve", "s", "s", on_save_fan_curve, SD_BUS_VTABLE_UNPRIVILEGED),
         SD_BUS_METHOD("DeleteFanCurve", "s", "", on_delete_fan_curve, SD_BUS_VTABLE_UNPRIVILEGED),
+        SD_BUS_METHOD("GetCooling", "", "s", on_get_cooling, SD_BUS_VTABLE_UNPRIVILEGED),
+        SD_BUS_METHOD("SetCooling", "a{sv}", "", on_set_cooling, SD_BUS_VTABLE_UNPRIVILEGED),
+        SD_BUS_METHOD("SetCoolingRgb", "a{sv}", "", on_set_cooling_rgb, SD_BUS_VTABLE_UNPRIVILEGED),
         SD_BUS_PROPERTY("Version", "s", on_get_version, 0, SD_BUS_VTABLE_PROPERTY_CONST),
         SD_BUS_PROPERTY("AutoStartEnabled", "b", on_get_auto_start, 0, SD_BUS_VTABLE_PROPERTY_EMITS_CHANGE),
         SD_BUS_PROPERTY("SessionPersist", "b", on_get_session_persist, 0, SD_BUS_VTABLE_PROPERTY_EMITS_CHANGE),
@@ -756,6 +759,73 @@ int DbusService::on_delete_fan_curve(sd_bus_message* m, void* userdata, sd_bus_e
     cmd.method = "delete_fan_curve";
     cmd.id = "dbus";
     cmd.payload = payload.dump();
+
+    Response resp = self->transport_.dispatch(cmd);
+    if (!resp.ok) {
+        return reply_transport_error(m, resp);
+    }
+    return sd_bus_reply_method_return(m, "");
+}
+
+// ===== Cooling (Frost Bay) vtable callbacks =====
+
+int DbusService::on_get_cooling(sd_bus_message* m, void* userdata, sd_bus_error*) {
+    auto* self = static_cast<DbusService*>(userdata);
+
+    Command cmd;
+    cmd.method = "get_cooling";
+    cmd.id = "dbus";
+    cmd.payload = "{}";
+
+    Response resp = self->transport_.dispatch(cmd);
+    if (!resp.ok || !resp.data) {
+        return reply_transport_error(m, resp);
+    }
+    return sd_bus_reply_method_return(m, "s", resp.data->c_str());
+}
+
+int DbusService::on_set_cooling(sd_bus_message* m, void* userdata, sd_bus_error*) {
+    auto* self = static_cast<DbusService*>(userdata);
+
+    if (!self->authorize(m, "org.xmax.set-cooling")) {
+        return reply_not_authorized(m);
+    }
+
+    json args;
+    if (!read_asv(m, args)) {
+        return sd_bus_reply_method_errorf(m, "org.freedesktop.DBus.Error.InvalidArgs",
+                                          "Expected a{sv} with cooling settings");
+    }
+
+    Command cmd;
+    cmd.method = "set_cooling";
+    cmd.id = "dbus";
+    cmd.payload = args.dump();
+
+    Response resp = self->transport_.dispatch(cmd);
+    if (!resp.ok) {
+        return reply_transport_error(m, resp);
+    }
+    return sd_bus_reply_method_return(m, "");
+}
+
+int DbusService::on_set_cooling_rgb(sd_bus_message* m, void* userdata, sd_bus_error*) {
+    auto* self = static_cast<DbusService*>(userdata);
+
+    if (!self->authorize(m, "org.xmax.set-cooling")) {
+        return reply_not_authorized(m);
+    }
+
+    json args;
+    if (!read_asv(m, args)) {
+        return sd_bus_reply_method_errorf(m, "org.freedesktop.DBus.Error.InvalidArgs",
+                                          "Expected a{sv} with RGB settings");
+    }
+
+    Command cmd;
+    cmd.method = "set_cooling_rgb";
+    cmd.id = "dbus";
+    cmd.payload = args.dump();
 
     Response resp = self->transport_.dispatch(cmd);
     if (!resp.ok) {

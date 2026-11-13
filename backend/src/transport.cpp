@@ -25,6 +25,7 @@ TransportService::TransportService(
     PowerController& power,
     AdaptiveController& adaptive,
     ButtonMonitor& button,
+    FrostBayController& frost_bay,
     Config& config,
     ProfileStorage& profiles,
     std::filesystem::path config_path,
@@ -37,6 +38,7 @@ TransportService::TransportService(
     , power_(power)
     , adaptive_(adaptive)
     , button_(button)
+    , frost_bay_(frost_bay)
     , config_(config)
     , profiles_(profiles)
     , config_path_(std::move(config_path))
@@ -444,6 +446,9 @@ auto TransportService::dispatch(const Command& cmd) -> Response {
     if (cmd.method == "get_uma_options") return handle_get_uma_options(cmd);
     if (cmd.method == "set_uma_option") return handle_set_uma_option(cmd);
     if (cmd.method == "reboot") return handle_reboot(cmd);
+    if (cmd.method == "get_cooling") return handle_get_cooling(cmd);
+    if (cmd.method == "set_cooling") return handle_set_cooling(cmd);
+    if (cmd.method == "set_cooling_rgb") return handle_set_cooling_rgb(cmd);
 
     // Unknown command
     Response resp;
@@ -782,9 +787,12 @@ auto TransportService::handle_set_profile(const Command& cmd) -> Response {
         }
 
         // Set power state ceiling from profile's assigned power state (or current state if unassigned)
-        int ceiling = profile.power_state.has_value()
-            ? power_state_max_tdp(profile.power_state.value())
-            : power_state_max_tdp(power_.current_state());
+        auto ps_for_ceiling = profile.power_state.has_value()
+            ? profile.power_state.value() : power_.current_state();
+        int ceiling = power_state_max_tdp(ps_for_ceiling);
+        if (ps_for_ceiling == PowerState::Source::DcIn && frost_bay_.is_connected()) {
+            ceiling = 120;
+        }
         adaptive_.set_power_state_ceiling(ceiling);
 
         if (profile.type == ProfileType::Adaptive) {
@@ -1576,6 +1584,9 @@ void TransportService::apply_all_settings() {
 
     // Set power state TDP ceiling from hardcoded max
     int tdp_ceiling = power_state_max_tdp(current_power_state);
+    if (current_power_state == PowerState::Source::DcIn && frost_bay_.is_connected()) {
+        tdp_ceiling = 120;
+    }
     adaptive_.set_power_state_ceiling(tdp_ceiling);
 
     // Find default profile assigned to current power state
@@ -1620,5 +1631,126 @@ void TransportService::apply_all_settings() {
     } else {
         // No default profile assigned - deactivate adaptive controller to ensure clean state
         adaptive_.deactivate();
+    }
+}
+
+// ===== Cooling command handlers =====
+
+auto TransportService::handle_get_cooling(const Command& cmd) -> Response {
+    frost_bay_.ensure_started();
+    auto state = frost_bay_.read_state();
+    std::string cooling_json = serialize_cooling_state(state);
+
+    Response resp;
+    resp.id = cmd.id;
+    resp.ok = true;
+    resp.data = cooling_json;
+    return resp;
+}
+
+auto TransportService::handle_set_cooling(const Command& cmd) -> Response {
+    frost_bay_.ensure_started();
+    // Persist gate
+    if (auto blocked = check_persist(cmd.id)) return blocked.value();
+
+    try {
+        auto payload = json::parse(cmd.payload);
+
+        FrostBayState changes;
+
+        if (payload.contains("mode") && payload["mode"].is_number_integer()) {
+            changes.mode = payload["mode"].get<int>();
+        }
+        if (payload.contains("fanSpeedPercent") && payload["fanSpeedPercent"].is_number_integer()) {
+            changes.fan_speed_percent = payload["fanSpeedPercent"].get<int>();
+        }
+        if (payload.contains("pumpSpeedPercent") && payload["pumpSpeedPercent"].is_number_integer()) {
+            changes.pump_speed_percent = payload["pumpSpeedPercent"].get<int>();
+        }
+        if (payload.contains("rgbMode") && payload["rgbMode"].is_number_integer()) {
+            changes.rgb_mode = payload["rgbMode"].get<int>();
+        }
+        if (payload.contains("rgbEnable") && payload["rgbEnable"].is_boolean()) {
+            changes.rgb_enable = payload["rgbEnable"].get<bool>();
+        }
+        if (payload.contains("rgbLightLevel") && payload["rgbLightLevel"].is_number_integer()) {
+            changes.rgb_level = payload["rgbLightLevel"].get<int>();
+        }
+        if (payload.contains("rgb_r") && payload["rgb_r"].is_number_integer()) {
+            changes.rgb_r = payload["rgb_r"].get<int>();
+        }
+        if (payload.contains("rgb_g") && payload["rgb_g"].is_number_integer()) {
+            changes.rgb_g = payload["rgb_g"].get<int>();
+        }
+        if (payload.contains("rgb_b") && payload["rgb_b"].is_number_integer()) {
+            changes.rgb_b = payload["rgb_b"].get<int>();
+        }
+        if (payload.contains("curve") && payload["curve"].is_array()) {
+            for (const auto& pt : payload["curve"]) {
+                FrostBayState::CurvePoint cp;
+                cp.temp_c = pt.value("temp_c", 0);
+                cp.speed_pct = pt.value("speed_pct", 0);
+                changes.curve.push_back(cp);
+            }
+        }
+
+        auto result = frost_bay_.write_settings(changes);
+        if (!result) {
+            Response resp;
+            resp.id = cmd.id;
+            resp.ok = false;
+            resp.error = result.error();
+            return resp;
+        }
+
+        Response resp;
+        resp.id = cmd.id;
+        resp.ok = true;
+        resp.data = R"({"ok": true})";
+        return resp;
+    } catch (const json::exception&) {
+        Response resp;
+        resp.id = cmd.id;
+        resp.ok = false;
+        resp.error = ErrorCode::ParseError;
+        return resp;
+    }
+}
+
+auto TransportService::handle_set_cooling_rgb(const Command& cmd) -> Response {
+    frost_bay_.ensure_started();
+    // Persist gate
+    if (auto blocked = check_persist(cmd.id)) return blocked.value();
+
+    try {
+        auto payload = json::parse(cmd.payload);
+
+        bool enable = payload.value("enable", false);
+        int mode = payload.value("mode", 0);
+        int level = payload.value("level", 100);
+        int r = payload.value("r", 0);
+        int g = payload.value("g", 0);
+        int b = payload.value("b", 0);
+
+        auto result = frost_bay_.set_rgb(enable, mode, level, r, g, b);
+        if (!result) {
+            Response resp;
+            resp.id = cmd.id;
+            resp.ok = false;
+            resp.error = result.error();
+            return resp;
+        }
+
+        Response resp;
+        resp.id = cmd.id;
+        resp.ok = true;
+        resp.data = R"({"ok": true})";
+        return resp;
+    } catch (const json::exception&) {
+        Response resp;
+        resp.id = cmd.id;
+        resp.ok = false;
+        resp.error = ErrorCode::ParseError;
+        return resp;
     }
 }

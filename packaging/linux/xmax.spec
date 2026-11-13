@@ -96,6 +96,12 @@ sed -i \
     -e '/^ExecStart=/a Environment=XMAX_RYZENADJ_LIB=%{_libdir}/xmax/libryzenadj.so' \
     %{buildroot}%{_unitdir}/xmaxd.service
 
+# udev rule: silence the Frost Bay cooler's phantom HID-over-GATT input device
+# (its telemetry reports are decoded by the kernel as volume-down key events
+# whenever bluetoothd attaches the HOG input profile).
+install -D -m 0644 packaging/linux/60-xmax-frostbay.rules \
+    %{buildroot}%{_udevrulesdir}/60-xmax-frostbay.rules
+
 # GNOME Shell extension (subpackage). The GSettings schema is installed
 # system-wide; the extension resolves it by id (settings-schema: org.xmax.shell).
 install -d %{buildroot}%{_datadir}/gnome-shell/extensions/xmax@local
@@ -128,6 +134,8 @@ ctest --test-dir backend-build --output-on-failure
 %systemd_post xmaxd.service
 # Ask the message bus to reload its config drop-ins after the policy changed.
 systemctl try-reload dbus-broker.service 2>/dev/null || systemctl reload dbus.service 2>/dev/null || :
+# Pick up the Frost Bay udev rule (applies to input devices added from now on).
+udevadm control --reload >/dev/null 2>&1 || :
 
 %preun
 %systemd_preun xmaxd.service
@@ -146,6 +154,7 @@ glib-compile-schemas %{_datadir}/glib-2.0/schemas >/dev/null 2>&1 || :
 %{_datadir}/dbus-1/system.d/org.xmax.Service.conf
 %{_datadir}/polkit-1/actions/org.xmax.policy
 %{_unitdir}/xmaxd.service
+%{_udevrulesdir}/60-xmax-frostbay.rules
 %dir %{_libdir}/xmax
 %{_libdir}/xmax/libryzenadj.so
 

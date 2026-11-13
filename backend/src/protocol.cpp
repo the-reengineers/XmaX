@@ -201,7 +201,53 @@ std::string serialize_metrics(const Metrics& metrics) {
         j["power"]["charge_limit_pct"] = nullptr;
     }
 
+    // Frost Bay cooling device
+    j["cooling"] = json::parse(serialize_cooling_state(metrics.cooling));
+
     j["ts"] = metrics.ts;
 
     return j.dump() + "\n";
+}
+
+std::string serialize_cooling_state(const FrostBayState& state) {
+    json j;
+
+    j["connected"] = state.connected;
+
+    if (state.connected) {
+        // Read-only sensors
+        j["mode"] = state.mode;
+        j["fan_speed_rpm"] = state.fan_speed_rpm;
+        j["pump_speed_rpm"] = state.pump_speed_rpm;
+        j["water_flow"] = state.water_flow;
+        j["in_water_temp_c"] = state.in_water_temp_c;
+        j["out_water_temp_c"] = state.out_water_temp_c;
+        j["status_flag"] = state.status_flag;
+        j["fw_version"] = state.fw_version;
+
+        // Writable fields
+        j["fan_speed_percent"] = state.fan_speed_percent;
+        j["pump_speed_percent"] = state.pump_speed_percent;
+        j["rgb_mode"] = state.rgb_mode;
+        j["rgb_enable"] = state.rgb_enable;
+        j["rgb_level"] = state.rgb_level;
+        j["rgb_r"] = state.rgb_r;
+        j["rgb_g"] = state.rgb_g;
+        j["rgb_b"] = state.rgb_b;
+
+        // Curve
+        json curve_array = json::array();
+        for (const auto& pt : state.curve) {
+            json pt_json;
+            pt_json["temp_c"] = pt.temp_c;
+            pt_json["speed_pct"] = pt.speed_pct;
+            curve_array.push_back(pt_json);
+        }
+        j["curve"] = curve_array;
+
+        // Derived
+        j["is_running"] = state.is_running;
+    }
+
+    return j.dump();
 }

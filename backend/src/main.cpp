@@ -3,6 +3,7 @@
 #include "platform/platform.h"
 #include "config.h"
 #include "profiles.h"
+#include "cooling.h"
 #include "fan.h"
 #include "tdp.h"
 #include "metrics.h"
@@ -225,7 +226,8 @@ int main(int argc, char* argv[]) {
         auto fan = std::make_unique<FanController>(*platform);
         auto tdp = std::make_unique<TdpController>(*platform);
         auto adaptive = std::make_unique<AdaptiveController>(*tdp, *fan);
-        auto poller = std::make_unique<MetricsPoller>(*platform, *fan, *tdp, *adaptive);
+        auto frost_bay = std::make_unique<FrostBayController>(*platform);
+        auto poller = std::make_unique<MetricsPoller>(*platform, *fan, *tdp, *adaptive, *frost_bay);
         auto power = std::make_unique<PowerController>(*platform);
         auto button = std::make_unique<ButtonMonitor>(*platform);
         auto process_mgr = std::make_unique<ProcessManager>(*platform);
@@ -242,6 +244,9 @@ int main(int argc, char* argv[]) {
 
             // Set initial power state TDP ceiling from hardcoded max
             int initial_tdp_ceiling = power_state_max_tdp(current_power_state);
+            if (current_power_state == PowerState::Source::DcIn && frost_bay->is_connected()) {
+                initial_tdp_ceiling = 120;
+            }
             adaptive->set_power_state_ceiling(initial_tdp_ceiling);
             log_info("Initial power state TDP ceiling: " + std::to_string(initial_tdp_ceiling) + "W");
 
@@ -318,11 +323,20 @@ int main(int argc, char* argv[]) {
         process_mgr->start_monitor();
         log_info("Process monitor started");
 
+        // Frost Bay: start eagerly, but silently — at boot the connection loop
+        // only connects to an already-paired device (no radio discovery), so
+        // the TDP-ceiling gate sees the cooler without any scan side effects.
+        // The scan fallback is armed on the first cooling command instead
+        // (FrostBayController::ensure_started) — machines without a Frost Bay
+        // never run discovery.
+        frost_bay->start();
+        log_info("Frost Bay cooling ready (paired-device connect; scan arms on first cooling command)");
+
         // Create transport service and start listening BEFORE spawning frontend,
         // so the pipe is ready when the frontend tries to connect.
         auto transport = std::make_unique<TransportService>(
             *platform, *poller, *fan, *tdp, *power, *adaptive, *button,
-            config, profiles, config_path, profiles_path
+            *frost_bay, config, profiles, config_path, profiles_path
         );
 #ifndef _WIN32
         std::unique_ptr<DbusService> dbus = std::make_unique<DbusService>(*transport, *platform);
@@ -364,6 +378,9 @@ int main(int argc, char* argv[]) {
             if (transport->is_session_persist()) {
                 // Set power state TDP ceiling from hardcoded max
                 int new_tdp_ceiling = power_state_max_tdp(new_state);
+                if (new_state == PowerState::Source::DcIn && frost_bay->is_connected()) {
+                    new_tdp_ceiling = 120;
+                }
                 adaptive->set_power_state_ceiling(new_tdp_ceiling);
                 log_info("[power] State changed, new TDP ceiling: " + std::to_string(new_tdp_ceiling) + "W");
 
@@ -464,6 +481,7 @@ int main(int argc, char* argv[]) {
 #endif
         transport->stop();
         tray->stop();
+        frost_bay->stop();
         process_mgr->stop_monitor();
         button->stop();
         adaptive->stop();

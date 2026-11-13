@@ -1183,7 +1183,8 @@ protected:
         fan_ctrl_ = std::make_unique<FanController>(platform_);
         tdp_ctrl_ = std::make_unique<TdpController>(platform_);
         adaptive_ = std::make_unique<AdaptiveController>(*tdp_ctrl_, *fan_ctrl_);
-        poller_ = std::make_unique<MetricsPoller>(platform_, *fan_ctrl_, *tdp_ctrl_, *adaptive_);
+        frost_bay_ = std::make_unique<FrostBayController>(platform_);
+        poller_ = std::make_unique<MetricsPoller>(platform_, *fan_ctrl_, *tdp_ctrl_, *adaptive_, *frost_bay_);
     }
 
     void TearDown() override {
@@ -1196,6 +1197,7 @@ protected:
     std::unique_ptr<FanController> fan_ctrl_;
     std::unique_ptr<TdpController> tdp_ctrl_;
     std::unique_ptr<AdaptiveController> adaptive_;
+    std::unique_ptr<FrostBayController> frost_bay_;
     std::unique_ptr<MetricsPoller> poller_;
 };
 
@@ -1931,14 +1933,15 @@ protected:
         fan_ = std::make_unique<FanController>(platform_);
         tdp_ = std::make_unique<TdpController>(platform_);
         adaptive_ = std::make_unique<AdaptiveController>(*tdp_, *fan_);
-        poller_ = std::make_unique<MetricsPoller>(platform_, *fan_, *tdp_, *adaptive_);
+        frost_bay_ = std::make_unique<FrostBayController>(platform_);
+        poller_ = std::make_unique<MetricsPoller>(platform_, *fan_, *tdp_, *adaptive_, *frost_bay_);
         power_ = std::make_unique<PowerController>(platform_);
         button_ = std::make_unique<ButtonMonitor>(platform_);
 
         // Create transport service
         service_ = std::make_unique<TransportService>(
             platform_, *poller_, *fan_, *tdp_, *power_, *adaptive_, *button_,
-            config_, profiles_, config_path_, profiles_path_
+            *frost_bay_, config_, profiles_, config_path_, profiles_path_
         );
     }
 
@@ -1946,6 +1949,7 @@ protected:
         service_.reset();
         adaptive_.reset();
         poller_.reset();
+        frost_bay_.reset();
         fan_.reset();
         tdp_.reset();
         power_.reset();
@@ -1977,6 +1981,7 @@ protected:
     std::unique_ptr<MetricsPoller> poller_;
     std::unique_ptr<PowerController> power_;
     std::unique_ptr<AdaptiveController> adaptive_;
+    std::unique_ptr<FrostBayController> frost_bay_;
     std::unique_ptr<ButtonMonitor> button_;
     std::unique_ptr<TransportService> service_;
 };

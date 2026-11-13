@@ -90,4 +90,16 @@
     </defaults>
     <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/xmaxd</annotate>
   </action>
+
+  <!-- Gates SetCooling and SetCoolingRgb (Frost Bay external cooler). -->
+  <action id="org.xmax.set-cooling">
+    <description>Change Frost Bay cooler settings</description>
+    <message>Authentication is required to change the Frost Bay cooler settings</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/xmaxd</annotate>
+  </action>
 </policyconfig>

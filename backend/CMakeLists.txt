@@ -110,6 +110,20 @@ if(UNIX)
     pkg_check_modules(SYSTEMD IMPORTED_TARGET libsystemd)
 endif()
 
+# SimpleBLE (cross-platform BLE — Frost Bay cooling device).
+# Prefer system package; fall back to FetchContent.
+find_package(simpleble QUIET)
+if(NOT simpleble_FOUND)
+    FetchContent_Declare(
+        simpleble
+        GIT_REPOSITORY https://github.com/OpenBluetoothToolbox/SimpleBLE.git
+        GIT_TAG v1.4.0
+        SOURCE_SUBDIR simpleble
+    )
+    set(SIMPLEBLE_INSTALL OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(simpleble)
+endif()
+
 # Main executable
 add_executable(${BACKEND_TARGET}
     src/main.cpp
@@ -126,9 +140,8 @@ add_executable(${BACKEND_TARGET}
     src/transport.cpp
     src/process.cpp
     src/tray.cpp
+    src/cooling.cpp
 )
-
-# Platform-specific sources
 if(WIN32)
     # Set ADLX source directory (local or FetchContent)
     if(ADLX_LOCAL_AVAILABLE)
@@ -208,6 +221,7 @@ elseif(UNIX)
     target_link_libraries(${BACKEND_TARGET} PRIVATE
         nlohmann_json::nlohmann_json
         PkgConfig::SYSTEMD
+        simpleble::simpleble
         ${CMAKE_DL_LIBS}
     )
 endif()
@@ -244,6 +258,7 @@ add_executable(${BACKEND_TARGET}_tests
     src/transport.cpp
     src/process.cpp
     src/tray.cpp
+    src/cooling.cpp
 )
 
 # Add ADLX sources and includes for tests on Windows
@@ -262,6 +277,7 @@ if(WIN32)
     target_link_libraries(${BACKEND_TARGET}_tests PRIVATE
         GTest::gtest_main
         nlohmann_json::nlohmann_json
+        simpleble::simpleble
         ole32
         oleaut32
         wbemuuid
@@ -270,6 +286,7 @@ else()
     target_link_libraries(${BACKEND_TARGET}_tests PRIVATE
         GTest::gtest_main
         nlohmann_json::nlohmann_json
+        simpleble::simpleble
     )
 endif()
 
